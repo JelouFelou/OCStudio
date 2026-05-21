@@ -1,0 +1,139 @@
+/* --- 7. KREATOR POSTACI I SCHEMATU --- */
+.template-container {
+padding: 30px;
+width: 95%;
+max-width: 1600px;
+margin: 0 auto;
+overflow-y: auto;
+}
+
+.template-header {
+display: flex; justify-content: space-between; align-items: flex-start;
+background: white; padding: 20px 30px; border-radius: 16px;
+box-shadow: var(--card-shadow); margin-bottom: 30px;
+}
+
+.template-meta {
+background: white; border-radius: 20px; padding: 30px;
+margin-bottom: 25px; display: flex; gap: 30px;
+box-shadow: 0 4px 15px rgba(0,0,0,0.05); width: 100%;
+}
+
+.template-sections, .template-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 30px;
+align-items: flex-start;
+padding-bottom: 60px;
+}
+
+.template-sections > div, .template-column {
+background: white; padding: 30px; border-radius: 20px;
+box-shadow: var(--card-shadow);
+}
+
+/* Panel boczny Kreatora (Zdjęcie / Podgląd) */
+.template-meta-right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #ffffff;
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #ced4da;
+    width: 100%; /* Zmiana na 100%, aby dostosowywało się do prawej kolumny */
+    box-sizing: border-box;
+}
+
+.template-meta-right img {
+    width: 100%;
+    height: auto !important;
+    aspect-ratio: 1 / 1 !important;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.upload-label {
+font-size: 0.75rem; font-weight: 600; color: var(--primary);
+cursor: pointer; background: var(--primary-light);
+padding: 8px 12px; border-radius: 6px; width: 100%; text-align: center;
+}
+
+/* Pola Drag & Drop */
+.field-item {
+background: #fff; border: 1px solid #eee; margin-bottom: 10px;
+padding: 10px 15px; border-radius: 12px; display: flex;
+align-items: center; gap: 10px;
+}
+
+.drag-handle { cursor: grab; color: var(--text-muted); padding: 5px; }
+
+.add-circle-btn {
+background: #f0f0f0; color: #333; width: 40px; height: 40px;
+border-radius: 50%; display: flex; align-items: center;
+justify-content: center; border: none; cursor: pointer; margin: 20px auto;
+}
+.add-circle-btn:hover { background: var(--primary); color: white; }
+
+/* Poprawki dla sekcji kreatora */
+.template-sections {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    align-items: flex-start;
+    padding-bottom: 60px;
+}
+
+.character-profile-wrapper {
+    background: white;
+    border-radius: 20px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%; /* Zmieniono z 340px na 100% */
+    max-width: 100%; /* Pozwala na rozciągnięcie do szerokości kolumny */
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.character-profile-wrapper .input-group, 
+.character-profile-wrapper textarea,
+.template-meta-right {
+    width: 100%;
+    max-width: 100%; /* Usunięto sztywne 290px, aby dopasować do szerokości całej prawej kolumny */
+    box-sizing: border-box;
+    padding-top: 15px;
+}
+
+.template-meta-right img {
+    width: 100%;
+    height: 260px;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.upload-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary);
+    cursor: pointer;
+    background: var(--primary-light);
+    padding: 10px;
+    border-radius: 8px;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+    margin-bottom: 5px;
+}
+
+#profile-image-upload {
+    display: none;
+}

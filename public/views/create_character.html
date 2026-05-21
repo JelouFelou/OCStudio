@@ -1,3 +1,32 @@
+<?php
+// Helper – renderuje prawidłowy widget dla pola wariantu
+function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
+    $fieldId = (int)$field['id'];
+    $ftype = $field['field_type'];
+    $fieldLabel = htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8');
+    $variantValueEscaped = htmlspecialchars($variantValue, ENT_QUOTES, 'UTF-8');
+    
+    echo '<div class="input-group">';
+    echo "<label>$fieldLabel</label>";
+    
+    $placeholder = $field['placeholder'] ?? '{}';
+    
+    echo '<div class="variant-field-container" 
+               data-variant-field 
+               data-field-id="'.$fieldId.'" 
+               data-field-type="'.$ftype.'"
+               data-field-config=\''.htmlspecialchars($placeholder, ENT_QUOTES, 'UTF-8').'\'>';
+    echo '<input type="hidden" class="variant-field-input" 
+               name="variants['.$variantIndex.'][values]['.$fieldId.']" 
+               value="'.$variantValueEscaped.'">';
+    echo '<div class="variant-field-renderer"></div>';
+    echo '</div>';
+    
+    echo '</div>';
+}
+?>
+
+
 <div class="template-container">
     <header class="template-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
         <div class="header-info">
@@ -135,13 +164,11 @@
 
                             <div class="variant-fields-grid">
                                 <?php foreach(($fields ?? []) as $field): ?>
-                                    <?php $fieldId = (int)$field['id']; ?>
-                                    <div class="input-group">
-                                        <label><?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?></label>
-                                        <textarea name="variants[<?= $variantIndex ?>][values][<?= $fieldId ?>]"
-                                                  rows="2"
-                                                  placeholder="Zostaw puste, aby uzyc wartosci bazowej"><?= htmlspecialchars($variant['values'][$fieldId] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
-                                    </div>
+                                    <?php 
+                                        $fieldId = (int)$field['id'];
+                                        $variantValue = $variant['values'][$fieldId] ?? '';
+                                        renderVariantFieldWidget($field, $variantIndex, $variantValue);
+                                    ?>
                                 <?php endforeach; ?>
                             </div>
                         </div>
@@ -175,11 +202,20 @@
 
                 <div class="variant-fields-grid">
                     <?php foreach(($fields ?? []) as $field): ?>
+                        <?php $fieldId = (int)$field['id']; ?>
+                        <?php $ftype = $field['field_type']; ?>
                         <div class="input-group">
                             <label><?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?></label>
-                            <textarea data-name-template="variants[__KEY__][values][<?= (int)$field['id'] ?>]"
-                                      rows="2"
-                                      placeholder="Zostaw puste, aby uzyc wartosci bazowej"></textarea>
+                            <div class="variant-field-container" 
+                                 data-variant-field 
+                                 data-field-id="<?= $fieldId ?>" 
+                                 data-field-type="<?= htmlspecialchars($ftype, ENT_QUOTES, 'UTF-8') ?>"
+                                 data-field-config="<?= htmlspecialchars($field['placeholder'] ?? '{}', ENT_QUOTES, 'UTF-8') ?>"
+                                 data-field-label="<?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="hidden" class="variant-field-input" 
+                                       data-name-template="variants[__KEY__][values][<?= $fieldId ?>]">
+                                <div class="variant-field-renderer"></div>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -228,6 +264,12 @@ document.addEventListener("DOMContentLoaded", function () {
             loadTemplateFields(formTemplateId.value);
         }
     }
+
+    // --- Inicjalizacja wariantów ---
+    if (typeof initializeVariantFields === 'function') {
+        initializeVariantFields();
+    }
+
     const addVariantBtn = document.getElementById('add-variant-btn');
     const variantsContainer = document.getElementById('variants-container');
     const variantTemplate = document.getElementById('variant-card-template');
@@ -244,11 +286,23 @@ document.addEventListener("DOMContentLoaded", function () {
         addVariantBtn.addEventListener('click', () => {
             const key = `new_${Date.now()}`;
             const fragment = variantTemplate.content.cloneNode(true);
+            
+            // Zamiana __KEY__ w name attributes
             fragment.querySelectorAll('[data-name-template]').forEach(input => {
                 input.name = input.dataset.nameTemplate.replace('__KEY__', key);
+                delete input.dataset.nameTemplate;
             });
+            
             const card = fragment.querySelector('[data-variant-card]');
             variantsContainer.appendChild(fragment);
+            
+            // Inicjalizacja widgetów dla nowego wariantu
+            card.querySelectorAll('[data-variant-field]').forEach(fieldWrapper => {
+                if (typeof buildVariantFieldWidget === 'function') {
+                    buildVariantFieldWidget(fieldWrapper);
+                }
+            });
+            
             bindVariantRemove(card);
         });
     }

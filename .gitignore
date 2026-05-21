@@ -4,3 +4,4 @@ public/uploads/*
 # Ale zachowaj sam folder (opcjonalnie)
 !public/uploads/.gitkeep
 docker/db/init/init_for_future.txt
+key.env

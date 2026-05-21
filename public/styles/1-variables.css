@@ -1,0 +1,29 @@
+/* --- 1. ZMIENNE I RESET --- */
+:root {
+--primary: #FF8A00;
+--primary-hover: #e57d00;
+--primary-light: #fff3e6;
+--bg: #F8F9FA;
+--sidebar-w: 260px;
+--text-main: #333;
+--text-muted: #999;
+--grid-columns: 6;
+--border-color: #eee;
+--card-shadow: 0 4px 16px rgba(0,0,0,0.03);
+}
+
+{
+box-sizing: border-box;
+}
+
+body {
+margin: 0;
+font-family: 'Inter', sans-serif;
+background: var(--bg);
+color: var(--text-main);
+height: 100%;
+}
+
+html {
+height: 100%;
+}

@@ -1,0 +1,15 @@
+/* --- 8. RESPONSYWNOŚĆ --- */
+@media (max-width: 1024px) {
+.dashboard-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.template-sections, .template-grid { grid-template-columns: 1fr; }
+.template-meta { flex-direction: column; }
+.grid-controls { display: none; }
+}
+
+@media (max-width: 600px) {
+.top-header { padding: 0 20px; }
+.search-wrapper { display: none; }
+.content-view { padding: 15px; }
+.dashboard-grid { grid-template-columns: 1fr; }
+.character-card { aspect-ratio: 3 / 4; }
+}

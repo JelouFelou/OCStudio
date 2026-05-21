@@ -14,23 +14,17 @@ function fieldTypeMeta(string $type): array {
 }
 ?>
 <div class="template-container">
-    <header class="template-header">
-        <div class="header-info">
-            <h1>Kreator Schematu</h1>
-            <p>Zdefiniuj strukturę dla swoich postaci. Pola po lewej będą treścią, pola po prawej stworzą infobox.</p>
-        </div>
-        <div class="header-actions">
-            <button type="button" class="btn-secondary" onclick="window.location.href='/templates'">Anuluj</button>
-            <button type="submit" form="template-form" class="btn-primary">Zapisz Schemat</button>
-        </div>
-    </header>
-
     <form id="template-form" action="/createTemplate" method="POST">
         <?php if(isset($template)): ?>
         <input type="hidden" name="template_id" value="<?= $template['id'] ?>">
         <?php endif; ?>
 
-        <section class="template-meta">
+    <header class="template-header">
+        <div class="header-info">
+            <h1>Kreator Schematu</h1>
+            <p>Zdefiniuj strukturę dla swoich postaci. Pola po lewej będą treścią, pola po prawej stworzą infobox.</p>
+        </div>
+        <div class="header-meta-fields">
             <div class="input-group">
                 <label>Nazwa schematu</label>
                 <input type="text" name="template_name"
@@ -39,10 +33,15 @@ function fieldTypeMeta(string $type): array {
             </div>
             <div class="input-group">
                 <label>Opis (opcjonalnie)</label>
-                <textarea name="template_description"
+                <textarea name="template_description" rows="2"
                     placeholder="Do czego służy ten schemat..."><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
             </div>
-        </section>
+        </div>
+        <div class="header-actions">
+            <button type="button" class="btn-secondary" onclick="window.location.href='/templates'">Anuluj</button>
+            <button type="submit" form="template-form" class="btn-primary">Zapisz Schemat</button>
+        </div>
+    </header>
 
         <div class="template-grid">
             <?php foreach(['left' => ['id'=>'left-fields',  'title'=>'<i class="fa-solid fa-align-left"></i> Treść główna (lewa)'],
