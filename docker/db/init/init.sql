@@ -1,9 +1,15 @@
+DROP TABLE IF EXISTS user_blocked_filters CASCADE;
+DROP TABLE IF EXISTS world_filters CASCADE;
+DROP TABLE IF EXISTS character_filters CASCADE;
+DROP TABLE IF EXISTS filters CASCADE;
+DROP TABLE IF EXISTS character_statuses CASCADE;
 DROP TABLE IF EXISTS character_field_values CASCADE;
 DROP TABLE IF EXISTS character_variant_field_values CASCADE;
 DROP TABLE IF EXISTS character_variants CASCADE;
 DROP TABLE IF EXISTS characters CASCADE;
 DROP TABLE IF EXISTS template_fields CASCADE;
 DROP TABLE IF EXISTS templates CASCADE;
+DROP TABLE IF EXISTS worlds CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 CREATE TABLE users (
@@ -17,6 +23,18 @@ CREATE TABLE users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE
 );
+
+CREATE TABLE character_statuses (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    color_hex VARCHAR(7) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO character_statuses (name, color_hex) VALUES 
+    ('Do zrobienia', '#E74C3C'),
+    ('W trakcie', '#F39C12'),
+    ('Gotowa', '#27AE60');
 
 CREATE TABLE templates (
     id SERIAL PRIMARY KEY,
@@ -46,9 +64,11 @@ CREATE TABLE worlds (
     image VARCHAR(255) DEFAULT 'default.jpg',
     id_user INTEGER NOT NULL,
     parent_id INTEGER DEFAULT NULL,
+    status_id INTEGER DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_id) REFERENCES worlds(id) ON DELETE CASCADE
+    FOREIGN KEY (parent_id) REFERENCES worlds(id) ON DELETE CASCADE,
+    FOREIGN KEY (status_id) REFERENCES character_statuses(id) ON DELETE SET NULL
 );
 
 CREATE TABLE characters (
@@ -59,10 +79,12 @@ CREATE TABLE characters (
     id_user INTEGER NOT NULL,
     id_template INTEGER,
     id_world INTEGER DEFAULT NULL,
+    status_id INTEGER DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (id_template) REFERENCES templates(id) ON DELETE SET NULL,
-    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE SET NULL
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE SET NULL,
+    FOREIGN KEY (status_id) REFERENCES character_statuses(id) ON DELETE SET NULL
 );
 
 CREATE TABLE character_field_values (
@@ -96,14 +118,6 @@ CREATE TABLE character_variant_field_values (
     FOREIGN KEY (id_template_field) REFERENCES template_fields(id) ON DELETE CASCADE,
     UNIQUE (id_variant, id_template_field)
 );
-
-CREATE INDEX idx_templates_id_user ON templates(id_user);
-CREATE INDEX idx_template_fields_id_template ON template_fields(id_template);
-CREATE INDEX idx_characters_id_user ON characters(id_user);
-CREATE INDEX idx_characters_id_template ON characters(id_template);
-CREATE INDEX idx_character_field_values_id_character ON character_field_values(id_character);
-CREATE INDEX idx_character_variants_id_character ON character_variants(id_character);
-CREATE INDEX idx_character_variant_field_values_id_variant ON character_variant_field_values(id_variant);
 
 INSERT INTO users (email, password, firstname, lastname, bio)
 VALUES (
@@ -150,3 +164,63 @@ INSERT INTO character_variant_field_values (id_variant, id_template_field, value
 VALUES
     (1, 1, 'Wilkolak'),
     (1, 2, 'Bestia lodu');
+
+-- ═════════════════════════════════════════════════════════════════════
+-- FILTRY I STATUSY
+-- ═════════════════════════════════════════════════════════════════════
+
+CREATE TABLE filters (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    id_user INTEGER,
+    is_public BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE (name, id_user)
+);
+
+CREATE TABLE character_filters (
+    id SERIAL PRIMARY KEY,
+    id_character INTEGER NOT NULL,
+    id_filter INTEGER NOT NULL,
+    is_inherited BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_character) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_filter) REFERENCES filters(id) ON DELETE CASCADE,
+    UNIQUE (id_character, id_filter)
+);
+
+CREATE TABLE world_filters (
+    id SERIAL PRIMARY KEY,
+    id_world INTEGER NOT NULL,
+    id_filter INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_filter) REFERENCES filters(id) ON DELETE CASCADE,
+    UNIQUE (id_world, id_filter)
+);
+
+CREATE TABLE user_blocked_filters (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    id_filter INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_filter) REFERENCES filters(id) ON DELETE CASCADE,
+    UNIQUE (id_user, id_filter)
+);
+
+-- Domyślne publiczne filtry
+INSERT INTO filters (name, is_public) VALUES 
+    ('kobieta', TRUE),
+    ('mężczyzna', TRUE),
+    ('inny', TRUE),
+    ('nsfw', TRUE),
+    ('sfw', TRUE);
+
+CREATE INDEX idx_character_statuses_name ON character_statuses(name);
+CREATE INDEX idx_filters_name ON filters(name);
+CREATE INDEX idx_character_filters_character ON character_filters(id_character);
+CREATE INDEX idx_character_filters_filter ON character_filters(id_filter);
+CREATE INDEX idx_world_filters_world ON world_filters(id_world);
+CREATE INDEX idx_user_blocked_filters_user ON user_blocked_filters(id_user);

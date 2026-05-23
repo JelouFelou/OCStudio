@@ -6,6 +6,7 @@ class User {
     private $password;
     private $firstName;
     private $lastName;
+    private $username;
     private $bio;
 
     public function __construct(
@@ -14,7 +15,8 @@ class User {
         string $firstName, 
         string $lastName, 
         string $bio = '', 
-        int $id = null
+        int $id = null,
+        string $username = ''
     ) {
         $this->email = $email;
         $this->password = $password;
@@ -22,6 +24,7 @@ class User {
         $this->lastName = $lastName;
         $this->bio = $bio;
         $this->id = $id;
+        $this->username = $username;
     }
 
     public function getEmail(): string {
@@ -42,6 +45,10 @@ class User {
 
     public function getId(): ?int {
         return $this->id;
+    }
+    
+    public function getUsername(): string {
+        return $this->username;
     }
     
     // Możesz dodać przydatne metody logiczne

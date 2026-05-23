@@ -6,12 +6,16 @@
         <!-- Breadcrumb -->
         <nav style="display:flex;align-items:center;gap:6px;font-size:0.9rem;flex-wrap:wrap;">
             <a href="/characters"
+               class="breadcrumb-link"
+               data-breadcrumb-world-id=""
                style="color:var(--primary,#6c3fd4);text-decoration:none;font-weight:<?= $currentWorld ? '400' : '700' ?>;">
                 Postacie
             </a>
             <?php foreach ($breadcrumb as $crumb): ?>
                 <span style="color:var(--text-muted,#999);">/</span>
                 <a href="/characters?world=<?= $crumb->getId() ?>"
+                   class="breadcrumb-link"
+                   data-breadcrumb-world-id="<?= $crumb->getId() ?>"
                    style="color:var(--primary,#6c3fd4);text-decoration:none;
                           font-weight:<?= ($currentWorld && $crumb->getId() === $currentWorld->getId()) ? '700' : '400' ?>;">
                     <?= htmlspecialchars($crumb->getName(), ENT_QUOTES, 'UTF-8') ?>
@@ -83,19 +87,68 @@
                      data-character-id="<?= $char->getId() ?>"
                      data-name="<?= htmlspecialchars(strtolower($char->getName()), ENT_QUOTES, 'UTF-8') ?>"
                      onclick="window.location.href='/viewCharacter?id=<?= $char->getId() ?>'"
-                     style="cursor:grab;">
+                     style="cursor:grab;position:relative;">
+                    
+                    <!-- Status badge (top-left) -->
+                    <?php if ($char->getIdStatus()): 
+                        // Znajdź status po ID
+                        $statusObj = null;
+                        foreach ($statuses as $s) {
+                            if ($s->getId() === $char->getIdStatus()) {
+                                $statusObj = $s;
+                                break;
+                            }
+                        }
+                        if ($statusObj):
+                    ?>
+                        <div class="status-badge" 
+                             data-character-id="<?= $char->getId() ?>"
+                             data-status-id="<?= $statusObj->getId() ?>"
+                             onclick="event.stopPropagation(); openStatusModal(<?= $char->getId() ?>)"
+                             style="position:absolute;top:8px;left:8px;height:auto;padding:4px 8px;border-radius:50px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:0.7rem;z-index:10;transition:transform .2s,box-shadow .2s;background:<?= htmlspecialchars($statusObj->getColorHex(), ENT_QUOTES, 'UTF-8') ?>;color:white;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.2);text-align:center;white-space:nowrap;"
+                             title="<?= htmlspecialchars($statusObj->getName(), ENT_QUOTES, 'UTF-8') ?>">
+                            <?= htmlspecialchars($statusObj->getName(), ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                    <?php 
+                        endif;
+                    else: ?>
+                        <button class="add-status-btn"
+                                data-character-id="<?= $char->getId() ?>"
+                                onclick="event.stopPropagation(); openStatusModal(<?= $char->getId() ?>)"
+                                style="position:absolute;top:8px;left:8px;width:40px;height:40px;border-radius:50%;background:white;border:2px dashed var(--border,#ddd);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.2rem;z-index:10;transition:all .2s;color:var(--text-muted);"
+                                title="Dodaj status">
+                            +
+                        </button>
+                    <?php endif; ?>
+                    
                     <div class="card-image-wrapper">
-                        <?php $img = $char->getImage() ?: 'default_avatar.png'; ?>
-                        <img src="public/uploads/<?= htmlspecialchars($img, ENT_QUOTES, 'UTF-8') ?>" alt="Postać">
+                        <?php $img = $char->getImage() ?: 'default.png'; ?>
+                        <img src="public/uploads/<?= htmlspecialchars($img, ENT_QUOTES, 'UTF-8') ?>" alt="Postać"
+                             onerror="this.src='public/uploads/default.png'">
                         <button class="card-edit-btn"
                                 onclick="event.stopPropagation(); window.location.href='/editCharacter?id=<?= $char->getId() ?>'"
                                 title="Edytuj">
                             <i class="fa-solid fa-pen"></i>
                         </button>
+                        <?php if (!$img || $img === 'default.png' || $img === 'default.jpg'): ?>
+                            <button
+                                onclick="event.stopPropagation(); restoreDefaultImage(<?= $char->getId() ?>, this)"
+                                title="Brak zdjęcia – kliknij aby przypisać domyślne"
+                                style="position:absolute;bottom:44px;right:8px;background:rgba(220,53,69,0.88);color:#fff;border:none;border-radius:8px;padding:4px 8px;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;gap:4px;z-index:5;">
+                                <i class="fa-solid fa-image"></i> Brak zdjęcia
+                            </button>
+                        <?php endif; ?>
                         <div class="card-content">
                             <h3><?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?></h3>
                             <p><?= htmlspecialchars($char->getDescription(), ENT_QUOTES, 'UTF-8') ?></p>
                         </div>
+                    </div>
+                    
+                    <!-- Filters badges (bottom) -->
+                    <div class="character-filters-display" 
+                         data-character-id="<?= $char->getId() ?>"
+                         style="padding:8px;background:rgba(0,0,0,0.02);border-top:1px solid var(--border,#eee);min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:0.75rem;">
+                        <span style="display:none;color:var(--text-muted);">Brak filtrów</span>
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -136,6 +189,69 @@
                 <i class="fa-solid fa-person" style="font-size:1.4rem;"></i>
                 <strong>Nowa postać</strong>
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODAL: zmiana statusu postaci
+════════════════════════════════════════════════ -->
+<div id="status-modal"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2500;
+            justify-content:center;align-items:center;padding:20px;">
+    <div style="background:white;border-radius:18px;padding:28px;max-width:400px;width:100%;
+                box-shadow:var(--card-shadow);position:relative;">
+        <button id="close-status-modal" type="button"
+                style="position:absolute;top:14px;right:16px;border:none;background:none;
+                       font-size:1.3rem;cursor:pointer;color:var(--text-muted);">×</button>
+        <h3 style="margin:0 0 20px;">Zmień status</h3>
+        <div style="display:grid;gap:10px;">
+            <button class="status-btn" data-status-id="" 
+                    style="padding:12px;border:1px solid var(--border,#ddd);border-radius:8px;background:white;cursor:pointer;text-align:left;transition:all .2s;">
+                Bez statusu
+            </button>
+            <button class="status-btn" data-status-id="1" 
+                    style="padding:12px;border:2px solid #E74C3C;border-radius:8px;background:white;cursor:pointer;text-align:left;transition:all .2s;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:1.2rem;color:#E74C3C;">●</span> Do zrobienia
+            </button>
+            <button class="status-btn" data-status-id="2" 
+                    style="padding:12px;border:2px solid #F39C12;border-radius:8px;background:white;cursor:pointer;text-align:left;transition:all .2s;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:1.2rem;color:#F39C12;">●</span> W trakcie
+            </button>
+            <button class="status-btn" data-status-id="3" 
+                    style="padding:12px;border:2px solid #27AE60;border-radius:8px;background:white;cursor:pointer;text-align:left;transition:all .2s;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:1.2rem;color:#27AE60;">●</span> Gotowa
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODAL: zarządzanie filtrami postaci
+════════════════════════════════════════════════ -->
+<div id="filters-modal"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2500;
+            justify-content:center;align-items:center;padding:20px;">
+    <div style="background:white;border-radius:18px;padding:28px;max-width:500px;width:100%;
+                box-shadow:var(--card-shadow);position:relative;max-height:80vh;overflow-y:auto;">
+        <button id="close-filters-modal" type="button"
+                style="position:absolute;top:14px;right:16px;border:none;background:none;
+                       font-size:1.3rem;cursor:pointer;color:var(--text-muted);z-index:10;">×</button>
+        <h3 style="margin:0 0 20px;padding-right:30px;">Zarządzaj filtrami</h3>
+        
+        <!-- Pole wyszukiwania filtrów -->
+        <div style="margin-bottom:20px;">
+            <input id="filter-search-input" type="text" placeholder="Szukaj lub dodaj nowy filtr..."
+                   style="width:100%;padding:10px 14px;border:1px solid var(--border,#ddd);border-radius:10px;font-size:1rem;box-sizing:border-box;">
+            <div id="filter-search-results" style="position:absolute;background:white;border:1px solid var(--border,#ddd);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;width:calc(100% - 56px);display:none;z-index:20;"></div>
+        </div>
+        
+        <!-- Przypisane filtry -->
+        <div style="margin-bottom:20px;">
+            <h4 style="margin:0 0 10px;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;">Przypisane filtry</h4>
+            <div id="character-filters-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:30px;padding:8px;background:var(--hover,#f9f9f9);border-radius:8px;">
+                <span style="color:var(--text-muted);font-size:0.85rem;">Brak filtrów</span>
+            </div>
         </div>
     </div>
 </div>
@@ -183,6 +299,29 @@
         applyColumns(slider.value);
         slider.addEventListener('input', function () { applyColumns(this.value); });
     }
+
+    // ── Przywracanie domyślnego zdjęcia ──────────────────────────────────
+    window.restoreDefaultImage = async function(characterId, btn) {
+        try {
+            const res = await fetch('/api/characters/restoreImage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ characterId })
+            });
+            if (res.ok) {
+                const card = btn.closest('.card-image-wrapper');
+                if (card) {
+                    const imgEl = card.querySelector('img');
+                    if (imgEl) imgEl.src = 'public/uploads/default.png';
+                }
+                btn.remove();
+            } else {
+                alert('Nie udało się przywrócić zdjęcia.');
+            }
+        } catch (e) {
+            alert('Błąd sieci.');
+        }
+    };
 
     // ── Helpers modal ─────────────────────────────────────────────────
     function openModal(el)  { if (el) el.style.display = 'flex'; }
@@ -264,7 +403,7 @@
             if (e.key === 'Enter') document.getElementById('save-folder-btn').click();
         });
 
-    // ── DRAG & DROP do przypisywania postaci do folderów ───────────────
+    // ── DRAG & DROP do przypisywania postaci do folderów i breadcrumb ───────────────
     let draggedCard = null;
 
     // Konfiguruj kartę jako przeciągalną
@@ -280,10 +419,14 @@
             this.style.opacity = '1';
             this.style.cursor = 'grab';
             draggedCard = null;
-            // Wyczyść hover state na wszystkich folderach
+            // Wyczyść hover state na wszystkich drop zones
             document.querySelectorAll('.drag-drop-folder').forEach(folder => {
                 folder.style.background = 'var(--card-bg,#fff)';
                 folder.style.borderColor = 'var(--border,#e0e0e0)';
+            });
+            document.querySelectorAll('.breadcrumb-link').forEach(link => {
+                link.style.opacity = '1';
+                link.style.textDecoration = 'none';
             });
         });
     });
@@ -333,6 +476,166 @@
             } catch (e) {
                 alert('Błąd sieci. Spróbuj ponownie.');
             }
+        });
+    });
+
+    // Konfiguruj breadcrumb linki jako drop zones
+    document.querySelectorAll('.breadcrumb-link').forEach(link => {
+        link.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            // Pokaż wizualną indicę na linku
+            this.style.opacity = '0.6';
+            this.style.textDecoration = 'underline';
+            this.style.backgroundColor = 'rgba(108, 63, 212, 0.1)';
+            this.style.padding = '2px 4px';
+            this.style.borderRadius = '4px';
+        });
+
+        link.addEventListener('dragleave', function (e) {
+            this.style.opacity = '1';
+            this.style.textDecoration = 'none';
+            this.style.backgroundColor = 'transparent';
+            this.style.padding = '0';
+        });
+
+        link.addEventListener('drop', async function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            this.style.opacity = '1';
+            this.style.textDecoration = 'none';
+            this.style.backgroundColor = 'transparent';
+            this.style.padding = '0';
+
+            if (!draggedCard) return;
+
+            const characterId = parseInt(draggedCard.dataset.characterId);
+            const worldIdStr = this.dataset.breadcrumbWorldId;
+            const worldId = worldIdStr === '' ? null : parseInt(worldIdStr);
+
+            try {
+                const response = await fetch('/api/characters/assign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ characterId, worldId })
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    alert('Błąd: ' + (data.error || 'Nie udało się przenieść postaci'));
+                }
+            } catch (e) {
+                alert('Błąd sieci. Spróbuj ponownie.');
+            }
+        });
+    });
+
+    // ── STATUSY I FILTRY ───────────────────────────────────────────────
+
+    let currentCharacterId = null;
+
+    // Otwórz modal statusu
+    window.openStatusModal = (characterId) => {
+        currentCharacterId = characterId;
+        document.getElementById('status-modal').style.display = 'flex';
+    };
+
+    // Zmiana statusu
+    document.querySelectorAll('.status-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const statusId = btn.dataset.statusId || null;
+            try {
+                const res = await fetch('/api/characters/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ characterId: currentCharacterId, statusId: statusId || null })
+                });
+                if (res.ok) location.reload();
+                else alert('Błąd');
+            } catch (e) { alert('Błąd sieci'); }
+        });
+    });
+
+    // Zamykanie modali
+    document.getElementById('close-status-modal')?.addEventListener('click', () => {
+        document.getElementById('status-modal').style.display = 'none';
+    });
+    document.getElementById('close-filters-modal')?.addEventListener('click', () => {
+        document.getElementById('filters-modal').style.display = 'none';
+    });
+
+    // Wyszukiwanie filtrów
+    let filterSearchTimeout;
+    document.getElementById('filter-search-input')?.addEventListener('input', async (e) => {
+        clearTimeout(filterSearchTimeout);
+        const query = e.target.value.trim();
+        
+        if (query.length < 2) {
+            document.getElementById('filter-search-results').style.display = 'none';
+            return;
+        }
+
+        filterSearchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/filters/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                const resultsDiv = document.getElementById('filter-search-results');
+                resultsDiv.innerHTML = '';
+
+                data.filters.forEach(filter => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.style.cssText = 'display:block;width:100%;padding:10px 14px;border:none;background:white;text-align:left;cursor:pointer;border-bottom:1px solid var(--border,#eee);transition:background .2s;';
+                    btn.textContent = filter.name;
+                    btn.addEventListener('mouseover', () => btn.style.background = 'var(--hover,#f5f5f5)');
+                    btn.addEventListener('mouseout', () => btn.style.background = 'white');
+                    btn.addEventListener('click', async () => {
+                        await addFilterToCharacter(currentCharacterId, filter.id, filter.name);
+                        resultsDiv.style.display = 'none';
+                        e.target.value = '';
+                        loadCharacterFilters(currentCharacterId);
+                    });
+                    resultsDiv.appendChild(btn);
+                });
+
+                resultsDiv.style.display = data.filters.length > 0 ? 'block' : 'none';
+            } catch (e) { console.error(e); }
+        }, 300);
+    });
+
+    // Dodaj filtr do postaci
+    const addFilterToCharacter = async (characterId, filterId, filterName) => {
+        try {
+            const res = await fetch('/api/characters/filters/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ characterId, filterId, filterName })
+            });
+            if (!res.ok) alert('Błąd dodawania filtera');
+        } catch (e) { alert('Błąd sieci'); }
+    };
+
+    // Załaduj filtry postaci
+    const loadCharacterFilters = async (characterId) => {
+        // Symulacja - w pełnej implementacji trzeba byłoby pobrać z API
+        // Na razie wyświetlamy placeholder
+        const filtersList = document.getElementById('character-filters-list');
+        if (filtersList) {
+            filtersList.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem;">Ładowanie...</span>';
+        }
+    };
+
+    // Otwórz modal filtrów (click na kartę postaci)
+    document.querySelectorAll('.character-filters-display').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const charId = parseInt(el.dataset.characterId);
+            currentCharacterId = charId;
+            document.getElementById('filters-modal').style.display = 'flex';
+            loadCharacterFilters(charId);
         });
     });
 })();

@@ -38,7 +38,33 @@ class UsersRepository extends Repository {
         $user['firstname'],
         $user['lastname'],
         $user['bio'] ?? '',
-        $user['id']
+        $user['id'],
+        $user['username'] ?? ''
+        );
+    }
+
+    public function getUserByUsername(string $username) {
+        $query = $this->database->connect()->prepare(
+            "
+            SELECT * FROM users WHERE username = :username
+            "
+        );
+        $query->bindParam(':username', $username);
+        $query->execute();
+
+        $user = $query->fetch(PDO::FETCH_ASSOC);
+        if (!$user) {
+            return null;
+        }
+
+        return new User(
+        $user['email'],
+        $user['password'],
+        $user['firstname'],
+        $user['lastname'],
+        $user['bio'] ?? '',
+        $user['id'],
+        $user['username'] ?? ''
         );
     }
 
@@ -47,12 +73,13 @@ class UsersRepository extends Repository {
         string $hashedPassword,
         string $firstname,
         string $lastname,
+        string $username,
         string $bio = ''
     ) {
         $query = $this->database->connect()->prepare(
             "
-            INSERT INTO users (firstname, lastname, email, password, bio)
-            VALUES (?, ?, ?, ?, ?);
+            INSERT INTO users (firstname, lastname, email, password, username, bio)
+            VALUES (?, ?, ?, ?, ?, ?);
             "
         );
         $query->execute([
@@ -60,6 +87,7 @@ class UsersRepository extends Repository {
             $lastname,
             $email, 
             $hashedPassword,
+            $username,
             $bio
         ]);
     }

@@ -34,6 +34,16 @@ class AppController {
         $headPath = $basePath . 'partials/head.html';
         $navPath = $basePath . 'partials/nav.html';
         
+        // Pobierz światy użytkownika dla nav (tylko jeśli jest zalogowany)
+        if ($template !== 'login' && $template !== 'register' && isset($_SESSION['user_id'])) {
+            if (!isset($variables['worlds'])) {
+                require_once __DIR__ . '/../repositories/WorldRepository.php';
+                $worldRepository = new WorldRepository();
+                // Pobierz tylko pierwsze podfoldery (bez root-a)
+                $variables['worlds'] = $worldRepository->getChildWorlds($_SESSION['user_id'], null);
+            }
+        }
+        
         if(file_exists($templatePath)){
             extract($variables);
             ob_start();

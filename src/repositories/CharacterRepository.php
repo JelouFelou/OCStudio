@@ -89,6 +89,66 @@ class CharacterRepository extends Repository
         $char = $stmt->fetch(PDO::FETCH_ASSOC);
         return $char ? $this->hydrate($char) : null;
     }
+    
+    /**
+     * Wyszukiwanie postaci po nazwie i filtrach (wszystkie filtry muszą pasować).
+     * Filtry są porównywane po nazwie (case-insensitive). Dziedziczenie filtrów
+     * z folderów jest obsługiwane przez rekursywne CTE (ancestors).
+     *
+     * @param int $userId
+     * @param string|null $nameLike
+     * @param array $filterNames
+     * @return Character[]
+     */
+    public function searchCharactersByNameAndFilters(int $userId, ?string $nameLike, array $filterNames = []): array
+    {
+        $params = [':userId' => $userId];
+
+        $nameClause = '';
+        if ($nameLike !== null && trim($nameLike) !== '') {
+            $params[':nameLike'] = '%' . mb_strtolower($nameLike) . '%';
+            $nameClause = 'AND LOWER(c.name) LIKE :nameLike';
+        }
+
+        // Start building SQL
+        $sql = "SELECT DISTINCT c.* FROM characters c WHERE c.id_user = :userId " . $nameClause;
+
+        // For each filter name require existence either on character or in ancestor worlds
+        foreach ($filterNames as $i => $fname) {
+            $key = ':filter' . $i;
+            $params[$key] = mb_strtolower($fname);
+
+            $sql .= " AND (
+                EXISTS(
+                    SELECT 1 FROM character_filters cf
+                    JOIN filters f ON cf.id_filter = f.id
+                    WHERE cf.id_character = c.id AND LOWER(f.name) = " . $key . ")
+                OR EXISTS(
+                    WITH RECURSIVE ancestors(id, parent_id) AS (
+                        SELECT w.id, w.parent_id FROM worlds w WHERE w.id = c.id_world
+                        UNION ALL
+                        SELECT w2.id, w2.parent_id FROM worlds w2 JOIN ancestors a ON w2.id = a.parent_id
+                    )
+                    SELECT 1 FROM world_filters wf JOIN filters fw ON wf.id_filter = fw.id
+                    WHERE wf.id_world IN (SELECT id FROM ancestors) AND LOWER(fw.name) = " . $key . "
+                )
+            )";
+        }
+
+        $stmt = $this->database->connect()->prepare($sql);
+        foreach ($params as $k => $v) {
+            $stmt->bindValue($k, $v);
+        }
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $result = [];
+        foreach ($rows as $r) {
+            $result[] = $this->hydrate($r);
+        }
+
+        return $result;
+    }
 
     public function getCharacterByIdAndUserId(int $id, int $userId): ?Character
     {
@@ -111,6 +171,16 @@ class CharacterRepository extends Repository
             WHERE id = ?
         ');
         $stmt->execute([$name, $description, $image, $templateId, $worldId, $id]);
+    }
+
+    public function updateCharacterStatus(int $characterId, ?int $statusId): void
+    {
+        $stmt = $this->database->connect()->prepare('
+            UPDATE characters 
+            SET status_id = ?
+            WHERE id = ?
+        ');
+        $stmt->execute([$statusId, $characterId]);
     }
 
     public function getCharacterFieldValues(int $characterId): array
@@ -270,7 +340,8 @@ class CharacterRepository extends Repository
             $char['id_user'],
             $char['id'],
             $char['id_template'],
-            $char['id_world'] ?? null
+            $char['id_world'] ?? null,
+            $char['status_id'] ?? null
         );
     }
 }

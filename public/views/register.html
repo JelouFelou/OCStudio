@@ -17,13 +17,18 @@
         <form class="auth-form" method="POST" action="/register">
             <div class="input-row">
                 <div class="input-group">
-                    <label>Imie</label>
-                    <input name="firstName" type="text" placeholder="Jan" maxlength="50" autocomplete="given-name" required>
+                    <label>Imie (opcjonalnie)</label>
+                    <input name="firstName" type="text" placeholder="Jan" maxlength="50" autocomplete="given-name">
                 </div>
                 <div class="input-group">
-                    <label>Nazwisko</label>
-                    <input name="lastName" type="text" placeholder="Kowalski" maxlength="50" autocomplete="family-name" required>
+                    <label>Nazwisko (opcjonalnie)</label>
+                    <input name="lastName" type="text" placeholder="Kowalski" maxlength="50" autocomplete="family-name">
                 </div>
+            </div>
+
+            <div class="input-group">
+                <label>Nazwa użytkownika</label>
+                <input name="username" type="text" placeholder="nazwa_uzytkownika" maxlength="50" autocomplete="username" pattern="[a-zA-Z0-9_-]+" title="Tylko litery, cyfry, podkreślenia i myślniki" required>
             </div>
 
             <div class="input-group">

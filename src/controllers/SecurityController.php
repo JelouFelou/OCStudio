@@ -24,7 +24,7 @@ class SecurityController extends AppController{
             ]);
         }
 
-        $email = trim($_POST["email"] ?? '');
+        $loginInput = trim($_POST["login"] ?? '');
         $password = $_POST["password"] ?? '';
 
         if ($this->isLockedOut()) {
@@ -32,10 +32,10 @@ class SecurityController extends AppController{
             return $this->renderLoginError('Too many failed attempts. Try again later.');
         }
 
-        if (!$this->isLoginInputValid($email, $password)) {
+        if (!$this->isLoginInputValid($loginInput, $password)) {
             http_response_code(400);
             $this->recordFailedLogin();
-            return $this->renderLoginError('Invalid email or password.');
+            return $this->renderLoginError('Invalid email/username or password.');
         }
 
         if ($this->shouldRequireCaptcha() && !$this->verifyTurnstile()) {
@@ -44,19 +44,24 @@ class SecurityController extends AppController{
         }
 
         $userRepository = new UsersRepository();
-        $user = $userRepository->getUserByEmail($email);
+        // Spróbuj najpierw jako email, potem jako username
+        $user = $userRepository->getUserByEmail($loginInput);
+        if (!$user) {
+            $user = $userRepository->getUserByUsername($loginInput);
+        }
         $passwordHash = $user ? $user->getPassword() : self::DUMMY_PASSWORD_HASH;
 
         if (!password_verify($password, $passwordHash) || !$user) {
             http_response_code(401);
             $this->recordFailedLogin();
-            return $this->renderLoginError('Invalid email or password.');
+            return $this->renderLoginError('Invalid email/username or password.');
         }
 
         $this->clearFailedLogins();
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user->getId();
         $_SESSION['email'] = $user->getEmail();
+        $_SESSION['username'] = $user->getUsername();
         $_SESSION['first_name'] = $user->getFirstName(); 
         $_SESSION['last_name'] = $user->getLastName();
 
@@ -80,13 +85,14 @@ class SecurityController extends AppController{
         $password2 = $_POST['password2'] ?? '';
         $firstName = trim($_POST['firstName'] ?? '');
         $lastName = trim($_POST['lastName'] ?? '');
+        $username = trim($_POST['username'] ?? '');
 
         if ($password !== $password2) {
             http_response_code(400);
             return $this->render('register', ['messages' => ['Passwords do not match.']]);
         }
 
-        $validationErrors = $this->validateRegistrationInput($email, $password, $firstName, $lastName);
+        $validationErrors = $this->validateRegistrationInput($email, $password, $username);
         if ($validationErrors) {
             http_response_code(400);
             return $this->render('register', ['messages' => $validationErrors]);
@@ -95,12 +101,16 @@ class SecurityController extends AppController{
         $userRepository = new UsersRepository();
         if ($userRepository->getUserByEmail($email)) {
             http_response_code(409);
-            return $this->render('register', ['messages' => ['User already exists.']]);
+            return $this->render('register', ['messages' => ['Email already in use.']]);
+        }
+        if ($userRepository->getUserByUsername($username)) {
+            http_response_code(409);
+            return $this->render('register', ['messages' => ['Username already taken.']]);
         }
 
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
 
-        $userRepository->createUser($email, $hashedPassword, $firstName, $lastName);
+        $userRepository->createUser($email, $hashedPassword, $firstName, $lastName, $username);
 
         http_response_code(201);
         return $this->render('login', ['messages' => ['Registration successful! Please log in.']]);
@@ -149,33 +159,35 @@ class SecurityController extends AppController{
         return "{$scheme}://{$_SERVER['HTTP_HOST']}";
     }
 
-    private function isLoginInputValid(string $email, string $password): bool
+    private function isLoginInputValid(string $loginInput, string $password): bool
     {
-        return $email !== ''
+        return $loginInput !== ''
             && $password !== ''
-            && strlen($email) <= self::MAX_EMAIL_LENGTH
             && strlen($password) <= self::MAX_PASSWORD_LENGTH
-            && filter_var($email, FILTER_VALIDATE_EMAIL);
+            && (filter_var($loginInput, FILTER_VALIDATE_EMAIL) || (strlen($loginInput) <= self::MAX_NAME_LENGTH && strlen($loginInput) >= 3));
     }
 
     private function validateRegistrationInput(
         string $email,
         string $password,
-        string $firstName,
-        string $lastName
+        string $username
     ): array {
         $errors = [];
 
-        if ($email === '' || $password === '' || $firstName === '') {
-            $errors[] = 'Fill all required fields.';
+        if ($email === '' || $password === '' || $username === '') {
+            $errors[] = 'Email, password and username are required.';
         }
 
         if (strlen($email) > self::MAX_EMAIL_LENGTH || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Email is invalid or too long.';
         }
 
-        if (strlen($firstName) > self::MAX_NAME_LENGTH || strlen($lastName) > self::MAX_NAME_LENGTH) {
-            $errors[] = 'Name fields are too long.';
+        if (strlen($username) < 3 || strlen($username) > self::MAX_NAME_LENGTH) {
+            $errors[] = 'Username must be between 3 and 50 characters.';
+        }
+
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $username)) {
+            $errors[] = 'Username can only contain letters, numbers, underscores, and hyphens.';
         }
 
         if (!$this->isPasswordComplex($password)) {

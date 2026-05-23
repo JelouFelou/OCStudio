@@ -78,7 +78,7 @@ class WorldRepository extends Repository
      */
     public function getBreadcrumb(int $worldId, int $userId): array
     {
-        $path  = [];
+        $path    = [];
         $current = $this->getWorldByIdAndUserId($worldId, $userId);
 
         while ($current !== null) {
@@ -90,6 +90,54 @@ class WorldRepository extends Repository
         return $path;
     }
 
+    /**
+     * Wyszukuje foldery po nazwie (case-insensitive, LIKE).
+     * Zwraca tablicę World.
+     */
+    public function searchWorldsByName(int $userId, string $q): array
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT * FROM worlds
+            WHERE id_user = :userId AND LOWER(name) LIKE :q
+            ORDER BY name ASC
+            LIMIT 5
+        ');
+        $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':q', '%' . mb_strtolower($q) . '%');
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $result[] = $this->hydrate($row);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Zwraca wszystkie ID folderów w poddrzewie zaczynającym od $rootWorldId
+     * (włącznie z samym $rootWorldId), używając rekursywnego CTE.
+     * Działa na PostgreSQL.
+     */
+    public function getDescendantWorldIds(int $rootWorldId, int $userId): array
+    {
+        $stmt = $this->database->connect()->prepare('
+            WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM worlds WHERE id = :rootId AND id_user = :userId
+                UNION ALL
+                SELECT w.id FROM worlds w
+                JOIN subtree s ON w.parent_id = s.id
+                WHERE w.id_user = :userId
+            )
+            SELECT id FROM subtree
+        ');
+        $stmt->bindParam(':rootId',  $rootWorldId, PDO::PARAM_INT);
+        $stmt->bindParam(':userId',  $userId,      PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id');
+    }
+
     private function hydrate(array $row): World
     {
         return new World(
@@ -98,7 +146,16 @@ class WorldRepository extends Repository
             $row['image'],
             $row['id_user'],
             $row['id'],
-            $row['parent_id'] !== null ? (int)$row['parent_id'] : null
+            $row['parent_id'] !== null ? (int)$row['parent_id'] : null,
+            $row['status_id'] !== null ? (int)$row['status_id'] : null
         );
+    }
+
+    public function updateWorldStatus(int $worldId, ?int $statusId): void
+    {
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE worlds SET status_id = ? WHERE id = ?'
+        );
+        $stmt->execute([$statusId, $worldId]);
     }
 }

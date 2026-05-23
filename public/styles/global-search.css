@@ -1,0 +1,218 @@
+/* ============================================================
+   global-search.css
+   Style dla wyszukiwarki w headerze i odznak statusu na dashboardzie
+   ============================================================ */
+
+/* ── Wrapper w headerze ──────────────────────────────────────────────────── */
+.header-search {
+    position: relative;
+    flex: 1 1 260px;
+    max-width: 480px;
+}
+
+#header-search-input {
+    width: 100%;
+    padding: 8px 14px 8px 38px;
+    border: 1.5px solid var(--border, #ddd);
+    border-radius: 999px;
+    font-size: 0.9rem;
+    background: var(--card-bg, #fff);
+    color: var(--text, #333);
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    /* ikona lupy przez background-image (opcjonalnie) */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+    background-size: 16px;
+}
+
+#header-search-input:focus {
+    border-color: var(--primary, #6c3fd4);
+    box-shadow: 0 0 0 3px rgba(108, 63, 212, .12);
+}
+
+/* ── Dropdown ────────────────────────────────────────────────────────────── */
+.search-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--card-bg, #fff);
+    border: 1.5px solid var(--border, #e0e0e0);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .13);
+    max-height: 480px;
+    overflow-y: auto;
+    z-index: 1000;
+    padding: 6px 0;
+}
+
+/* sekcja "Postacie" / "Folder" nagłówek */
+.search-section-label {
+    margin: 0;
+    padding: 6px 16px 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted, #999);
+}
+
+/* ── Wiersz postaci ─────────────────────────────────────────────────────── */
+.search-char-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background .15s;
+    border-radius: 0;
+}
+
+.search-char-row:hover,
+.search-char-row.is-active {
+    background: var(--hover, #f4f0fc);
+}
+
+.search-char-img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid var(--border, #eee);
+}
+
+.search-char-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+}
+
+.search-char-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text, #222);
+}
+
+/* odznaka statusu w wierszu wyszukiwarki */
+.search-status-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #fff;
+    padding: 1px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    width: fit-content;
+}
+
+/* ── Wiersz folderu ─────────────────────────────────────────────────────── */
+.search-folder-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px 6px;
+    cursor: pointer;
+    border-top: 1px solid var(--border, #f0f0f0);
+    margin-top: 4px;
+    transition: background .15s;
+}
+
+.search-folder-header:hover,
+.search-folder-header.is-active {
+    background: var(--hover, #f4f0fc);
+}
+
+.search-folder-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--primary, #6c3fd4);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.search-folder-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex: 1;
+    color: var(--text, #222);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-folder-count {
+    font-size: 0.72rem;
+    color: var(--text-muted, #999);
+    white-space: nowrap;
+}
+
+/* Postacie wewnątrz folderu – lekkie wcięcie */
+.search-folder-group .search-char-row {
+    padding-left: 40px;
+    background: rgba(108, 63, 212, .025);
+}
+
+.search-folder-group .search-char-row:hover,
+.search-folder-group .search-char-row.is-active {
+    background: var(--hover, #f4f0fc);
+}
+
+/* ── Pusty / ładowanie ─────────────────────────────────────────────────── */
+.search-empty {
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 0.875rem;
+    color: var(--text-muted, #888);
+    text-align: center;
+}
+
+.search-loading {
+    opacity: .7;
+    font-style: italic;
+}
+
+/* ── Odznaki gotowości na kartach dashboardu ──────────────────────────────
+   Klasy dodawane dynamicznie przez PHP w dashboard.html.
+   Trzy warianty: gotowa / w trakcie / do zrobienia
+   ────────────────────────────────────────────────────────────────────────── */
+.readiness-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #fff;
+    z-index: 6;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .18);
+    pointer-events: none;       /* nie blokuje kliknięć w kartę */
+    white-space: nowrap;
+}
+
+.readiness-badge.done {
+    background: #27ae60;        /* zielony – gotowa */
+}
+
+.readiness-badge.wip {
+    background: #e67e22;        /* pomarańczowy – w trakcie */
+}
+
+.readiness-badge.todo {
+    background: #95a5a6;        /* szary – do zrobienia */
+}

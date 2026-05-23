@@ -82,6 +82,38 @@ class Routing
             'controller' => 'CharacterController',
             'action' => 'assignCharacterToWorld'
         ],
+        'api/characters/status' => [
+            'controller' => 'CharacterController',
+            'action' => 'updateCharacterStatus'
+        ],
+        'api/characters/filters/add' => [
+            'controller' => 'CharacterController',
+            'action' => 'addCharacterFilter'
+        ],
+        'api/characters/filters/remove' => [
+            'controller' => 'CharacterController',
+            'action' => 'removeCharacterFilter'
+        ],
+        'api/characters/search' => [
+            'controller' => 'CharacterController',
+            'action' => 'searchCharacters'
+        ],
+        'api/filters/search' => [
+            'controller' => 'CharacterController',
+            'action' => 'searchFilters'
+        ],
+        'api/filters/toggle-block' => [
+            'controller' => 'CharacterController',
+            'action' => 'toggleBlockFilter'
+        ],
+        'api/characters/restoreImage' => [
+            'controller' => 'CharacterController', 
+            'action' => 'restoreDefaultImage'
+        ],
+        '/api/search' => [
+            'controller' => 'CharacterController',
+            'action' => 'globalSearch'
+        ],
     ];
 
     public static function run(string $path)

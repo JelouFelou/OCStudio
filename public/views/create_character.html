@@ -103,10 +103,21 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
 
                     <div class="template-meta-right">
                         <img id="profile-img-preview"
-                             src="public/uploads/<?= isset($character) ? htmlspecialchars($character->getImage()) : 'default.jpg' ?>"
+                             src="public/uploads/<?= isset($character) ? htmlspecialchars($character->getImage() ?: 'default.png') : 'default.png' ?>"
                              alt="Zdjęcie postaci">
+                        <input type="hidden" name="remove_image" id="remove-image-flag" value="">
                         <label for="profile-image-upload" class="upload-label">Wgraj zdjęcie</label>
                         <input type="file" id="profile-image-upload" name="character_image" accept="image/*">
+                        <?php
+                            $hasCustomImage = isset($character) && $character->getImage() && $character->getImage() !== 'default.png';
+                        ?>
+                        <button type="button"
+                                id="remove-image-btn"
+                                class="btn-secondary"
+                                style="font-size:0.8rem;padding:5px 10px;<?= $hasCustomImage ? '' : 'display:none;' ?>"
+                                onclick="removeCharacterImage()">
+                            <i class="fa-solid fa-trash"></i> Usuń zdjęcie
+                        </button>
                     </div>
 
                     <div class="input-group full-width">
@@ -238,16 +249,37 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- Podgląd zdjęcia profilowego ---
     const imageInput   = document.getElementById('profile-image-upload');
     const imagePreview = document.getElementById('profile-img-preview');
+    const removeBtn    = document.getElementById('remove-image-btn');
+    const removeFlag   = document.getElementById('remove-image-flag');
+
     if (imageInput && imagePreview) {
         imageInput.addEventListener('change', function (e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = evt => { imagePreview.src = evt.target.result; };
+                reader.onload = evt => {
+                    imagePreview.src = evt.target.result;
+                    // Nowe zdjęcie wgrane – pokaż przycisk usuwania, wyczyść flagę remove
+                    if (removeBtn) removeBtn.style.display = '';
+                    if (removeFlag) removeFlag.value = '';
+                };
                 reader.readAsDataURL(file);
             }
         });
     }
+
+    // --- Usuwanie / przywracanie domyślnego zdjęcia ---
+    window.removeCharacterImage = function() {
+        const preview = document.getElementById('profile-img-preview');
+        const flag    = document.getElementById('remove-image-flag');
+        const input   = document.getElementById('profile-image-upload');
+        const btn     = document.getElementById('remove-image-btn');
+
+        if (preview) preview.src = 'public/uploads/default.png';
+        if (flag)    flag.value  = '1';
+        if (input)   input.value = '';   // wyczyść wybrany plik
+        if (btn)     btn.style.display = 'none';
+    };
 
     // --- Auto-ładowanie pól przy edycji ---
     // form-template-id jest już wypełniony przez PHP (wartość z bazy),
