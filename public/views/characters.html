@@ -24,7 +24,7 @@
         </nav>
 
         <!-- Suwak kolumn -->
-        <div style="display:flex;align-items:center;gap:10px;font-size:0.9rem;color:var(--text-muted,#666);">
+        <div class="view-slider-control" style="display:flex;align-items:center;gap:10px;font-size:0.9rem;color:var(--text-muted,#666);">
             <span style="font-weight:700;">Widok:</span>
             <?php $defaultColumns = max(4, min(10, (int)($userSettings['columns'] ?? 4))); ?>
             <input type="range" id="column-slider" min="4" max="10" value="<?= $defaultColumns ?>" style="width:100px;">
@@ -235,17 +235,29 @@
     // ── Suwak kolumn ──────────────────────────────────────────────────
     const slider     = document.getElementById('column-slider');
     const columnText = document.getElementById('column-count');
+    const sliderWrap = document.querySelector('.view-slider-control');
 
     function applyColumns(val) {
-        columnText.innerText = val;
-        document.documentElement.style.setProperty('--grid-columns', val);
-        localStorage.setItem('dashboard-columns', val);
-        document.cookie = 'oc_columns=' + encodeURIComponent(val) + '; path=/; max-age=31536000; SameSite=Lax';
+        const grid = document.querySelector('.dashboard-grid');
+        const availableWidth = grid ? grid.clientWidth : window.innerWidth;
+        const maxByWidth = Math.max(1, Math.floor(availableWidth / 220));
+        const safeVal = Math.max(1, Math.min(parseInt(val, 10) || 4, maxByWidth));
+
+        if (sliderWrap) {
+            sliderWrap.classList.toggle('is-hidden-by-grid', maxByWidth <= 3);
+        }
+
+        slider.value = safeVal;
+        columnText.innerText = safeVal;
+        document.documentElement.style.setProperty('--grid-columns', safeVal);
+        localStorage.setItem('dashboard-columns', safeVal);
+        document.cookie = 'oc_columns=' + encodeURIComponent(safeVal) + '; path=/; max-age=31536000; SameSite=Lax';
     }
 
     if (slider) {
         applyColumns(slider.value);
         slider.addEventListener('input', function () { applyColumns(this.value); });
+        window.addEventListener('resize', function () { applyColumns(slider.value); });
     }
 
     // ── Przywracanie domyślnego zdjęcia ──────────────────────────────────

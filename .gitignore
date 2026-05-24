@@ -5,3 +5,6 @@ public/uploads/*
 !public/uploads/.gitkeep
 docker/db/init/init_for_future.txt
 key.env
+
+# Lokalne backupy bazy danych
+backups/

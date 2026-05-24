@@ -19,6 +19,31 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+function moveField(btn, direction) {
+    const item = btn.closest('.field-item');
+    if (!item) return;
+
+    if (direction === 'up' && item.previousElementSibling) {
+        item.parentElement.insertBefore(item, item.previousElementSibling);
+    }
+
+    if (direction === 'down' && item.nextElementSibling) {
+        item.parentElement.insertBefore(item.nextElementSibling, item);
+    }
+
+    updateAllFieldsLocations();
+}
+
+function moveFieldSide(btn) {
+    const item = btn.closest('.field-item');
+    const currentContainer = item?.closest('.fields-container');
+    if (!item || !currentContainer) return;
+
+    const targetId = currentContainer.id === 'left-fields' ? 'right-fields' : 'left-fields';
+    document.getElementById(targetId)?.appendChild(item);
+    updateAllFieldsLocations();
+}
+
 // -------------------------------------------------------
 // Modal
 // -------------------------------------------------------

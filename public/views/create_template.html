@@ -60,6 +60,11 @@ function fieldTypeMeta(string $type): array {
                     ?>
                     <div class="field-item draggable" draggable="true">
                         <i class="fa-solid fa-grip-vertical drag-handle"></i>
+                        <div class="field-mobile-actions" aria-label="Zmień pozycję pola">
+                            <button type="button" onclick="moveField(this, 'up')" title="Przesuń wyżej"><i class="fa-solid fa-arrow-up"></i></button>
+                            <button type="button" onclick="moveField(this, 'down')" title="Przesuń niżej"><i class="fa-solid fa-arrow-down"></i></button>
+                            <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
+                        </div>
                         <div class="field-content">
                             <input type="text" name="field_labels[]"
                                 value="<?= htmlspecialchars($field['label']) ?>" required>
@@ -158,6 +163,11 @@ function fieldTypeMeta(string $type): array {
 <template id="field-template">
     <div class="field-item draggable" draggable="true">
         <i class="fa-solid fa-grip-vertical drag-handle"></i>
+        <div class="field-mobile-actions" aria-label="Zmień pozycję pola">
+            <button type="button" onclick="moveField(this, 'up')" title="Przesuń wyżej"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveField(this, 'down')" title="Przesuń niżej"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
+        </div>
         <div class="field-content">
             <input type="text" name="field_labels[]" placeholder="Nazwa pola..." required>
             <input type="hidden" name="field_locations[]"    value="" class="field-location">

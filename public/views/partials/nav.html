@@ -1,5 +1,6 @@
 <!-- Otwieramy główne kontenery układu -->
 <div class="base-container">
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
     <nav class="sidebar">
         <?php
     $currentPath = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
@@ -101,6 +102,9 @@
 
     <main class="main-content">
         <header class="top-header">
+            <button type="button" class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Otwórz menu" aria-expanded="false">
+                <i class="fa-solid fa-bars"></i>
+            </button>
             <!-- ── Globalna wyszukiwarka ── -->
                  <div class="search-wrapper header-search">
                   <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:18px;top:50%;transform:translateY(-50%);color:var(--text-muted,#999);pointer-events:none;z-index:1;"></i>
@@ -362,6 +366,33 @@
                 window.location.href = firstLink.href;
             }
         }
+    });
+})();
+</script>
+
+<script>
+(function () {
+    const toggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (!toggle || !sidebar || !backdrop) return;
+
+    function setOpen(open) {
+        document.body.classList.toggle('sidebar-open', open);
+        sidebar.classList.toggle('is-open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        toggle.innerHTML = open ? '<i class="fa-solid fa-xmark"></i>' : '<i class="fa-solid fa-bars"></i>';
+        backdrop.hidden = !open;
+    }
+
+    toggle.addEventListener('click', () => setOpen(!document.body.classList.contains('sidebar-open')));
+    backdrop.addEventListener('click', () => setOpen(false));
+    sidebar.querySelectorAll('a').forEach(link => link.addEventListener('click', () => setOpen(false)));
+    window.addEventListener('keydown', event => {
+        if (event.key === 'Escape') setOpen(false);
+    });
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 1100) setOpen(false);
     });
 })();
 </script>

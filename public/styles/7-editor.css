@@ -5,6 +5,12 @@ width: 95%;
 max-width: 1600px;
 margin: 0 auto;
 overflow-y: auto;
+overflow-x: hidden;
+box-sizing: border-box;
+}
+
+.template-container form {
+min-width: 0;
 }
 
 .template-header {
@@ -30,6 +36,8 @@ padding-bottom: 60px;
 .template-sections > div, .template-column {
 background: var(--surface); padding: 30px; border-radius: 20px;
 box-shadow: var(--card-shadow);
+min-width: 0;
+box-sizing: border-box;
 }
 
 /* Panel boczny Kreatora (Zdjęcie / Podgląd) */
@@ -72,13 +80,17 @@ padding: 8px 12px; border-radius: 6px; width: 100%; text-align: center;
 .field-item {
 background: var(--surface); border: 1px solid var(--border-color); margin-bottom: 10px;
 padding: 10px 15px; border-radius: 12px; display: flex;
-align-items: center; gap: 10px;
+align-items: flex-start; gap: 10px;
 color: var(--text-main);
+min-width: 0;
+max-width: 100%;
+box-sizing: border-box;
 }
 
 .field-content {
 flex: 1;
 min-width: 0;
+max-width: 100%;
 }
 
 .field-content > input[type="text"] {
@@ -87,6 +99,12 @@ border: 1px solid var(--border-color);
 color: var(--text-main);
 border-radius: 4px;
 padding: 4px 6px;
+max-width: 100%;
+box-sizing: border-box;
+}
+
+.field-mobile-actions {
+display: none;
 }
 
 .type-preview-tag small {
@@ -100,6 +118,28 @@ font-weight: 700;
 background: var(--surface-alt) !important;
 border-color: var(--border-color) !important;
 color: var(--text-main);
+max-width: 100%;
+box-sizing: border-box;
+overflow: hidden;
+}
+
+.table-row-definition,
+.select-option-def,
+.month-row,
+.era-row {
+max-width: 100%;
+min-width: 0;
+box-sizing: border-box;
+}
+
+.table-row-definition input,
+.select-option-def input,
+.month-row input,
+.era-row input,
+.default-year-input {
+min-width: 0;
+max-width: 100%;
+box-sizing: border-box;
 }
 
 .delete-field-btn {
