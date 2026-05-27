@@ -126,6 +126,43 @@ class SecurityController extends AppController{
         return $this->render('login', ['messages' => ['Registration successful! Please log in.']]);
     }
 
+    public function forgotPassword()
+    {
+        if (!$this->ensureHttps()) {
+            return;
+        }
+
+        if (!$this->isPost()) {
+            return $this->render('forgot_password');
+        }
+
+        $email = trim($_POST['email'] ?? '');
+        $password = $_POST['password'] ?? '';
+        $password2 = $_POST['password2'] ?? '';
+
+        if ($password !== $password2) {
+            http_response_code(400);
+            return $this->render('forgot_password', ['messages' => ['Hasla nie sa takie same.']]);
+        }
+
+        $validationErrors = $this->validatePasswordResetInput($email, $password);
+        if ($validationErrors) {
+            http_response_code(400);
+            return $this->render('forgot_password', ['messages' => $validationErrors]);
+        }
+
+        $userRepository = new UsersRepository();
+        if (!$userRepository->getUserByEmail($email)) {
+            http_response_code(404);
+            return $this->render('forgot_password', ['messages' => ['Nie znaleziono konta z podanym adresem email.']]);
+        }
+
+        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+        $userRepository->updatePasswordByEmail($email, $hashedPassword);
+
+        return $this->render('login', ['messages' => ['Haslo zostalo zmienione. Mozesz sie zalogowac.']]);
+    }
+
     public function logout(){
         return $this->render('logout');
     }
@@ -202,6 +239,25 @@ class SecurityController extends AppController{
 
         if (!$this->isPasswordComplex($password)) {
             $errors[] = 'Password must have at least 8 characters, uppercase and lowercase letters, and a digit.';
+        }
+
+        return $errors;
+    }
+
+    private function validatePasswordResetInput(string $email, string $password): array
+    {
+        $errors = [];
+
+        if ($email === '' || $password === '') {
+            $errors[] = 'Email i nowe haslo sa wymagane.';
+        }
+
+        if (strlen($email) > self::MAX_EMAIL_LENGTH || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Email jest nieprawidlowy albo za dlugi.';
+        }
+
+        if (!$this->isPasswordComplex($password)) {
+            $errors[] = 'Haslo musi miec co najmniej 8 znakow, male i wielkie litery oraz cyfre.';
         }
 
         return $errors;

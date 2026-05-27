@@ -293,7 +293,7 @@ class CharacterController extends AppController
         header('Content-Type: application/json');
 
         if (!isset($_GET['id'])) {
-            echo json_encode(['error' => 'Brak ID szablonu']);
+            echo json_encode(['error' => 'Brak ID szablonu postaci']);
             exit();
         }
 
@@ -301,7 +301,7 @@ class CharacterController extends AppController
         $template = $this->templateRepository->getTemplate($id);
 
         if (!$template) {
-            echo json_encode(['error' => 'Nie znaleziono szablonu']);
+            echo json_encode(['error' => 'Nie znaleziono szablonu postaci']);
             exit();
         }
 

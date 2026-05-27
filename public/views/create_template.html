@@ -21,12 +21,12 @@ function fieldTypeMeta(string $type): array {
 
     <header class="template-header">
         <div class="header-info">
-            <h1>Kreator Schematu</h1>
+            <h1>Kreator Szablonu postaci</h1>
             <p>Zdefiniuj strukturę dla swoich postaci. Pola po lewej będą treścią, pola po prawej stworzą infobox.</p>
         </div>
         <div class="header-meta-fields">
             <div class="input-group">
-                <label>Nazwa schematu</label>
+                <label>Nazwa szablonu postaci</label>
                 <input type="text" name="template_name"
                     value="<?= isset($template) ? htmlspecialchars($template['name']) : '' ?>"
                     placeholder="np. Fantasy Character v1" required>
@@ -34,12 +34,12 @@ function fieldTypeMeta(string $type): array {
             <div class="input-group">
                 <label>Opis (opcjonalnie)</label>
                 <textarea name="template_description" rows="2"
-                    placeholder="Do czego służy ten schemat..."><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
+                    placeholder="Do czego służy ten szablon postaci..."><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
             </div>
         </div>
         <div class="header-actions">
             <button type="button" class="btn-secondary" onclick="window.location.href='/templates'">Anuluj</button>
-            <button type="submit" form="template-form" class="btn-primary">Zapisz Schemat</button>
+            <button type="submit" form="template-form" class="btn-primary">Zapisz szablon postaci</button>
         </div>
     </header>
 
@@ -68,6 +68,7 @@ function fieldTypeMeta(string $type): array {
                         <div class="field-content">
                             <input type="text" name="field_labels[]"
                                 value="<?= htmlspecialchars($field['label']) ?>" required>
+                            <input type="hidden" name="field_ids[]" value="<?= (int)$field['id'] ?>" class="field-id">
                             <input type="hidden" name="field_locations[]"    value="<?= $side ?>"  class="field-location">
                             <input type="hidden" name="field_types[]"        value="<?= $ftype ?>" class="field-type">
                             <input type="hidden" name="field_placeholders[]" value="<?= htmlspecialchars($phRaw) ?>" class="field-placeholder">
@@ -170,6 +171,7 @@ function fieldTypeMeta(string $type): array {
         </div>
         <div class="field-content">
             <input type="text" name="field_labels[]" placeholder="Nazwa pola..." required>
+            <input type="hidden" name="field_ids[]" value="" class="field-id">
             <input type="hidden" name="field_locations[]"    value="" class="field-location">
             <input type="hidden" name="field_types[]"        value="" class="field-type">
             <input type="hidden" name="field_placeholders[]" value="" class="field-placeholder">

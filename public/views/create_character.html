@@ -38,7 +38,7 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
 
         <div class="header-template-select" style="flex: 1; max-width: 380px; min-width: 250px;">
             <div class="input-group" style="margin-bottom: 0;">
-                <label style="font-size: 0.75rem; margin-bottom: 4px;">Wybierz schemat postaci</label>
+                <label style="font-size: 0.75rem; margin-bottom: 4px;">Wybierz szablon postaci</label>
                 <!--
                     Ten select jest POZA formularzem – służy tylko do wyświetlania i ładowania pól.
                     Rzeczywista wartość template_id wysyłana do serwera pochodzi z hidden inputa
@@ -46,7 +46,7 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
                 -->
                 <select id="template-select" onchange="updateTemplateId(this.value)"
                         style="height: 42px; padding: 6px 12px;">
-                    <option value="" disabled <?= (!isset($character) || !$character->getIdTemplate()) ? 'selected' : '' ?>>-- Wybierz schemat --</option>
+                    <option value="" disabled <?= (!isset($character) || !$character->getIdTemplate()) ? 'selected' : '' ?>>-- Wybierz szablon postaci --</option>
                     <?php if(isset($templates) && !empty($templates)): ?>
                         <?php foreach($templates as $template): ?>
                             <option value="<?= $template->getId(); ?>"

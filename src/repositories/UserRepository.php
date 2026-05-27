@@ -86,6 +86,22 @@ class UsersRepository extends Repository {
         ]);
     }
 
+    public function updatePasswordByEmail(string $email, string $hashedPassword): bool
+    {
+        $query = $this->database->connect()->prepare(
+            '
+            UPDATE users
+            SET password = :password
+            WHERE email = :email
+            '
+        );
+        $query->bindValue(':password', $hashedPassword);
+        $query->bindValue(':email', $email);
+        $query->execute();
+
+        return $query->rowCount() > 0;
+    }
+
     public function getAdminUserRows(): array
     {
         $query = $this->database->connect()->prepare('

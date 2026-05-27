@@ -19,7 +19,7 @@ class TemplateController extends AppController
         $templates = $this->templateRepository->getTemplatesByUserId($_SESSION['user_id']);
 
         $this->render('templates', [
-            'title' => 'OCStudio - Szablony',
+            'title' => 'OCStudio - Szablony postaci',
             'templates' => $templates
         ]);
     }
@@ -37,12 +37,14 @@ class TemplateController extends AppController
             // Zbieramy pola – teraz także placeholder (JSON z wierszami tabeli lub pusty string)
             $fields      = [];
             $labels      = $_POST['field_labels']       ?? [];
+            $fieldIds    = $_POST['field_ids']          ?? [];
             $locations   = $_POST['field_locations']    ?? [];
             $types       = $_POST['field_types']        ?? [];
             $placeholders = $_POST['field_placeholders'] ?? [];
 
             foreach ($labels as $index => $label) {
                 $fields[] = [
+                    'id'          => $fieldIds[$index]    ?? null,
                     'label'       => $label,
                     'location'    => $locations[$index]    ?? 'left',
                     'type'        => $types[$index]        ?? 'text',
@@ -64,7 +66,7 @@ class TemplateController extends AppController
         }
 
         $this->render('create_template', [
-            'title'    => 'Nowy Szablon',
+            'title'    => 'Nowy Szablon postaci',
             'template' => null
         ]);
     }

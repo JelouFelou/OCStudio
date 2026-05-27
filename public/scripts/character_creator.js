@@ -19,7 +19,7 @@ async function loadTemplateFields(templateId) {
         rightContainer.innerHTML = '';
 
         if (!template.fields || template.fields.length === 0) {
-            leftContainer.innerHTML = '<p style="color:var(--text-muted);">Ten szablon nie zawiera żadnych pól.</p>';
+            leftContainer.innerHTML = '<p style="color:var(--text-muted);">Ten szablon postaci nie zawiera żadnych pól.</p>';
             return;
         }
 
@@ -31,7 +31,7 @@ async function loadTemplateFields(templateId) {
         });
 
     } catch (err) {
-        console.error('Błąd pobierania danych szablonu:', err);
+        console.error('Błąd pobierania danych szablonu postaci:', err);
     }
 }
 

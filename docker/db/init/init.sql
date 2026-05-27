@@ -228,3 +228,52 @@ CREATE INDEX idx_character_filters_character ON character_filters(id_character);
 CREATE INDEX idx_character_filters_filter ON character_filters(id_filter);
 CREATE INDEX idx_world_filters_world ON world_filters(id_world);
 CREATE INDEX idx_user_blocked_filters_user ON user_blocked_filters(id_user);
+
+-- Widok podsumowujacy konto uzytkownika dla paneli administracyjnych i raportow.
+CREATE OR REPLACE VIEW user_account_summary AS
+SELECT
+    u.id,
+    u.email,
+    u.username,
+    u.account_type,
+    u.created_at,
+    u.banned_until,
+    COUNT(DISTINCT c.id) AS character_count,
+    COUNT(DISTINCT t.id) AS template_count,
+    COUNT(DISTINCT w.id) AS world_count
+FROM users u
+LEFT JOIN characters c ON c.id_user = u.id
+LEFT JOIN templates t ON t.id_user = u.id
+LEFT JOIN worlds w ON w.id_user = u.id
+GROUP BY u.id, u.email, u.username, u.account_type, u.created_at, u.banned_until;
+
+-- Funkcja sprawdzajaca, czy konto jest aktualnie zablokowane.
+CREATE OR REPLACE FUNCTION is_account_currently_banned(banned_until TIMESTAMP WITH TIME ZONE)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN banned_until IS NOT NULL AND banned_until > NOW();
+END;
+$$;
+
+-- Funkcja triggera uzupelniajaca pusta nazwe uzytkownika na podstawie emaila.
+CREATE OR REPLACE FUNCTION set_default_username_from_email()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.username IS NULL OR BTRIM(NEW.username) = '' THEN
+        NEW.username := SPLIT_PART(NEW.email, '@', 1);
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_set_default_username_from_email ON users;
+
+CREATE TRIGGER trg_set_default_username_from_email
+BEFORE INSERT OR UPDATE OF email, username ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_default_username_from_email();

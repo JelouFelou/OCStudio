@@ -5,7 +5,6 @@ require_once __DIR__ . '/../models/Template.php';
 
 class TemplateRepository extends Repository
 {
-
     public function getTemplate(int $id): ?Template
     {
         $stmt = $this->database->connect()->prepare('
@@ -32,8 +31,8 @@ class TemplateRepository extends Repository
     public function getTemplateFields(int $templateId): array
     {
         $stmt = $this->database->connect()->prepare('
-            SELECT * FROM template_fields 
-            WHERE id_template = :id 
+            SELECT * FROM template_fields
+            WHERE id_template = :id
             ORDER BY location DESC, order_number ASC
         ');
         $stmt->bindParam(':id', $templateId, PDO::PARAM_INT);
@@ -45,22 +44,21 @@ class TemplateRepository extends Repository
     public function getTemplatesByUserId(int $userId): array
     {
         $result = [];
-        $stmt   = $this->database->connect()->prepare('
+        $stmt = $this->database->connect()->prepare('
             SELECT * FROM templates WHERE id_user = :userId
         ');
         $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
         $stmt->execute();
 
-        $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($templates as $temp) {
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $template) {
             $result[] = new Template(
-                $temp['name'],
-                $temp['description'],
-                $temp['id_user'],
-                $temp['id']
+                $template['name'],
+                $template['description'],
+                $template['id_user'],
+                $template['id']
             );
         }
+
         return $result;
     }
 
@@ -78,7 +76,6 @@ class TemplateRepository extends Repository
             $stmt->execute([$name, $description, $userId]);
             $templateId = $stmt->fetchColumn();
 
-            // Teraz zapisujemy też kolumnę placeholder (JSON z wierszami tabeli lub pusty string)
             $stmtField = $db->prepare('
                 INSERT INTO template_fields (id_template, label, field_type, location, order_number, placeholder)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -88,7 +85,7 @@ class TemplateRepository extends Repository
                 $stmtField->execute([
                     $templateId,
                     $field['label'],
-                    $field['type']        ?? 'text',
+                    $field['type']        ?? $field['field_type'] ?? 'text',
                     $field['location']    ?? 'left',
                     $index,
                     $field['placeholder'] ?? '',
@@ -109,6 +106,7 @@ class TemplateRepository extends Repository
         ');
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
+
         return $stmt->execute();
     }
 
@@ -120,7 +118,9 @@ class TemplateRepository extends Repository
         $stmt->execute(['id' => $id]);
         $template = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$template) return null;
+        if (!$template) {
+            return null;
+        }
 
         $stmtFields = $this->database->connect()->prepare('
             SELECT * FROM template_fields WHERE id_template = :id ORDER BY order_number ASC
@@ -134,32 +134,61 @@ class TemplateRepository extends Repository
     public function updateTemplate(int $id, string $name, string $description, array $fields): void
     {
         $db = $this->database->connect();
+
         try {
             $db->beginTransaction();
 
-            // 1. Aktualizacja nazwy i opisu
             $stmt = $db->prepare('UPDATE templates SET name = ?, description = ? WHERE id = ?');
             $stmt->execute([$name, $description, $id]);
 
-            // 2. Usunięcie starych pól
-            $stmtDel = $db->prepare('DELETE FROM template_fields WHERE id_template = ?');
-            $stmtDel->execute([$id]);
+            $existingFieldIds = $this->getTemplateFieldIdsForUpdate($db, $id);
+            $keptFieldIds = [];
+            $hasNewFields = false;
 
-            // 3. Wstawienie aktualnych pól (z placeholder)
+            $stmtUpdateField = $db->prepare('
+                UPDATE template_fields
+                SET label = ?, field_type = ?, location = ?, order_number = ?, placeholder = ?
+                WHERE id = ? AND id_template = ?
+            ');
             $stmtField = $db->prepare('
                 INSERT INTO template_fields (id_template, label, field_type, location, order_number, placeholder)
                 VALUES (?, ?, ?, ?, ?, ?)
+                RETURNING id
             ');
 
             foreach ($fields as $index => $field) {
+                $fieldId = isset($field['id']) && $field['id'] !== '' ? (int)$field['id'] : null;
+
+                if ($fieldId && in_array($fieldId, $existingFieldIds, true)) {
+                    $stmtUpdateField->execute([
+                        $field['label'],
+                        $field['type']        ?? $field['field_type'] ?? 'text',
+                        $field['location']    ?? 'left',
+                        $index,
+                        $field['placeholder'] ?? '',
+                        $fieldId,
+                        $id,
+                    ]);
+                    $keptFieldIds[] = $fieldId;
+                    continue;
+                }
+
                 $stmtField->execute([
                     $id,
                     $field['label'],
-                    $field['type']        ?? 'text',
+                    $field['type']        ?? $field['field_type'] ?? 'text',
                     $field['location']    ?? 'left',
                     $index,
                     $field['placeholder'] ?? '',
                 ]);
+                $keptFieldIds[] = (int)$stmtField->fetchColumn();
+                $hasNewFields = true;
+            }
+
+            $this->deleteRemovedFields($db, $id, $keptFieldIds);
+
+            if ($hasNewFields) {
+                $this->moveReadyCharactersBackToInProgress($db, $id);
             }
 
             $db->commit();
@@ -167,5 +196,49 @@ class TemplateRepository extends Repository
             $db->rollBack();
             throw $e;
         }
+    }
+
+    private function getTemplateFieldIdsForUpdate(PDO $db, int $templateId): array
+    {
+        $stmt = $db->prepare('
+            SELECT id
+            FROM template_fields
+            WHERE id_template = ?
+            FOR UPDATE
+        ');
+        $stmt->execute([$templateId]);
+
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    private function deleteRemovedFields(PDO $db, int $templateId, array $keptFieldIds): void
+    {
+        if (!$keptFieldIds) {
+            $stmtDel = $db->prepare('DELETE FROM template_fields WHERE id_template = ?');
+            $stmtDel->execute([$templateId]);
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($keptFieldIds), '?'));
+        $stmtDel = $db->prepare("
+            DELETE FROM template_fields
+            WHERE id_template = ?
+              AND id NOT IN ($placeholders)
+        ");
+        $stmtDel->execute(array_merge([$templateId], $keptFieldIds));
+    }
+
+    private function moveReadyCharactersBackToInProgress(PDO $db, int $templateId): void
+    {
+        $stmt = $db->prepare("
+            UPDATE characters
+            SET status_id = in_progress.id
+            FROM character_statuses ready, character_statuses in_progress
+            WHERE characters.id_template = ?
+              AND characters.status_id = ready.id
+              AND ready.name = 'Gotowa'
+              AND in_progress.name = 'W trakcie'
+        ");
+        $stmt->execute([$templateId]);
     }
 }

@@ -27,6 +27,10 @@ class Routing
             "controller" => "SecurityController",
             "action" => "register"
         ],
+        "forgot-password" => [
+            "controller" => "SecurityController",
+            "action" => "forgotPassword"
+        ],
         'createTemplate' => [
             'controller' => 'TemplateController',
             'action' => 'createTemplate'
