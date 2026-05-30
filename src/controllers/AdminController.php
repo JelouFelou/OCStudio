@@ -20,7 +20,8 @@ class AdminController extends AppController
         $this->requireAdmin();
         $this->purgeExpiredDeletionRequests();
 
-        $users = $this->userRepository->getAdminUserRows();
+        $search = trim($_GET['q'] ?? '');
+        $users = $this->userRepository->getAdminUserRows($search);
         foreach ($users as &$user) {
             $storage = $this->getUserStorageStats((int)$user['id']);
             $user['storage_used'] = $storage['usedMb'];
@@ -32,6 +33,7 @@ class AdminController extends AppController
         $this->render('admin', [
             'title' => 'Admin - OCStudio',
             'adminUsers' => $users,
+            'adminSearch' => $search,
             'csrfToken' => $this->csrfToken(),
         ]);
     }

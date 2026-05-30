@@ -102,13 +102,31 @@ class UsersRepository extends Repository {
         return $query->rowCount() > 0;
     }
 
-    public function getAdminUserRows(): array
+    public function getAdminUserRows(?string $search = null): array
     {
+        $search = trim((string)$search);
+        $params = [];
+        $where = '';
+
+        if ($search !== '') {
+            $where = '
+            WHERE CAST(u.id AS TEXT) = :exactSearch
+               OR LOWER(u.email) LIKE :search
+               OR LOWER(COALESCE(u.username, \'\')) LIKE :search
+               OR LOWER(COALESCE(u.firstname, \'\')) LIKE :search
+               OR LOWER(COALESCE(u.lastname, \'\')) LIKE :search
+            ';
+            $params[':exactSearch'] = $search;
+            $params[':search'] = '%' . mb_strtolower($search) . '%';
+        }
+
         $query = $this->database->connect()->prepare('
             SELECT
                 u.id,
                 u.email,
                 u.username,
+                u.firstname,
+                u.lastname,
                 u.account_type,
                 u.banned_until,
                 u.ban_reason,
@@ -116,10 +134,11 @@ class UsersRepository extends Repository {
                 COUNT(c.id) AS character_count
             FROM users u
             LEFT JOIN characters c ON c.id_user = u.id
+            ' . $where . '
             GROUP BY u.id
             ORDER BY u.id ASC
         ');
-        $query->execute();
+        $query->execute($params);
 
         return $query->fetchAll(PDO::FETCH_ASSOC);
     }
