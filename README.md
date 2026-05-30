@@ -411,7 +411,6 @@ Taki plik można dołączyć do dokumentacji projektu tylko wtedy, gdy nie zawie
 
 Pomysły na dalszy rozwój:
 
-- przygotowanie diagramu ERD,
 - rozbudowanie panelu admina o raporty,
 - system kont premium,
 - część społecznościowa z publicznym udostępnianiem wybranych postaci,
