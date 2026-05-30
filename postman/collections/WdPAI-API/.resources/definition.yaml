@@ -1,0 +1,19 @@
+$kind: collection
+name: WdPAI API
+variables:
+  - key: baseUrl
+    value: 'http://localhost:8080'
+  - key: characterId
+    value: '1'
+  - key: templateId
+    value: '1'
+  - key: worldId
+    value: '1'
+  - key: filterId
+    value: '1'
+  - key: statusId
+    value: '1'
+  - key: userId
+    value: '1'
+  - key: csrfToken
+    value: ''

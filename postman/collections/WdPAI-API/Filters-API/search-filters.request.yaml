@@ -1,0 +1,29 @@
+$kind: http-request
+name: Search Filters
+order: 1000
+method: GET
+url: '{{baseUrl}}/api/filters/search?q=example'
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200", function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test("Response is JSON", function () {
+          pm.response.to.be.json;
+      });
+      pm.test("Response has filters array", function () {
+          var json = pm.response.json();
+          pm.expect(json).to.have.property("filters");
+          pm.expect(json.filters).to.be.an("array");
+      });
+      pm.test("Each filter has id and name", function () {
+          var json = pm.response.json();
+          if (json.filters.length > 0) {
+              pm.expect(json.filters[0]).to.have.all.keys("id", "name");
+          }
+      });

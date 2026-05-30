@@ -73,9 +73,16 @@ class TemplateController extends AppController
 
     public function deleteTemplate()
     {
-        $id = $_GET['id'];
-        $this->templateRepository->deleteTemplate($id, $_SESSION['user_id']);
+        $this->requireLogin();
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id > 0) {
+            $this->templateRepository->deleteTemplate($id, (int) $_SESSION['user_id']);
+        }
+
+        http_response_code(302);
         header("Location: /templates");
+        exit();
     }
 
     public function duplicateTemplate()

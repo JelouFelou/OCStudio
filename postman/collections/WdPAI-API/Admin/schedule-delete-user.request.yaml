@@ -1,0 +1,19 @@
+$kind: http-request
+name: Schedule Delete User
+order: 4000
+method: POST
+url: '{{baseUrl}}/admin/delete-schedule'
+body:
+  type: urlencoded
+  content:
+    - key: userId
+      value: '{{userId}}'
+    - key: csrf_token
+      value: '{{csrfToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200 or 302", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 302]);
+      });

@@ -1,0 +1,19 @@
+$kind: http-request
+name: Unban User
+order: 3000
+method: POST
+url: '{{baseUrl}}/admin/unban'
+body:
+  type: urlencoded
+  content:
+    - key: userId
+      value: '{{userId}}'
+    - key: csrf_token
+      value: '{{csrfToken}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200 or 302", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 302]);
+      });

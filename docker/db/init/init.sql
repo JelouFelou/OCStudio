@@ -132,6 +132,16 @@ VALUES (
     'Konto testowe'
 );
 
+INSERT INTO users (email, password, firstname, lastname, username, bio)
+VALUES (
+    'user@example.com',
+    '$2y$10$cNY.2LCZirhKbjxnAfGJYOftY3Kk8vWJtPOr1YreYIfpyozXhVK1y',
+    'Test',
+    'User',
+    'testuser',
+    'Konto do testow Postmana'
+);
+
 INSERT INTO templates (name, description, id_user)
 VALUES (
     'Fantasy Character',

@@ -1,0 +1,26 @@
+name: WdPAI Local
+values:
+  - key: baseUrl
+    value: 'http://localhost:8080'
+    enabled: true
+  - key: characterId
+    value: '1'
+    enabled: true
+  - key: templateId
+    value: '1'
+    enabled: true
+  - key: worldId
+    value: '1'
+    enabled: true
+  - key: filterId
+    value: '1'
+    enabled: true
+  - key: statusId
+    value: '1'
+    enabled: true
+  - key: userId
+    value: '1'
+    enabled: true
+  - key: csrfToken
+    value: ''
+    enabled: true

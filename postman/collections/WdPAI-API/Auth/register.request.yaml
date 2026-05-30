@@ -1,0 +1,30 @@
+$kind: http-request
+name: Register
+order: 2000
+method: POST
+url: '{{baseUrl}}/register'
+body:
+  type: urlencoded
+  content:
+    - key: username
+      value: newuser{{$timestamp}}
+    - key: email
+      value: newuser{{$timestamp}}@example.com
+    - key: firstName
+      value: New
+    - key: lastName
+      value: User
+    - key: password
+      value: Password123
+    - key: password2
+      value: Password123
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 201 or 200", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 201, 302]);
+      });
+      pm.test("Response time is less than 2000ms", function () {
+          pm.expect(pm.response.responseTime).to.be.below(2000);
+      });

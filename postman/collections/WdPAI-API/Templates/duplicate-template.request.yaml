@@ -1,0 +1,17 @@
+$kind: http-request
+name: Duplicate Template
+order: 5000
+method: POST
+url: '{{baseUrl}}/duplicateTemplate'
+body:
+  type: urlencoded
+  content:
+    - key: id
+      value: '{{templateId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200 or 302", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 302]);
+      });

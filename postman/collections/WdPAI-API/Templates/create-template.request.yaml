@@ -1,0 +1,22 @@
+$kind: http-request
+name: Create Template
+order: 2000
+method: POST
+url: '{{baseUrl}}/createTemplate'
+body:
+  type: urlencoded
+  content:
+    - key: name
+      value: My Template
+    - key: description
+      value: Template description
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200 or 302", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 302]);
+      });
+      pm.test("Response time is less than 2000ms", function () {
+          pm.expect(pm.response.responseTime).to.be.below(2000);
+      });

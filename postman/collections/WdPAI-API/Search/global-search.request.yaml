@@ -1,0 +1,25 @@
+$kind: http-request
+name: Global Search
+order: 1000
+method: GET
+url: '{{baseUrl}}/api/search?q=example'
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 200", function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test("Response is JSON", function () {
+          pm.response.to.be.json;
+      });
+      pm.test("Response has characters and worlds", function () {
+          var json = pm.response.json();
+          pm.expect(json).to.have.property("characters");
+          pm.expect(json).to.have.property("worlds");
+          pm.expect(json.characters).to.be.an("array");
+          pm.expect(json.worlds).to.be.an("array");
+      });

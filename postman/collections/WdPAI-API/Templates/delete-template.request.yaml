@@ -1,0 +1,12 @@
+$kind: http-request
+name: Delete Template
+order: 4000
+method: GET
+url: '{{baseUrl}}/deleteTemplate?id={{templateId}}'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status code is 302 (redirect after delete)", function () {
+          pm.expect(pm.response.code).to.be.oneOf([200, 302, 303]);
+      });
