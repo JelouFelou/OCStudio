@@ -6,6 +6,7 @@ require_once __DIR__ . '/../repositories/TemplateRepository.php';
 require_once __DIR__ . '/../repositories/WorldRepository.php';
 require_once __DIR__ . '/../repositories/CharacterStatusRepository.php';
 require_once __DIR__ . '/../repositories/FilterRepository.php';
+require_once __DIR__ . '/../repositories/RelationRepository.php';
 require_once __DIR__ . '/../services/ImageUploadService.php';
 
 class CharacterController extends AppController
@@ -15,6 +16,7 @@ class CharacterController extends AppController
     private $worldRepository;
     private $statusRepository;
     private $filterRepository;
+    private $relationRepository;
 
     public function __construct()
     {
@@ -23,6 +25,7 @@ class CharacterController extends AppController
         $this->worldRepository     = new WorldRepository();
         $this->statusRepository    = new CharacterStatusRepository();
         $this->filterRepository    = new FilterRepository();
+        $this->relationRepository  = new RelationRepository();
     }
 
     /**
@@ -72,6 +75,10 @@ class CharacterController extends AppController
             : [];
 
         $allStatuses = $this->statusRepository->getAllStatuses();
+        $relationCounts = $this->relationRepository->countRelationsForCharacters(
+            (int)$userId,
+            array_map(fn($character) => $character->getId(), $characters)
+        );
 
         return $this->render('characters', [
             'title'        => 'Postacie - OCStudio',
@@ -80,6 +87,7 @@ class CharacterController extends AppController
             'currentWorld' => $currentWorld,
             'breadcrumb'   => $breadcrumb,
             'statuses'     => $allStatuses,
+            'relationCounts' => $relationCounts,
         ]);
     }
 

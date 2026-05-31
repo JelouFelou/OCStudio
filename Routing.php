@@ -7,6 +7,7 @@ require_once 'src/controllers/CharacterController.php';
 require_once 'src/controllers/FileController.php';
 require_once 'src/controllers/AdminController.php';
 require_once 'src/controllers/SettingsController.php';
+require_once 'src/controllers/RelationController.php';
 
 class Routing
 {
@@ -62,6 +63,14 @@ class Routing
         'settings' => [
             'controller' => 'SettingsController',
             'action' => 'index'
+        ],
+        'relations' => [
+            'controller' => 'RelationController',
+            'action' => 'index'
+        ],
+        'relations/editor' => [
+            'controller' => 'RelationController',
+            'action' => 'editor'
         ],
         'deleteTemplate' => [
             'controller' => 'TemplateController',
@@ -155,6 +164,46 @@ class Routing
         'api/characters/delete' => [
             'controller' => 'CharacterController',
             'action' => 'deleteCharacter'
+        ],
+        'api/relations/tree' => [
+            'controller' => 'RelationController',
+            'action' => 'tree'
+        ],
+        'api/relation-boards' => [
+            'controller' => 'RelationController',
+            'action' => 'saveBoard'
+        ],
+        'api/relation-boards/duplicate' => [
+            'controller' => 'RelationController',
+            'action' => 'duplicateBoard'
+        ],
+        'api/relation-boards/delete' => [
+            'controller' => 'RelationController',
+            'action' => 'deleteBoard'
+        ],
+        'api/relations/node' => [
+            'controller' => 'RelationController',
+            'action' => 'addNode'
+        ],
+        'api/relations/node/position' => [
+            'controller' => 'RelationController',
+            'action' => 'updateNodePosition'
+        ],
+        'api/relations/node/remove' => [
+            'controller' => 'RelationController',
+            'action' => 'removeNode'
+        ],
+        'api/relations' => [
+            'controller' => 'RelationController',
+            'action' => 'saveRelation'
+        ],
+        'api/relations/delete' => [
+            'controller' => 'RelationController',
+            'action' => 'deleteRelation'
+        ],
+        'api/relations/rules' => [
+            'controller' => 'RelationController',
+            'action' => 'saveRules'
         ],
         'api/search' => [
             'controller' => 'CharacterController',

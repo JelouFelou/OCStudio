@@ -1,0 +1,69 @@
+<?php
+$board = $board ?? ['id' => 0, 'name' => 'Relacje'];
+$boardId = $boardId ?? (int)($board['id'] ?? 0);
+$focusCharacterId = $focusCharacterId ?? null;
+$worldLabel = $board['name'] ?? 'Relacje';
+?>
+
+<div class="content-view relations-content-view">
+    <div id="relations-app"
+         class="relations-shell"
+         data-board-id="<?= (int)$boardId ?>"
+         data-focus-character-id="<?= $focusCharacterId !== null ? (int)$focusCharacterId : '' ?>">
+        <section id="relations-workspace" class="relations-workspace" aria-label="Pole drzewa relacji">
+            <div class="relations-toolbar">
+                <span class="relations-context">
+                    <span><?= htmlspecialchars($worldLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                </span>
+                <button type="button" id="relations-zoom-out" title="Oddal"><i class="fa-solid fa-minus"></i></button>
+                <span id="relations-zoom-value" class="relations-zoom-value">100%</span>
+                <button type="button" id="relations-zoom-in" title="Przybliz"><i class="fa-solid fa-plus"></i></button>
+                <button type="button" id="relations-center" title="Wycentruj"><i class="fa-solid fa-crosshairs"></i></button>
+            </div>
+            <div id="relations-empty-state" class="relation-empty-state">
+                Przeciagnij pierwsza postac z prawego panelu na pole relacji.
+            </div>
+            <div id="relations-stage" class="relations-stage">
+                <svg id="relations-lines" class="relations-lines"></svg>
+                <div id="relations-nodes"></div>
+            </div>
+            <div id="relation-note-popover" class="relation-note-popover" hidden></div>
+        </section>
+
+        <aside class="relations-panel">
+            <div class="relations-panel-header">
+                <h2>Dostepne postacie</h2>
+                <p>Przeciagnij postac na pole albo odloz tutaj postac z pola.</p>
+                <input id="relations-character-search" class="relations-search" type="search" placeholder="Szukaj postaci...">
+            </div>
+            <div id="relations-character-list" class="relations-character-list"></div>
+            <div class="relations-panel-footer">
+                <button id="relations-save-and-exit" class="relations-save-rules" type="button">
+                    Wroc do listy relacji
+                </button>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<div id="relations-modal" class="relations-modal" role="dialog" aria-modal="true">
+    <div class="relations-modal-card">
+        <h2 id="relations-modal-title" style="margin:0;">Relacja</h2>
+        <div id="relations-type-grid" class="relations-type-grid"></div>
+        <div class="relations-form-field">
+            <label for="relations-custom-name">Nazwa custom</label>
+            <input id="relations-custom-name" type="text" maxlength="100" placeholder="np. Mentorzy, dawna przysiega...">
+        </div>
+        <div class="relations-form-field">
+            <label for="relations-note">Opis relacji</label>
+            <textarea id="relations-note" rows="3" maxlength="1000" placeholder="Opis widoczny po kliknieciu etykiety relacji"></textarea>
+        </div>
+        <div class="relations-modal-actions">
+            <button type="button" id="relations-delete-relation" class="danger">Usun</button>
+            <button type="button" id="relations-cancel-modal">Anuluj</button>
+            <button type="button" id="relations-save-relation" class="primary">Zapisz</button>
+        </div>
+    </div>
+</div>
+
+<script src="/public/scripts/relations.js"></script>

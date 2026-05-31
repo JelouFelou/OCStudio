@@ -1,4 +1,12 @@
 DROP TABLE IF EXISTS user_blocked_filters CASCADE;
+DROP TABLE IF EXISTS relation_tree_character_exceptions CASCADE;
+DROP TABLE IF EXISTS relation_tree_rules CASCADE;
+DROP TABLE IF EXISTS relation_tree_nodes CASCADE;
+DROP TABLE IF EXISTS relation_board_characters CASCADE;
+DROP TABLE IF EXISTS relation_board_worlds CASCADE;
+DROP TABLE IF EXISTS relation_boards CASCADE;
+DROP TABLE IF EXISTS character_relations CASCADE;
+DROP TABLE IF EXISTS relation_types CASCADE;
 DROP TABLE IF EXISTS world_filters CASCADE;
 DROP TABLE IF EXISTS character_filters CASCADE;
 DROP TABLE IF EXISTS filters CASCADE;
@@ -224,6 +232,126 @@ CREATE TABLE user_blocked_filters (
     UNIQUE (id_user, id_filter)
 );
 
+CREATE TABLE relation_types (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(40) NOT NULL UNIQUE,
+    name VARCHAR(80) NOT NULL,
+    icon VARCHAR(80) NOT NULL,
+    color_hex VARCHAR(7) NOT NULL,
+    is_custom BOOLEAN NOT NULL DEFAULT FALSE,
+    order_number INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO relation_types (code, name, icon, color_hex, is_custom, order_number) VALUES
+    ('family', 'Rodzina', 'fa-solid fa-people-roof', '#4F8FD9', FALSE, 1),
+    ('partners', 'Partnerzy', 'fa-solid fa-heart', '#E2557B', FALSE, 2),
+    ('friends', 'Przyjaciele', 'fa-solid fa-handshake-angle', '#27AE60', FALSE, 3),
+    ('allies', 'Sojusznicy', 'fa-solid fa-shield-halved', '#7B61FF', FALSE, 4),
+    ('rivals', 'Rywale', 'fa-solid fa-bolt', '#F39C12', FALSE, 5),
+    ('enemies', 'Wrogowie', 'fa-solid fa-skull-crossbones', '#E74C3C', FALSE, 6),
+    ('custom', 'Custom', 'fa-solid fa-star', '#8E44AD', TRUE, 7);
+
+CREATE TABLE character_relations (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    character_a_id INTEGER NOT NULL,
+    character_b_id INTEGER NOT NULL,
+    relation_type_id INTEGER NOT NULL,
+    custom_name VARCHAR(100) DEFAULT NULL,
+    note TEXT DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (character_a_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (character_b_id) REFERENCES characters(id) ON DELETE CASCADE,
+    FOREIGN KEY (relation_type_id) REFERENCES relation_types(id) ON DELETE RESTRICT,
+    CHECK (character_a_id <> character_b_id)
+);
+
+CREATE UNIQUE INDEX uniq_character_relations_pair
+    ON character_relations (id_user, LEAST(character_a_id, character_b_id), GREATEST(character_a_id, character_b_id));
+
+CREATE TABLE relation_boards (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    description TEXT DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE relation_board_worlds (
+    id SERIAL PRIMARY KEY,
+    id_board INTEGER NOT NULL,
+    id_world INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_board) REFERENCES relation_boards(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE CASCADE,
+    UNIQUE (id_board, id_world)
+);
+
+CREATE TABLE relation_board_characters (
+    id SERIAL PRIMARY KEY,
+    id_board INTEGER NOT NULL,
+    id_character INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_board) REFERENCES relation_boards(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_character) REFERENCES characters(id) ON DELETE CASCADE,
+    UNIQUE (id_board, id_character)
+);
+
+CREATE TABLE relation_tree_nodes (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    id_board INTEGER DEFAULT NULL,
+    id_world INTEGER DEFAULT NULL,
+    id_character INTEGER NOT NULL,
+    position_x NUMERIC(10,2) NOT NULL DEFAULT 0,
+    position_y NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_board) REFERENCES relation_boards(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_character) REFERENCES characters(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX uniq_relation_tree_nodes_scope
+    ON relation_tree_nodes (id_user, COALESCE(id_world, 0), id_character)
+    WHERE id_board IS NULL;
+CREATE UNIQUE INDEX uniq_relation_tree_nodes_board
+    ON relation_tree_nodes (id_user, id_board, id_character)
+    WHERE id_board IS NOT NULL;
+
+CREATE TABLE relation_tree_rules (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    id_world INTEGER DEFAULT NULL,
+    excluded_world_id INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE CASCADE,
+    FOREIGN KEY (excluded_world_id) REFERENCES worlds(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX uniq_relation_tree_rules_scope
+    ON relation_tree_rules (id_user, COALESCE(id_world, 0), excluded_world_id);
+
+CREATE TABLE relation_tree_character_exceptions (
+    id SERIAL PRIMARY KEY,
+    id_user INTEGER NOT NULL,
+    id_world INTEGER DEFAULT NULL,
+    id_character INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_world) REFERENCES worlds(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_character) REFERENCES characters(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX uniq_relation_tree_exceptions_scope
+    ON relation_tree_character_exceptions (id_user, COALESCE(id_world, 0), id_character);
+
 -- Domyślne publiczne filtry
 INSERT INTO filters (name, is_public) VALUES 
     ('kobieta', TRUE),
@@ -238,6 +366,9 @@ CREATE INDEX idx_character_filters_character ON character_filters(id_character);
 CREATE INDEX idx_character_filters_filter ON character_filters(id_filter);
 CREATE INDEX idx_world_filters_world ON world_filters(id_world);
 CREATE INDEX idx_user_blocked_filters_user ON user_blocked_filters(id_user);
+CREATE INDEX idx_character_relations_user ON character_relations(id_user);
+CREATE INDEX idx_relation_tree_nodes_user_world ON relation_tree_nodes(id_user, id_world);
+CREATE INDEX idx_relation_tree_rules_user_world ON relation_tree_rules(id_user, id_world);
 
 -- Widok podsumowujacy konto uzytkownika dla paneli administracyjnych i raportow.
 CREATE OR REPLACE VIEW user_account_summary AS

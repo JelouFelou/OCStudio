@@ -150,9 +150,9 @@
         row.setAttribute('tabindex', '0');
 
         const img  = makeEl('img', 'search-char-img');
-        img.src    = 'public/uploads/' + c.image;
+        img.src    = '/public/uploads/' + c.image;
         img.alt    = '';
-        img.onerror = () => { img.src = 'public/uploads/default.png'; };
+        img.onerror = () => { img.src = '/public/uploads/default.png'; };
 
         const info = makeEl('div', 'search-char-info');
         info.innerHTML = '<span class="search-char-name">' + esc(c.name) + '</span>';

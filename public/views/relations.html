@@ -1,0 +1,106 @@
+<?php
+$relationBoards = $relationBoards ?? [];
+$relationWorlds = $relationWorlds ?? [];
+$relationCharacters = $relationCharacters ?? [];
+$defaultCharacterImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_dark.png' : 'default.png';
+?>
+
+<div class="content-view">
+    <section class="content-header">
+        <div class="header-text">
+            <h1>Relacje</h1>
+            <p>Tworz osobne pola relacji dla wybranych folderow i postaci.</p>
+        </div>
+        <button id="open-relation-board-modal" class="btn-primary">
+            <i class="fa-solid fa-plus"></i> Dodaj nowa relacje
+        </button>
+    </section>
+
+    <div class="relations-index-grid">
+        <?php if (!empty($relationBoards)): ?>
+            <?php foreach ($relationBoards as $board): ?>
+                <article class="relations-index-card" data-board-id="<?= (int)$board['id'] ?>"
+                         data-board='<?= htmlspecialchars(json_encode($board), ENT_QUOTES, 'UTF-8') ?>'
+                         onclick="window.location.href='/relations/editor?board=<?= (int)$board['id'] ?>'">
+                    <div class="relations-index-icon">
+                        <i class="fa-solid fa-diagram-project"></i>
+                    </div>
+                    <div>
+                        <h3><?= htmlspecialchars($board['name'], ENT_QUOTES, 'UTF-8') ?></h3>
+                        <p><?= htmlspecialchars($board['description'] ?: 'Pole relacji postaci.', ENT_QUOTES, 'UTF-8') ?></p>
+                    </div>
+                    <div class="relations-index-meta">
+                        <span><?= (int)$board['character_count'] ?> postaci</span>
+                        <span><?= (int)$board['relation_count'] ?> relacji</span>
+                    </div>
+                    <div class="relations-index-actions" onclick="event.stopPropagation()">
+                        <button type="button" class="edit-board-btn" title="Edytuj"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button type="button" class="duplicate-board-btn" title="Kopiuj"><i class="fa-solid fa-copy"></i></button>
+                        <button type="button" class="delete-board-btn" title="Usun"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div class="empty-state">
+                <i class="fa-solid fa-diagram-project"></i>
+                <p>Nie masz jeszcze zadnych relacji. Stworz pierwsze pole relacji.</p>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div id="relation-board-modal" class="relations-modal" role="dialog" aria-modal="true">
+    <div class="relations-modal-card relation-board-modal-card">
+        <h2 id="relation-board-modal-title" style="margin:0;">Nowa relacja</h2>
+        <input type="hidden" id="relation-board-id">
+
+        <div class="relations-form-field">
+            <label for="relation-board-name">Nazwa</label>
+            <input id="relation-board-name" type="text" maxlength="120" placeholder="np. Saga Jedi, Rodzina ze swiata RPG">
+        </div>
+        <div class="relations-form-field">
+            <label for="relation-board-description">Opis</label>
+            <textarea id="relation-board-description" rows="3" maxlength="1000" placeholder="Opcjonalny opis pola relacji"></textarea>
+        </div>
+
+        <div class="relation-board-picker">
+            <h3>Foldery</h3>
+            <div class="relation-board-folder-grid">
+                <?php foreach ($relationWorlds as $world): ?>
+                    <button type="button" class="relation-board-choice relation-board-world" data-id="<?= (int)$world->getId() ?>">
+                        <span class="relation-board-letter"><?= htmlspecialchars(mb_substr($world->getName(), 0, 1), ENT_QUOTES, 'UTF-8') ?></span>
+                        <strong><?= htmlspecialchars($world->getName(), ENT_QUOTES, 'UTF-8') ?></strong>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="relation-board-picker">
+            <h3>Postacie</h3>
+            <input id="relation-board-character-search" class="relations-search" type="search" placeholder="Szukaj postaci...">
+            <div class="relation-board-character-grid">
+                <?php foreach ($relationCharacters as $character): ?>
+                    <?php
+                        $img = $character->getImage() ?: $defaultCharacterImage;
+                        $displayImg = in_array($img, ['default.png', 'default.jpg', ''], true) ? $defaultCharacterImage : $img;
+                    ?>
+                    <button type="button"
+                            class="relation-board-choice relation-board-character"
+                            data-id="<?= (int)$character->getId() ?>"
+                            data-world-id="<?= $character->getIdWorld() !== null ? (int)$character->getIdWorld() : '' ?>"
+                            data-name="<?= htmlspecialchars(mb_strtolower($character->getName()), ENT_QUOTES, 'UTF-8') ?>">
+                        <img src="/public/uploads/<?= htmlspecialchars($displayImg, ENT_QUOTES, 'UTF-8') ?>" alt="">
+                        <strong><?= htmlspecialchars($character->getName(), ENT_QUOTES, 'UTF-8') ?></strong>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="relations-modal-actions">
+            <button type="button" id="relation-board-cancel">Anuluj</button>
+            <button type="button" id="relation-board-save" class="primary">Zapisz i edytuj</button>
+        </div>
+    </div>
+</div>
+
+<script src="/public/scripts/relations_index.js"></script>

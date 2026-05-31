@@ -27,6 +27,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="/relations" class="<?= $currentPath === 'relations' ? 'active' : '' ?>">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>Relacje</span>
+                    </a>
+                </li>
+                <li>
                     <a href="/templates" class="<?= $currentPath === 'templates' ? 'active' : '' ?>">
                         <i class="fa-solid fa-layer-group"></i>
                         <span>Szablony postaci</span>
@@ -197,8 +203,8 @@
         row.addEventListener('mouseleave', () => row.style.background = 'transparent');
 
         const avatar = document.createElement('img');
-        avatar.src   = 'public/uploads/' + img;
-        avatar.onerror = () => { avatar.src = 'public/uploads/default.png'; };
+        avatar.src   = '/public/uploads/' + img;
+        avatar.onerror = () => { avatar.src = '/public/uploads/default.png'; };
         avatar.style.cssText = 'width:34px;height:34px;border-radius:8px;object-fit:cover;flex-shrink:0;';
 
         const info = document.createElement('div');
