@@ -1,0 +1,343 @@
+/* Shared media primitives.
+   Existing image classes are gradually aliased here so cropping rules stay consistent. */
+
+.oc-media-frame,
+.card-image-wrapper,
+.character-main-image-frame,
+.story-preview-cover,
+.story-reader-cover {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-soft, #f5f5f5);
+}
+
+.oc-media-frame > img,
+.card-image-wrapper > img,
+.character-main-image-frame > img,
+.story-preview-cover > img,
+.story-reader-cover > img {
+    display: block;
+    width: 100%;
+    max-width: none;
+}
+
+.oc-media-frame--anchored-cover > img,
+.card-image-wrapper:not(.image-mode-natural) > img,
+.character-main-image-frame.image-mode-square > img,
+.story-preview-cover > img,
+.story-reader-cover > img {
+    width: 100%;
+    height: 100% !important;
+    object-fit: var(--oc-media-fit, var(--image-fit, var(--story-cover-fit, cover))) !important;
+    object-position:
+        var(--oc-media-focus-x, var(--image-focus-x, var(--story-cover-focus-x, 50%)))
+        var(--oc-media-focus-y, var(--image-focus-y, var(--story-cover-focus-y, 50%)));
+    transform: scale(var(--oc-media-zoom, var(--image-zoom, var(--story-cover-zoom, 1))));
+    transform-origin:
+        var(--oc-media-focus-x, var(--image-focus-x, var(--story-cover-focus-x, 50%)))
+        var(--oc-media-focus-y, var(--image-focus-y, var(--story-cover-focus-y, 50%)));
+}
+
+.oc-media-frame.is-crop-calculated > img {
+    position: absolute;
+    width: var(--oc-render-width, 100%) !important;
+    height: var(--oc-render-height, 100%) !important;
+    left: var(--oc-render-left, 0);
+    top: var(--oc-render-top, 0);
+    object-fit: fill !important;
+    object-position: center center;
+    transform: none !important;
+    transform-origin: center center;
+}
+
+.oc-media-frame--natural > img,
+.card-image-wrapper.image-mode-natural > img,
+.character-main-image-frame.image-mode-natural > img,
+.story-preview-cover.image-mode-natural > img,
+.story-reader-cover.image-mode-natural > img {
+    position: static;
+    width: 100%;
+    height: auto !important;
+    min-height: 0;
+    object-fit: contain !important;
+    object-position: center center;
+    transform: none;
+}
+
+.oc-media-frame--character-card.image-mode-natural > img,
+.character-card .card-image-wrapper.image-mode-natural > img {
+    position: static;
+    width: 100%;
+    height: 100% !important;
+    min-height: 100%;
+    object-fit: cover !important;
+    object-position:
+        var(--oc-media-focus-x, var(--image-focus-x, 50%))
+        var(--oc-media-focus-y, var(--image-focus-y, 50%));
+    transform: scale(var(--oc-media-zoom, var(--image-zoom, 1)));
+    transform-origin:
+        var(--oc-media-focus-x, var(--image-focus-x, 50%))
+        var(--oc-media-focus-y, var(--image-focus-y, 50%));
+}
+
+.oc-media-frame--character-card.image-mode-natural.is-crop-calculated > img,
+.character-card .card-image-wrapper.image-mode-natural.is-crop-calculated > img {
+    position: absolute;
+    width: var(--oc-render-width, 100%) !important;
+    height: var(--oc-render-height, 100%) !important;
+    left: var(--oc-render-left, 0);
+    top: var(--oc-render-top, 0);
+    object-fit: fill !important;
+    object-position: center center;
+    transform: none !important;
+    transform-origin: center center;
+}
+
+.oc-media-frame--portrait,
+.character-main-image-frame {
+    aspect-ratio: 1 / 1;
+    --oc-media-reference-aspect: 1;
+}
+
+.oc-media-frame--character-card,
+.oc-media-frame--story-card,
+.card-image-wrapper,
+.story-preview-cover {
+    width: 100%;
+    height: 100%;
+}
+
+.oc-media-frame--character-card,
+.card-image-wrapper {
+    --oc-media-reference-aspect: 1;
+}
+
+.oc-media-frame--character-card > img,
+.card-image-wrapper > img {
+    position: relative;
+    z-index: 1;
+    background: var(--surface-soft, #f5f5f5);
+}
+
+.oc-media-frame--story-card,
+.story-preview-cover {
+    --oc-media-reference-aspect: 0.6666667;
+}
+
+.oc-media-frame--story-card,
+.story-preview-cover {
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+}
+
+.oc-media-frame--story-reader,
+.story-reader-cover {
+    position: absolute;
+    inset: 0;
+}
+
+.oc-tile-body,
+.card-content,
+.story-preview-body {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 18px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.38) 28%, rgba(0, 0, 0, 0.86) 100%);
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+    pointer-events: none;
+}
+
+.oc-tile-body h3,
+.card-content h3,
+.story-preview-body h3 {
+    margin: 0;
+    font-size: 1.12rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow-wrap: anywhere;
+}
+
+.oc-tile-body p,
+.card-content p,
+.story-preview-body p {
+    display: -webkit-box;
+    margin: 0;
+    min-height: 0;
+    max-height: calc(8 * 1.42em);
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 0.9rem;
+    line-height: 1.42;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 8;
+}
+
+.story-tile-card .story-preview-body p {
+    max-height: calc(4 * 1.42em);
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+}
+
+.oc-tile-filter-chips,
+.story-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-width: 0;
+    margin-top: 2px;
+}
+
+.oc-tile-filter-chips--fit-row {
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow: hidden;
+    max-height: calc(0.68rem * 1.2 + 6px);
+}
+
+.oc-tile-filter-chip,
+.story-filter-chips span {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    max-width: 100%;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.84);
+    color: #172033;
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.2;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.oc-tile-filter-chip[hidden] {
+    display: none;
+}
+
+.oc-tile-filter-chip--more {
+    background: rgba(14, 18, 26, 0.78);
+    color: #fff;
+}
+
+.character-card .card-content {
+    gap: clamp(4px, calc(11px - var(--grid-columns) * 0.55px), 8px);
+}
+
+.character-card .card-content h3 {
+    font-size: var(--character-card-title-font);
+    line-height: 1.18;
+}
+
+.character-card .card-content p {
+    display: block;
+    max-height: 1.32em;
+    font-size: clamp(0.68rem, calc(1.02rem - var(--grid-columns) * 0.035rem), 0.86rem);
+    line-height: 1.32;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-line-clamp: unset;
+}
+
+html.grid-cols-6 .character-card .card-content p {
+    max-height: 1.32em;
+    -webkit-line-clamp: unset;
+}
+
+html.grid-cols-7 .character-card .card-content p,
+html.grid-cols-8 .character-card .card-content p,
+html.grid-cols-9 .character-card .card-content p,
+html.grid-cols-10 .character-card .card-content p,
+html.grid-cols-11 .character-card .card-content p,
+html.grid-cols-12 .character-card .card-content p {
+    display: block;
+}
+
+.character-card .card-content .card-variant-select {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    height: calc(0.68rem * 1.2 + 6px);
+    min-height: 0;
+    max-height: calc(0.68rem * 1.2 + 6px);
+    margin-top: 2px;
+    padding: 0 calc(7px * var(--character-card-ui-scale));
+    border-radius: 999px;
+    font-size: clamp(0.52rem, calc(0.84rem - var(--grid-columns) * 0.028rem), 0.68rem);
+    line-height: 1.15;
+    pointer-events: auto;
+    z-index: auto;
+}
+
+.character-card .oc-tile-filter-chips {
+    gap: clamp(3px, calc(8px - var(--grid-columns) * 0.45px), 5px);
+}
+
+.character-card .oc-tile-filter-chip {
+    max-width: min(100%, calc(82px * var(--character-card-ui-scale)));
+    padding: calc(2px * var(--character-card-ui-scale)) calc(7px * var(--character-card-ui-scale));
+    font-size: clamp(0.52rem, calc(0.84rem - var(--grid-columns) * 0.028rem), 0.68rem);
+    line-height: 1.15;
+}
+
+html.grid-cols-9 .character-card .oc-tile-filter-chip:not(.oc-tile-filter-chip--more),
+html.grid-cols-10 .character-card .oc-tile-filter-chip:not(.oc-tile-filter-chip--more),
+html.grid-cols-11 .character-card .oc-tile-filter-chip:not(.oc-tile-filter-chip--more),
+html.grid-cols-12 .character-card .oc-tile-filter-chip:not(.oc-tile-filter-chip--more) {
+    max-width: calc(62px * var(--character-card-ui-scale));
+}
+
+.image-picker-upload-preview {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    margin: 0 0 14px;
+    padding: 10px;
+    border: 1px solid var(--border, #273241);
+    border-radius: 8px;
+    background: var(--surface-alt, #141a23);
+}
+
+.image-picker-upload-preview[hidden] {
+    display: none;
+}
+
+.image-picker-upload-preview img {
+    width: 112px;
+    height: 112px;
+    object-fit: contain;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.image-picker-upload-preview strong,
+.image-picker-upload-preview span {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.image-picker-upload-preview strong {
+    color: var(--text, #f7f7f8);
+    font-size: 0.95rem;
+}
+
+.image-picker-upload-preview span {
+    margin-top: 4px;
+    color: var(--text-muted, #9aa3ad);
+    font-size: 0.82rem;
+}

@@ -1,0 +1,74 @@
+<?php
+if (!function_exists('oc_upload_escape')) {
+    function oc_upload_escape(mixed $value): string {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+if (!function_exists('oc_upload_attrs')) {
+    function oc_upload_attrs(array $attrs): string {
+        $html = '';
+        foreach ($attrs as $name => $value) {
+            if ($value === null || $value === false || $value === '') {
+                continue;
+            }
+            if ($value === true) {
+                $html .= ' ' . oc_upload_escape($name);
+                continue;
+            }
+            $html .= ' ' . oc_upload_escape($name) . '="' . oc_upload_escape($value) . '"';
+        }
+        return $html;
+    }
+}
+
+if (!function_exists('oc_render_image_upload_controls')) {
+    function oc_render_image_upload_controls(array $options): void {
+        $class = trim('image-actions-row ' . (string)($options['class'] ?? ''));
+        $buttonClass = trim('upload-label ' . (string)($options['buttonClass'] ?? ''));
+        $label = (string)($options['label'] ?? 'Wybierz zdjęcie');
+        $buttonAttrs = [
+            'type' => 'button',
+            'id' => $options['buttonId'] ?? null,
+            'class' => $buttonClass,
+            'data-open-image-picker' => true,
+            'data-preview-selector' => $options['previewSelector'] ?? null,
+            'data-filename-selector' => $options['filenameSelector'] ?? null,
+            'data-image-id-selector' => $options['imageIdSelector'] ?? null,
+            'data-gallery-only' => !empty($options['galleryOnly']) ? '1' : null,
+            'data-picker-default-tab' => $options['defaultTab'] ?? null,
+            'style' => $options['buttonStyle'] ?? 'border:none;',
+        ];
+        foreach (($options['attrs'] ?? []) as $name => $value) {
+            $buttonAttrs[$name] = $value;
+        }
+
+        echo '<div class="' . oc_upload_escape($class) . '">';
+        if (!empty($options['previewId']) || !empty($options['previewSrc'])) {
+            $previewId = (string)($options['previewId'] ?? '');
+            $previewSrc = (string)($options['previewSrc'] ?? '');
+            $previewAlt = (string)($options['previewAlt'] ?? '');
+            $previewClass = trim('media-upload-preview ' . (string)($options['previewClass'] ?? ''));
+            echo '<div class="' . oc_upload_escape($previewClass) . '"' . ($previewId !== '' ? ' id="' . oc_upload_escape($previewId) . '"' : '') . ($previewSrc === '' ? ' hidden' : '') . '>';
+            echo '<img src="' . oc_upload_escape($previewSrc) . '" alt="' . oc_upload_escape($previewAlt) . '">';
+            echo '</div>';
+        }
+        echo '<button' . oc_upload_attrs($buttonAttrs) . '>' . oc_upload_escape($label) . '</button>';
+
+        if (!empty($options['resetId'])) {
+            $resetLabel = (string)($options['resetLabel'] ?? 'Domyślne');
+            echo '<button type="button" class="btn-secondary" id="' . oc_upload_escape($options['resetId']) . '">';
+            echo '<i class="fa-solid fa-rotate-left"></i> ' . oc_upload_escape($resetLabel);
+            echo '</button>';
+        }
+
+        if (isset($options['after']) && is_callable($options['after'])) {
+            $options['after']();
+        } elseif (!empty($options['afterHtml'])) {
+            echo (string)$options['afterHtml'];
+        }
+
+        echo '</div>';
+    }
+}
+?>

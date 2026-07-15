@@ -1,0 +1,200 @@
+<?php
+if (!function_exists('oc_media_escape')) {
+    function oc_media_escape(mixed $value): string {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+if (!function_exists('oc_media_attrs')) {
+    function oc_media_attrs(array $attrs): string {
+        $html = '';
+        foreach ($attrs as $name => $value) {
+            if ($value === null || $value === false || $value === '') {
+                continue;
+            }
+            if ($value === true) {
+                $html .= ' ' . oc_media_escape($name);
+                continue;
+            }
+            $html .= ' ' . oc_media_escape($name) . '="' . oc_media_escape($value) . '"';
+        }
+        return $html;
+    }
+}
+
+if (!function_exists('oc_media_style')) {
+    function oc_media_style(array $styles): string {
+        $declarations = [];
+        foreach ($styles as $name => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $declarations[] = $name . ': ' . $value;
+        }
+        return implode('; ', $declarations) . (!empty($declarations) ? ';' : '');
+    }
+}
+
+if (!function_exists('oc_media_filter_label')) {
+    function oc_media_filter_label(mixed $filter): string {
+        if (is_object($filter) && method_exists($filter, 'getName')) {
+            return (string)$filter->getName();
+        }
+        if (is_array($filter)) {
+            return (string)($filter['name'] ?? $filter['label'] ?? '');
+        }
+        return (string)$filter;
+    }
+}
+
+if (!function_exists('oc_media_frame_classes')) {
+    function oc_media_frame_classes(string $variant, string $mode = 'square', string $extra = ''): string {
+        $variantClasses = [
+            'portrait' => 'oc-media-frame--portrait character-main-image-frame',
+            'character-card' => 'oc-media-frame--character-card card-image-wrapper',
+            'story-card' => 'oc-media-frame--story-card story-preview-cover',
+            'story-reader' => 'oc-media-frame--story-reader story-reader-cover',
+        ];
+
+        $classes = [
+            'oc-media-frame',
+            $variantClasses[$variant] ?? trim($variant),
+            'oc-media-frame--anchored-cover',
+        ];
+
+        $classes[] = $mode === 'natural'
+            ? 'oc-media-frame--natural image-mode-natural'
+            : 'image-mode-square';
+
+        if ($extra !== '') {
+            $classes[] = $extra;
+        }
+
+        return trim(implode(' ', array_filter($classes)));
+    }
+}
+
+if (!function_exists('oc_render_media_frame')) {
+    function oc_render_media_frame(array $options): void {
+        $frameStyle = (array)($options['frameStyle'] ?? []);
+
+        if (array_key_exists('fit', $options)) {
+            $frameStyle['--image-fit'] = oc_media_escape($options['fit']);
+        }
+        if (array_key_exists('focusX', $options)) {
+            $frameStyle['--image-focus-x'] = (int)$options['focusX'] . '%';
+        }
+        if (array_key_exists('focusY', $options)) {
+            $frameStyle['--image-focus-y'] = (int)$options['focusY'] . '%';
+        }
+        if (array_key_exists('zoom', $options)) {
+            $frameStyle['--image-zoom'] = oc_media_escape($options['zoom']);
+        }
+        if (array_key_exists('panX', $options)) {
+            $frameStyle['--image-pan-x'] = oc_media_escape($options['panX']) . '%';
+        }
+        if (array_key_exists('panY', $options)) {
+            $frameStyle['--image-pan-y'] = oc_media_escape($options['panY']) . '%';
+        }
+
+        $frameAttrs = (array)($options['frameAttrs'] ?? []);
+        $frameAttrs['class'] = oc_media_frame_classes(
+            (string)($options['variant'] ?? 'portrait'),
+            (string)($options['mode'] ?? 'square'),
+            (string)($frameAttrs['class'] ?? $options['class'] ?? '')
+        );
+        $frameAttrs['style'] = trim(((string)($frameAttrs['style'] ?? '')) . ' ' . oc_media_style($frameStyle));
+        if (!empty($options['id'])) {
+            $frameAttrs['id'] = $options['id'];
+        }
+
+        $imgAttrs = (array)($options['imgAttrs'] ?? []);
+        $imgAttrs['src'] = $options['src'] ?? ($imgAttrs['src'] ?? '');
+        $imgAttrs['alt'] = $options['alt'] ?? ($imgAttrs['alt'] ?? '');
+        if (!empty($options['imgId'])) {
+            $imgAttrs['id'] = $options['imgId'];
+        }
+        if (!empty($options['imgClass'])) {
+            $imgAttrs['class'] = trim((string)($imgAttrs['class'] ?? '') . ' ' . (string)$options['imgClass']);
+        }
+        if (!empty($options['imgStyle'])) {
+            $imgAttrs['style'] = trim((string)($imgAttrs['style'] ?? '') . ' ' . (string)$options['imgStyle']);
+        }
+
+        echo '<div' . oc_media_attrs($frameAttrs) . '>';
+        echo '<img' . oc_media_attrs($imgAttrs) . '>';
+
+        if (isset($options['after']) && is_callable($options['after'])) {
+            $options['after']();
+        } elseif (!empty($options['afterHtml'])) {
+            echo (string)$options['afterHtml'];
+        }
+
+        echo '</div>';
+    }
+}
+
+if (!function_exists('oc_render_tile_body')) {
+    function oc_render_tile_body(array $options): void {
+        $title = (string)($options['title'] ?? '');
+        $description = (string)($options['description'] ?? '');
+        $filters = array_values((array)($options['filters'] ?? []));
+        $fitFiltersToRow = !empty($options['fitFiltersToRow']);
+        $maxFilters = max(0, (int)($options['maxFilters'] ?? 4));
+        $class = trim('oc-tile-body ' . (string)($options['class'] ?? ''));
+        $filterTitle = (string)($options['filterTitle'] ?? '');
+        $visibleFilters = $fitFiltersToRow
+            ? $filters
+            : ($maxFilters > 0 ? array_slice($filters, 0, $maxFilters) : []);
+
+        if ($fitFiltersToRow) {
+            $visibleFilters = array_map(function ($filter, int $index): array {
+                $label = trim(oc_media_filter_label($filter));
+                return [
+                    'filter' => $filter,
+                    'index' => $index,
+                    'length' => function_exists('mb_strlen') ? mb_strlen($label) : strlen($label),
+                ];
+            }, $visibleFilters, array_keys($visibleFilters));
+            usort($visibleFilters, function (array $a, array $b): int {
+                return ($a['length'] <=> $b['length']) ?: ($a['index'] <=> $b['index']);
+            });
+            $visibleFilters = array_map(fn(array $item) => $item['filter'], $visibleFilters);
+        }
+
+        $titleAttrs = (array)($options['titleAttrs'] ?? []);
+        $descriptionAttrs = (array)($options['descriptionAttrs'] ?? []);
+
+        echo '<div class="' . oc_media_escape($class) . '">';
+        echo '<h3' . oc_media_attrs($titleAttrs) . '>' . oc_media_escape($title) . '</h3>';
+        echo '<p' . oc_media_attrs($descriptionAttrs) . '>' . oc_media_escape($description) . '</p>';
+
+        if (isset($options['afterDescription']) && is_callable($options['afterDescription'])) {
+            $options['afterDescription']();
+        } elseif (!empty($options['afterDescriptionHtml'])) {
+            echo (string)$options['afterDescriptionHtml'];
+        }
+
+        if (!empty($visibleFilters)) {
+            $chipsClass = 'oc-tile-filter-chips' . ($fitFiltersToRow ? ' oc-tile-filter-chips--fit-row' : '');
+            $chipsAttrs = $fitFiltersToRow ? ' data-fit-filter-row' : '';
+            echo '<div class="' . oc_media_escape($chipsClass) . '" title="' . oc_media_escape($filterTitle) . '"' . $chipsAttrs . '>';
+            foreach ($visibleFilters as $filter) {
+                $label = oc_media_filter_label($filter);
+                if (trim((string)$label) === '') {
+                    continue;
+                }
+                echo '<span class="oc-tile-filter-chip">' . oc_media_escape($label) . '</span>';
+            }
+            if ($fitFiltersToRow) {
+                echo '<span class="oc-tile-filter-chip oc-tile-filter-chip--more" hidden></span>';
+            } elseif (count($filters) > count($visibleFilters)) {
+                echo '<span class="oc-tile-filter-chip oc-tile-filter-chip--more">+' . (count($filters) - count($visibleFilters)) . '</span>';
+            }
+            echo '</div>';
+        }
+
+        echo '</div>';
+    }
+}
+?>

@@ -7,7 +7,41 @@
     <link rel="stylesheet" type="text/css" href="/public/styles/login.css" />
     <script src="https://kit.fontawesome.com/ec44aec35a.js" crossorigin="anonymous"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="/public/scripts/image-tools.js" defer></script>
+    <script src="/public/scripts/media-frame.js" defer></script>
+    <script src="/public/scripts/change-tracker.js" defer></script>
+    <script src="/public/scripts/editor-shortcuts.js" defer></script>
+    <script src="/public/scripts/page-effects.js" defer></script>
     <title><?= $title ?? "OC Studio"; ?></title>
+    <script>
+        window.OCDefaults = {
+            uploadBase: '/public/uploads/',
+            defaultImages: ['default.png', 'default.jpg', 'default_dark.png'],
+            characterDefaultImageName() {
+                const themeDefault = document.body?.dataset.theme === 'dark' ? 'default_dark.png' : 'default.png';
+                const configured = document.body?.dataset.defaultCharacterImage || themeDefault;
+                return this.defaultImages.includes(configured) ? themeDefault : configured;
+            },
+            characterImageName(image) {
+                const raw = String(image || '').trim();
+                const filename = raw.split('/').pop();
+                return !filename || this.defaultImages.includes(filename) ? this.characterDefaultImageName() : filename;
+            },
+            characterImageSrc(image) {
+                return this.uploadBase + this.characterImageName(image);
+            }
+        };
+        window.OCAdultImages = <?= json_encode(array_values($adultImageFilenames ?? []), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    </script>
 </head>
-<?php $userSettings = $userSettings ?? ['theme' => 'light', 'accent' => 'orange', 'columns' => 4]; ?>
-<body data-theme="<?= htmlspecialchars($userSettings['theme'], ENT_QUOTES, 'UTF-8') ?>" data-accent="<?= htmlspecialchars($userSettings['accent'], ENT_QUOTES, 'UTF-8') ?>">
+<?php
+$userSettings = $userSettings ?? ['theme' => 'light', 'accent' => 'orange', 'columns' => 4, 'defaultCharacterImage' => 'default.png'];
+$defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+$pageEffect = $pageEffect ?? ['name' => 'none', 'symbols' => '', 'intensity' => 'medium', 'size' => 'medium', 'layer' => 'under'];
+$folderEffectName = isset($currentWorld) && method_exists($currentWorld, 'getBackgroundEffect') ? $currentWorld->getBackgroundEffect() : 'none';
+$folderEffectSymbols = isset($currentWorld) && method_exists($currentWorld, 'getEffectSymbols') ? $currentWorld->getEffectSymbols() : '';
+$folderEffectIntensity = isset($currentWorld) && method_exists($currentWorld, 'getEffectIntensity') ? $currentWorld->getEffectIntensity() : '';
+$folderEffectSize = isset($currentWorld) && method_exists($currentWorld, 'getEffectSize') ? $currentWorld->getEffectSize() : '';
+$folderEffectLayer = isset($currentWorld) && method_exists($currentWorld, 'getEffectLayer') ? $currentWorld->getEffectLayer() : '';
+?>
+<body data-theme="<?= htmlspecialchars($userSettings['theme'], ENT_QUOTES, 'UTF-8') ?>" data-accent="<?= htmlspecialchars($userSettings['accent'], ENT_QUOTES, 'UTF-8') ?>" data-default-character-image="<?= htmlspecialchars($defaultCharacterImage, ENT_QUOTES, 'UTF-8') ?>" data-reveal-adult-images="<?= !empty($userSettings['revealAdultImages']) ? '1' : '0' ?>" data-remember-character-variant="<?= !empty($userSettings['rememberCharacterVariant']) ? '1' : '0' ?>" data-view="<?= htmlspecialchars($__viewName ?? '', ENT_QUOTES, 'UTF-8') ?>" data-page-effect="<?= htmlspecialchars($pageEffect['name'] ?? 'none', ENT_QUOTES, 'UTF-8') ?>" data-page-effect-symbols="<?= htmlspecialchars($pageEffect['symbols'] ?? '', ENT_QUOTES, 'UTF-8') ?>" data-page-effect-intensity="<?= htmlspecialchars($pageEffect['intensity'] ?? 'medium', ENT_QUOTES, 'UTF-8') ?>" data-page-effect-size="<?= htmlspecialchars($pageEffect['size'] ?? 'medium', ENT_QUOTES, 'UTF-8') ?>" data-page-effect-layer="<?= htmlspecialchars($pageEffect['layer'] ?? 'under', ENT_QUOTES, 'UTF-8') ?>" data-folder-effect="<?= htmlspecialchars($folderEffectName, ENT_QUOTES, 'UTF-8') ?>" data-folder-effect-symbols="<?= htmlspecialchars($folderEffectSymbols, ENT_QUOTES, 'UTF-8') ?>" data-folder-effect-intensity="<?= htmlspecialchars($folderEffectIntensity, ENT_QUOTES, 'UTF-8') ?>" data-folder-effect-size="<?= htmlspecialchars($folderEffectSize, ENT_QUOTES, 'UTF-8') ?>" data-folder-effect-layer="<?= htmlspecialchars($folderEffectLayer, ENT_QUOTES, 'UTF-8') ?>">
