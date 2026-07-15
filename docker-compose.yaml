@@ -1,7 +1,8 @@
-version: '3'
+name: ocstudio
 
 services:
   nginx:
+    container_name: ocstudio-nginx
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
@@ -9,12 +10,13 @@ services:
       - "8080:80"
     volumes:
       - .:/app/
-    links:
+    depends_on:
       - php
     networks:
       - pg-network
   
   db:
+    container_name: ocstudio-db
     build:
       context: .
       dockerfile: docker/db/Dockerfile
@@ -23,15 +25,18 @@ services:
     networks:
       - pg-network
     volumes:
+      - pg-data:/var/lib/postgresql/data
       - ./docker/db/init:/docker-entrypoint-initdb.d
   
   php:
+    container_name: ocstudio-php
     build:
       context: .
       dockerfile: docker/php/Dockerfile
     volumes:
       - .:/app
     environment:
+      FORCE_HTTPS: ${FORCE_HTTPS:-false}
       CLOUDFLARE_TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY}
       CLOUDFLARE_TURNSTILE_SECRET: ${TURNSTILE_SECRET}
     networks:
@@ -39,7 +44,7 @@ services:
   
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: pg-admin2
+    container_name: ocstudio-pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin

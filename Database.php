@@ -8,7 +8,7 @@ class Database {
     private $password;
     private $host;
     private $database;
-    // private $conn;
+    private static ?PDO $connection = null;
 
     public function __construct()
     {
@@ -18,27 +18,33 @@ class Database {
         $this->database = DATABASE;
     }
 
-    public function connect()
+    public function connect(): PDO
     {
+        if (self::$connection instanceof PDO) {
+            return self::$connection;
+        }
+
         try {
-            $conn = new PDO(
-                "pgsql:host=$this->host;port=5432;dbname=$this->database",
+            self::$connection = new PDO(
+                "pgsql:host=$this->host;port=5432;dbname=$this->database;sslmode=prefer",
                 $this->username,
                 $this->password,
-                ["sslmode"  => "prefer"]
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]
             );
+            self::$connection->exec("SET client_encoding TO 'UTF8'");
 
-            // set the PDO error mode to exception
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            return $conn;
+            return self::$connection;
         }
         catch(PDOException $e) {
-            // change to error page e.g. 404 not found etc.
-            die("Connection failed: " . $e->getMessage());
+            error_log("Database connection failed: " . $e->getMessage());
+            throw new RuntimeException("Database connection failed.", 500, $e);
         }
     }
 
     public function disconnect() {
-        // $this->conn = null;
+        self::$connection = null;
     }
 }

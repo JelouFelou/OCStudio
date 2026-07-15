@@ -1,5 +1,6 @@
 # Ignoruj wszystkie pliki w folderze uploads
 public/uploads/*
+scripts/*
 
 # Ale zachowaj sam folder (opcjonalnie)
 !public/uploads/.gitkeep
