@@ -1,0 +1,4 @@
+ALTER TABLE templates
+    ADD COLUMN IF NOT EXISTS date_calendar_type VARCHAR(24) NOT NULL DEFAULT 'real',
+    ADD COLUMN IF NOT EXISTS date_settings TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS current_world_date TEXT NOT NULL DEFAULT '';

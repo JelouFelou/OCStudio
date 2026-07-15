@@ -1,0 +1,3 @@
+ALTER TABLE stories
+    ADD COLUMN IF NOT EXISTS timeline_position_x DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS timeline_position_y DOUBLE PRECISION;
