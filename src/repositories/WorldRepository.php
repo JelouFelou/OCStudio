@@ -2,13 +2,27 @@
 
 require_once 'Repository.php';
 require_once __DIR__ . '/../models/World.php';
+require_once __DIR__ . '/SiteEffectRepository.php';
 
 class WorldRepository extends Repository
 {
-    public function getWorldsByUserId(int $userId): array
+    private const ICON_COLORS = [
+        '#7B61FF',
+        '#2F80ED',
+        '#27AE60',
+        '#F39C12',
+        '#E94D7B',
+        '#00A6A6',
+        '#D65A31',
+        '#4F8FD9',
+        '#8E44AD',
+        '#B7791F',
+    ];
+
+    public function getWorldsByUserId(int $userId, bool $includeHidden = false): array
     {
         $stmt = $this->database->connect()->prepare(
-            'SELECT * FROM worlds WHERE id_user = :userId ORDER BY parent_id NULLS FIRST, id ASC'
+            'SELECT * FROM worlds WHERE id_user = :userId ' . $this->hiddenWorldClause($includeHidden) . ' ORDER BY parent_id NULLS FIRST, id ASC'
         );
         $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
         $stmt->execute();
@@ -26,16 +40,16 @@ class WorldRepository extends Repository
      * Zwraca bezpośrednie podfoldery danego folderu.
      * Dla folderu głównego ($parentId = null) zwraca foldery bez rodzica.
      */
-    public function getChildWorlds(int $userId, ?int $parentId): array
+    public function getChildWorlds(int $userId, ?int $parentId, bool $includeHidden = false): array
     {
         if ($parentId === null) {
             $stmt = $this->database->connect()->prepare(
-                'SELECT * FROM worlds WHERE id_user = :userId AND parent_id IS NULL ORDER BY id ASC'
+                'SELECT * FROM worlds WHERE id_user = :userId AND parent_id IS NULL ' . $this->hiddenWorldClause($includeHidden) . ' ORDER BY id ASC'
             );
             $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
         } else {
             $stmt = $this->database->connect()->prepare(
-                'SELECT * FROM worlds WHERE id_user = :userId AND parent_id = :parentId ORDER BY id ASC'
+                'SELECT * FROM worlds WHERE id_user = :userId AND parent_id = :parentId ' . $this->hiddenWorldClause($includeHidden) . ' ORDER BY id ASC'
             );
             $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
             $stmt->bindParam(':parentId', $parentId, PDO::PARAM_INT);
@@ -63,12 +77,26 @@ class WorldRepository extends Repository
         return $world ? $this->hydrate($world) : null;
     }
 
-    public function addWorld(string $name, string $description, int $userId, ?int $parentId = null, ?string $image = 'default.jpg'): int
+    public function getWorldByPublicIdAndUserId(string $publicId, int $userId): ?World
     {
         $stmt = $this->database->connect()->prepare(
-            'INSERT INTO worlds (name, description, image, id_user, parent_id) VALUES (?, ?, ?, ?, ?) RETURNING id'
+            'SELECT * FROM worlds WHERE public_id::text = :publicId AND id_user = :userId'
         );
-        $stmt->execute([$name, $description, $image, $userId, $parentId]);
+        $stmt->bindValue(':publicId', $publicId);
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $world = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $world ? $this->hydrate($world) : null;
+    }
+
+    public function addWorld(string $name, string $description, int $userId, ?int $parentId = null, ?string $image = 'default.jpg'): int
+    {
+        $iconColor = self::ICON_COLORS[random_int(0, count(self::ICON_COLORS) - 1)];
+        $stmt = $this->database->connect()->prepare(
+            'INSERT INTO worlds (name, description, image, id_user, parent_id, icon_color) VALUES (?, ?, ?, ?, ?, ?) RETURNING id'
+        );
+        $stmt->execute([$name, $description, $image, $userId, $parentId, $iconColor]);
         return (int)$stmt->fetchColumn();
     }
 
@@ -94,7 +122,7 @@ class WorldRepository extends Repository
      * Wyszukuje foldery po nazwie (case-insensitive, LIKE).
      * Zwraca tablicę World.
      */
-    public function searchWorldsByName(int $userId, string $q): array
+    public function searchWorldsByName(int $userId, string $q, bool $includeHidden = false): array
     {
         $tokens = preg_split('/\s+/', trim($q));
         $clauses = [];
@@ -109,7 +137,7 @@ class WorldRepository extends Repository
             $params[$key] = '%' . mb_strtolower($token) . '%';
         }
 
-        $sql = 'SELECT * FROM worlds WHERE id_user = :userId';
+        $sql = 'SELECT * FROM worlds WHERE id_user = :userId' . $this->hiddenWorldClause($includeHidden);
         if (!empty($clauses)) {
             $sql .= ' AND ' . implode(' AND ', $clauses);
         }
@@ -162,8 +190,80 @@ class WorldRepository extends Repository
             $row['id_user'],
             $row['id'],
             $row['parent_id'] !== null ? (int)$row['parent_id'] : null,
-            $row['status_id'] !== null ? (int)$row['status_id'] : null
+            $row['status_id'] !== null ? (int)$row['status_id'] : null,
+            (bool)($row['is_hidden'] ?? false),
+            $row['public_id'] ?? null,
+            $this->worldIconColor($row),
+            (string)($row['background_effect'] ?? 'none'),
+            (string)($row['effect_symbols'] ?? ''),
+            (string)($row['effect_intensity'] ?? 'medium'),
+            (string)($row['effect_size'] ?? 'medium'),
+            (string)($row['effect_layer'] ?? 'under')
         );
+    }
+
+    private function worldIconColor(array $row): string
+    {
+        $color = trim((string)($row['icon_color'] ?? ''));
+        if (preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
+            return strtoupper($color);
+        }
+
+        $seed = (string)($row['id'] ?? '') . ':' . (string)($row['name'] ?? '');
+        $index = abs((int)crc32($seed)) % count(self::ICON_COLORS);
+        return self::ICON_COLORS[$index];
+    }
+
+    public function setHidden(int $worldId, int $userId, bool $hidden): void
+    {
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE worlds SET is_hidden = :hidden WHERE id = :id AND id_user = :userId'
+        );
+        $stmt->execute([
+            ':hidden' => $hidden ? 1 : 0,
+            ':id' => $worldId,
+            ':userId' => $userId,
+        ]);
+    }
+
+    public function isHiddenInPath(int $worldId, int $userId): bool
+    {
+        $stmt = $this->database->connect()->prepare(
+            "WITH RECURSIVE ancestors(id, parent_id, is_hidden) AS (
+                SELECT id, parent_id, COALESCE(is_hidden, FALSE)
+                FROM worlds
+                WHERE id = :worldId AND id_user = :userId
+                UNION ALL
+                SELECT w.id, w.parent_id, COALESCE(w.is_hidden, FALSE)
+                FROM worlds w
+                JOIN ancestors a ON w.id = a.parent_id
+                WHERE w.id_user = :userId
+            )
+            SELECT EXISTS (SELECT 1 FROM ancestors WHERE is_hidden = TRUE)"
+        );
+        $stmt->execute([':worldId' => $worldId, ':userId' => $userId]);
+        return (bool)$stmt->fetchColumn();
+    }
+
+    private function hiddenWorldClause(bool $includeHidden): string
+    {
+        if ($includeHidden) {
+            return '';
+        }
+
+        return " AND COALESCE(is_hidden, FALSE) = FALSE
+            AND NOT EXISTS (
+                WITH RECURSIVE ancestors(id, parent_id, is_hidden) AS (
+                    SELECT w.id, w.parent_id, COALESCE(w.is_hidden, FALSE)
+                    FROM worlds w
+                    WHERE w.id = worlds.parent_id
+                    UNION ALL
+                    SELECT w2.id, w2.parent_id, COALESCE(w2.is_hidden, FALSE)
+                    FROM worlds w2
+                    JOIN ancestors a ON w2.id = a.parent_id
+                )
+                SELECT 1 FROM ancestors WHERE is_hidden = TRUE
+            )";
     }
 
     public function updateWorldStatus(int $worldId, ?int $statusId): void
@@ -183,6 +283,52 @@ class WorldRepository extends Repository
         $stmt->bindValue(':id', $worldId, PDO::PARAM_INT);
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->execute();
+    }
+
+    public function updateWorldDetails(int $worldId, int $userId, string $name, string $description, string $image): void
+    {
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE worlds SET name = :name, description = :description, image = :image WHERE id = :id AND id_user = :userId'
+        );
+        $stmt->execute([
+            ':name' => $name,
+            ':description' => $description,
+            ':image' => $image,
+            ':id' => $worldId,
+            ':userId' => $userId,
+        ]);
+    }
+
+    public function updateWorldEffect(int $worldId, int $userId, string $effect, string $symbols, string $intensity = 'medium', string $size = 'medium', string $layer = 'under'): void
+    {
+        $effectRepository = new SiteEffectRepository();
+        $effect = $effectRepository->normalizeEffect($effect, 'none');
+        if ($effect === 'auto' || $effect === 'off') {
+            $effect = 'none';
+        }
+        $symbols = mb_substr(trim($symbols), 0, 120);
+        $intensity = in_array($intensity, SiteEffectRepository::INTENSITIES, true) ? $intensity : 'medium';
+        $size = in_array($size, SiteEffectRepository::SIZES, true) ? $size : 'medium';
+        $layer = in_array($layer, SiteEffectRepository::LAYERS, true) ? $layer : 'under';
+
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE worlds
+             SET background_effect = :effect,
+                 effect_symbols = :symbols,
+                 effect_intensity = :intensity,
+                 effect_size = :size,
+                 effect_layer = :layer
+             WHERE id = :id AND id_user = :userId'
+        );
+        $stmt->execute([
+            ':effect' => $effect,
+            ':symbols' => $symbols,
+            ':intensity' => $intensity,
+            ':size' => $size,
+            ':layer' => $layer,
+            ':id' => $worldId,
+            ':userId' => $userId,
+        ]);
     }
 
     public function moveCharactersFromWorldsToRoot(int $userId, array $worldIds): void

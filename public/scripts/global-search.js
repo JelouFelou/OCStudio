@@ -90,7 +90,7 @@
     function render(data) {
         dropdown.innerHTML = '';
 
-        const { characters = [], worlds = [] } = data;
+        const { characters = [], worlds = [], stories = [], templates = [], filters = [] } = data;
 
         // Zbieramy ID postaci już pokazanych w sekcji "Postacie"
         // żeby nie powielać ich pod folderami
@@ -112,9 +112,9 @@
 
             // Nagłówek folderu – klikalny (otwiera folder)
             const folderRow = makeEl('div', 'search-folder-header');
-            folderRow.dataset.href = '/characters?world=' + world.id;
+            folderRow.dataset.href = '/characters/' + encodeURIComponent(world.publicId || world.id);
             folderRow.innerHTML =
-                '<span class="search-folder-icon"><i class="fa-solid fa-folder"></i></span>' +
+                folderVisual(world) +
                 '<span class="search-folder-name">' + esc(world.name) + '</span>' +
                 '<span class="search-folder-count">' + world.characters.length + ' postaci</span>';
             folderRow.setAttribute('tabindex', '0');
@@ -134,7 +134,22 @@
         });
 
         // Brak wyników
-        if (characters.length === 0 && worlds.length === 0) {
+        if (stories.length > 0) {
+            dropdown.appendChild(sectionLabel('Historie'));
+            stories.forEach(story => dropdown.appendChild(storyRow(story)));
+        }
+
+        if (templates.length > 0) {
+            dropdown.appendChild(sectionLabel('Szablony'));
+            templates.forEach(template => dropdown.appendChild(templateRow(template)));
+        }
+
+        if (filters.length > 0) {
+            dropdown.appendChild(sectionLabel('Filtry'));
+            filters.slice(0, 8).forEach(filter => dropdown.appendChild(filterRow(filter)));
+        }
+
+        if (characters.length === 0 && worlds.length === 0 && stories.length === 0 && templates.length === 0 && filters.length === 0) {
             const empty = makeEl('p', 'search-empty');
             empty.textContent = 'Brak wyników dla „' + input.value.trim() + '"';
             dropdown.appendChild(empty);
@@ -144,15 +159,52 @@
     }
 
     // ── Pomocnicze – tworzenie wierszy ────────────────────────────────────────
+    function numericValue(primary, fallback, defaultValue) {
+        const value = Number.parseFloat(primary ?? fallback);
+        return Number.isFinite(value) ? value : defaultValue;
+    }
+
+    function characterCropStyle(character) {
+        const fitValue = character?.image_fit ?? character?.imageFit;
+        const fit = ['cover', 'contain'].includes(fitValue) ? fitValue : 'cover';
+        const focusX = Math.max(0, Math.min(100, numericValue(character?.image_focus_x, character?.imageFocusX, 50)));
+        const focusY = Math.max(0, Math.min(100, numericValue(character?.image_focus_y, character?.imageFocusY, 50)));
+        const zoom = Math.max(1, numericValue(character?.image_zoom, character?.imageZoom, 1));
+
+        return {
+            fit,
+            focusX: `${focusX}%`,
+            focusY: `${focusY}%`,
+            zoom: String(zoom),
+            mode: (character?.image_display_mode ?? character?.imageDisplayMode) === 'natural' ? 'natural' : 'square'
+        };
+    }
+
     function charRow(c) {
         const row = makeEl('div', 'search-char-row');
-        row.dataset.href = '/viewCharacter?id=' + c.id;
+        row.dataset.href = '/character/' + encodeURIComponent(c.publicId || c.id);
         row.setAttribute('tabindex', '0');
 
+        const avatar = makeEl('span', 'search-char-img-wrap oc-media-frame oc-media-frame--portrait oc-media-frame--anchored-cover');
         const img  = makeEl('img', 'search-char-img');
-        img.src    = '/public/uploads/' + c.image;
+        const crop = characterCropStyle(c);
+        avatar.classList.add(crop.mode === 'natural' ? 'oc-media-frame--natural' : 'image-mode-square');
+        avatar.style.setProperty('--image-fit', crop.fit);
+        avatar.style.setProperty('--image-focus-x', crop.focusX);
+        avatar.style.setProperty('--image-focus-y', crop.focusY);
+        avatar.style.setProperty('--image-zoom', crop.zoom);
+        img.src    = window.OCDefaults?.characterImageSrc
+            ? window.OCDefaults.characterImageSrc(c.image)
+            : '/public/uploads/' + (c.image || 'default.png');
         img.alt    = '';
-        img.onerror = () => { img.src = '/public/uploads/default.png'; };
+        img.draggable = false;
+        img.style.objectFit = crop.fit;
+        img.addEventListener('load', () => window.OCMediaFrame?.refresh?.(avatar), { passive: true });
+        img.onerror = () => {
+            img.src = window.OCDefaults?.characterImageSrc
+                ? window.OCDefaults.characterImageSrc()
+                : '/public/uploads/default.png';
+        };
 
         const info = makeEl('div', 'search-char-info');
         info.innerHTML = '<span class="search-char-name">' + esc(c.name) + '</span>';
@@ -165,8 +217,10 @@
             info.appendChild(badge);
         }
 
-        row.appendChild(img);
+        avatar.appendChild(img);
+        row.appendChild(avatar);
         row.appendChild(info);
+        requestAnimationFrame(() => window.OCMediaFrame?.refresh?.(avatar));
 
         row.addEventListener('click',   () => navigate(row.dataset.href));
         row.addEventListener('keydown', (e) => { if (e.key === 'Enter') navigate(row.dataset.href); });
@@ -174,10 +228,89 @@
         return row;
     }
 
+    function storyRow(story) {
+        return mediaRow({
+            href: '/story/' + encodeURIComponent(story.publicId || story.id),
+            image: storyImageSrc(story.image),
+            icon: 'fa-book-open',
+            title: story.date ? story.date + ' - ' + story.title : story.title,
+            description: story.description || 'Historia',
+            badge: story.status || ''
+        });
+    }
+
+    function templateRow(template) {
+        return mediaRow({
+            href: '/templates/' + encodeURIComponent(template.publicId || template.id) + '/edit',
+            icon: 'fa-file-code',
+            title: template.name,
+            description: template.description || 'Szablon'
+        });
+    }
+
+    function filterRow(filter) {
+        return mediaRow({
+            href: '/characters?q=' + encodeURIComponent(filter.name || filter.slug || ''),
+            icon: 'fa-filter',
+            title: filter.name || filter.slug,
+            description: filter.slug ? '#' + filter.slug : 'Filtr'
+        });
+    }
+
+    function mediaRow(item) {
+        const row = makeEl('div', 'search-media-row');
+        row.dataset.href = item.href;
+        row.setAttribute('tabindex', '0');
+
+        const visual = makeEl('span', item.image ? 'search-media-thumb' : 'search-media-icon');
+        if (item.image) {
+            const img = makeEl('img', '');
+            img.src = item.image;
+            img.alt = '';
+            img.onerror = () => { visual.innerHTML = '<i class="fa-solid ' + esc(item.icon || 'fa-circle') + '"></i>'; visual.className = 'search-media-icon'; };
+            visual.appendChild(img);
+        } else {
+            visual.innerHTML = '<i class="fa-solid ' + esc(item.icon || 'fa-circle') + '"></i>';
+        }
+
+        const info = makeEl('span', 'search-media-info');
+        info.innerHTML = '<span class="search-media-title">' + esc(item.title || '') + '</span>'
+            + '<span class="search-media-desc">' + esc(trimText(item.description || '', 80)) + '</span>';
+
+        row.appendChild(visual);
+        row.appendChild(info);
+
+        if (item.badge) {
+            const badge = makeEl('span', 'search-media-badge');
+            badge.textContent = item.badge;
+            row.appendChild(badge);
+        }
+
+        row.addEventListener('click', () => navigate(row.dataset.href));
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter') navigate(row.dataset.href); });
+        return row;
+    }
+
     function sectionLabel(text) {
         const el = makeEl('p', 'search-section-label');
         el.textContent = text;
         return el;
+    }
+
+    function folderVisual(world) {
+        if (world.image && !['default.jpg', 'default.png', ''].includes(world.image)) {
+            return '<span class="search-folder-thumb"><img src="/public/uploads/' + esc(world.image) + '" alt=""></span>';
+        }
+        return '<span class="search-folder-icon" style="background:' + esc(world.iconColor || '#7B61FF') + '"><i class="fa-solid fa-folder"></i></span>';
+    }
+
+    function storyImageSrc(image) {
+        return '/public/uploads/' + (image || 'default_story.png');
+    }
+
+    function trimText(text, limit) {
+        const value = String(text || '').trim();
+        return value.length > limit ? value.slice(0, limit - 1) + '…' : value;
     }
 
     // ── Pomocnicze – stan dropdownu ──────────────────────────────────────────

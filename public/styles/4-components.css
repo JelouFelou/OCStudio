@@ -40,10 +40,12 @@ border-color: var(--primary); background: var(--input-bg); box-shadow: 0 0 0 3px
 position: fixed; top: 0; left: 0; width: 100%; height: 100%;
 background: rgba(0,0,0,0.6); display: flex; align-items: center;
 justify-content: center; z-index: 1000; backdrop-filter: blur(4px);
+animation: oc-modal-fade .16s ease both;
 }
 .modal-content {
 background: var(--surface); padding: 30px; border-radius: 20px;
 width: 100%; max-width: 450px; text-align: center;
+animation: oc-modal-panel .18s ease both;
 }
 .modal-options { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
 .type-option {
@@ -52,3 +54,126 @@ border-radius: 15px; display: flex; flex-direction: column; align-items: center;
 gap: 10px; cursor: pointer; transition: all 0.2s;
 }
 .type-option:hover { border-color: var(--primary); background: var(--primary-light); }
+
+.oc-modal-surface {
+animation: oc-modal-fade .16s ease both;
+}
+
+.oc-modal-surface > div {
+animation: oc-modal-panel .18s ease both;
+}
+
+@keyframes oc-modal-fade {
+from { opacity: 0; }
+to { opacity: 1; }
+}
+
+@keyframes oc-modal-panel {
+from { opacity: 0; transform: translateY(8px) scale(0.985); }
+to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.empty-state,
+.oc-empty-state {
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+gap: 10px;
+min-height: 210px;
+padding: 42px 24px;
+border: 1px dashed color-mix(in srgb, var(--border-color, #ddd) 75%, var(--primary, #7b61ff) 25%);
+border-radius: 12px;
+background: color-mix(in srgb, var(--surface, #fff) 88%, transparent);
+color: var(--text-muted);
+text-align: center;
+box-shadow: var(--card-shadow);
+}
+
+.templates-grid > .empty-state,
+.dashboard-grid > .empty-state,
+.dashboard-grid > .oc-empty-state {
+grid-column: 1 / -1;
+}
+
+.empty-state i,
+.oc-empty-state i {
+font-size: 2rem;
+color: var(--primary);
+opacity: 0.84;
+}
+
+.empty-state p,
+.oc-empty-state p {
+margin: 0;
+max-width: 460px;
+line-height: 1.45;
+}
+.oc-adult-image-blurred {
+    filter: blur(18px) saturate(0.7) brightness(0.82);
+    transition: filter .18s ease;
+}
+
+body[data-reveal-adult-images="1"] .oc-adult-image-blurred {
+    filter: none;
+}
+
+body.oc-flow-enabled .oc-flow-item {
+    opacity: 0;
+    filter: saturate(0.96);
+    content-visibility: auto;
+    contain-intrinsic-size: var(--oc-flow-size, 280px);
+    transition: opacity .24s ease, filter .24s ease;
+    transition-delay: var(--oc-flow-delay, 0ms);
+}
+
+body.oc-flow-enabled .oc-flow-item.oc-flow-visible {
+    opacity: 1;
+    filter: saturate(1);
+}
+
+body.oc-flow-enabled .oc-flow-item.oc-flow-away {
+    opacity: .001;
+}
+
+body.oc-flow-enabled .search-char-row.oc-flow-item,
+body.oc-flow-enabled .search-folder-header.oc-flow-item {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+}
+
+body.oc-flow-enabled .character-card.oc-flow-item {
+    --oc-flow-size: 360px;
+}
+
+body.oc-flow-enabled .character-card.is-main-character.oc-flow-item,
+body.oc-flow-enabled .character-card.is-pinned-character.oc-flow-item {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+}
+
+body.oc-flow-enabled .drag-drop-folder.oc-flow-item {
+    --oc-flow-size: 112px;
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+}
+
+body.oc-flow-enabled .story-list-card.oc-flow-item,
+body.oc-flow-enabled .template-card.oc-flow-item {
+    --oc-flow-size: 330px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay,
+    .modal-content,
+    .oc-modal-surface,
+    .oc-modal-surface > div {
+        animation: none;
+    }
+
+    body.oc-flow-enabled .oc-flow-item {
+        opacity: 1;
+        filter: none;
+        transition: none;
+    }
+}

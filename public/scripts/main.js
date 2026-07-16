@@ -2,13 +2,29 @@ const menuIcon = document.querySelector(".display-mobile.fa-bars");
 const navList = document.querySelector("nav > div.container > ul");
 let currentTargetLocation = 'left';
 
-menuIcon.addEventListener("click", () => {
-  if (navList.style.display === "block") {
-    navList.style.display = "none";
-  } else {
-    navList.style.display = "block";
-  }
-});
+window.OCGridColumns = window.OCGridColumns || {
+    apply(value) {
+        const val = Math.max(1, Math.min(parseInt(value, 10) || 4, 12));
+        const root = document.documentElement;
+        root.style.setProperty('--grid-columns', val);
+        root.classList.forEach(className => {
+            if (/^grid-cols-\d+$/.test(className)) {
+                root.classList.remove(className);
+            }
+        });
+        root.classList.add(`grid-cols-${val}`);
+    }
+};
+
+if (menuIcon && navList) {
+    menuIcon.addEventListener("click", () => {
+      if (navList.style.display === "block") {
+        navList.style.display = "none";
+      } else {
+        navList.style.display = "block";
+      }
+    });
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     const slider = document.getElementById('column-slider');
@@ -16,14 +32,27 @@ document.addEventListener('DOMContentLoaded', function() {
     const grid = document.querySelector('.dashboard-grid');
 
     if (slider && grid) {
+        const minColumns = parseInt(slider.min, 10) || 1;
+        const maxColumns = parseInt(slider.max, 10) || 12;
+        const normalizeColumns = value => Math.max(minColumns, Math.min(parseInt(value, 10) || minColumns, maxColumns));
+
         slider.addEventListener('input', function() {
-            const val = this.value;
+            const val = normalizeColumns(this.value);
+            slider.value = val;
+            document.body.classList.add('oc-grid-changing');
+            window.clearTimeout(window.__ocGridChangingTimer);
+            window.__ocGridChangingTimer = window.setTimeout(() => {
+                document.body.classList.remove('oc-grid-changing');
+            }, 180);
             
             // 1. Aktualizujemy tekst obok suwaka
-            columnText.innerText = val;
+            if (columnText) {
+                columnText.innerText = val;
+            }
             
             // 2. Aktualizujemy zmienną CSS bezpośrednio na elemencie lub dokumencie
-            document.documentElement.style.setProperty('--grid-columns', val);
+            window.OCGridColumns?.apply(val);
+            requestAnimationFrame(() => window.OCMediaFrame?.refresh(document));
             
             // Opcjonalnie: Zapisz preferencję użytkownika w LocalStorage, 
             // aby po odświeżeniu strony układ został zapamiętany
@@ -33,11 +62,20 @@ document.addEventListener('DOMContentLoaded', function() {
         // Wczytywanie zapisanego ustawienia po starcie strony
         const savedValue = localStorage.getItem('dashboard-columns');
         if (savedValue) {
-            slider.value = savedValue;
-            columnText.innerText = savedValue;
-            document.documentElement.style.setProperty('--grid-columns', savedValue);
+            const val = normalizeColumns(savedValue);
+            slider.value = val;
+            if (columnText) {
+                columnText.innerText = val;
+            }
+            window.OCGridColumns?.apply(val);
+            requestAnimationFrame(() => window.OCMediaFrame?.refresh(document));
         }
     }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const computed = getComputedStyle(document.documentElement).getPropertyValue('--grid-columns').trim();
+    window.OCGridColumns.apply(computed || 4);
 });
 
 function addField(location) {

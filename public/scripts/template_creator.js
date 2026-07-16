@@ -1,6 +1,19 @@
 console.log("Template Creator Script Loaded!");
 
 let currentTargetLocation = 'left';
+let currentInsertIndex = null;
+
+const FIELD_TYPE_OPTIONS = [
+    ['text', 'fa-font', 'Tekst'],
+    ['textarea', 'fa-align-left', 'Dlugi tekst'],
+    ['list', 'fa-list-ul', 'Lista'],
+    ['select', 'fa-chevron-down', 'Wybor z listy'],
+    ['image', 'fa-image', 'Zdjecie'],
+    ['image-gallery', 'fa-images', 'Galeria'],
+    ['table', 'fa-table', 'Tabela'],
+    ['stats', 'fa-chart-simple', 'Statystyki'],
+    ['date', 'fa-calendar-days', 'Data'],
+];
 
 // -------------------------------------------------------
 // Helpers – lokalizacja i drag & drop
@@ -19,19 +32,29 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+function templateFieldItems(container) {
+    return container ? [...container.querySelectorAll(':scope > .field-item')] : [];
+}
+
 function moveField(btn, direction) {
     const item = btn.closest('.field-item');
     if (!item) return;
 
-    if (direction === 'up' && item.previousElementSibling) {
-        item.parentElement.insertBefore(item, item.previousElementSibling);
+    const container = item.parentElement;
+    container.querySelectorAll('.template-field-insert-point').forEach(point => point.remove());
+    const items = templateFieldItems(container);
+    const index = items.indexOf(item);
+
+    if (direction === 'up' && index > 0) {
+        container.insertBefore(item, items[index - 1]);
     }
 
-    if (direction === 'down' && item.nextElementSibling) {
-        item.parentElement.insertBefore(item.nextElementSibling, item);
+    if (direction === 'down' && index >= 0 && index < items.length - 1) {
+        container.insertBefore(items[index + 1], item);
     }
 
     updateAllFieldsLocations();
+    refreshTemplateInsertPoints(container);
 }
 
 function moveFieldSide(btn) {
@@ -40,23 +63,117 @@ function moveFieldSide(btn) {
     if (!item || !currentContainer) return;
 
     const targetId = currentContainer.id === 'left-fields' ? 'right-fields' : 'left-fields';
+    currentContainer.querySelectorAll('.template-field-insert-point').forEach(point => point.remove());
     document.getElementById(targetId)?.appendChild(item);
     updateAllFieldsLocations();
+    refreshTemplateInsertPoints(currentContainer);
+    refreshTemplateInsertPoints(document.getElementById(targetId));
 }
 
 // -------------------------------------------------------
 // Modal
 // -------------------------------------------------------
-function openFieldModal(location) {
+function openFieldModal(location, anchor = null, insertIndex = null) {
     currentTargetLocation = location;
-    const modal = document.getElementById('type-modal');
-    if (!modal) return;
-    modal.style.display = 'flex';
+    currentInsertIndex = Number.isInteger(insertIndex) && insertIndex >= 0 ? insertIndex : null;
+    openTemplateFieldTypePopover(anchor, location, currentInsertIndex);
 }
 
 function closeModal() {
     const modal = document.getElementById('type-modal');
     if (modal) modal.style.display = 'none';
+    const popover = document.getElementById('template-field-type-popover');
+    if (popover) popover.hidden = true;
+}
+
+function createTemplateFieldTypePopover() {
+    let popover = document.getElementById('template-field-type-popover');
+    if (popover) return popover;
+
+    popover = document.createElement('div');
+    popover.id = 'template-field-type-popover';
+    popover.className = 'template-field-type-popover';
+    popover.hidden = true;
+    popover.innerHTML = `
+        <div class="template-field-type-popover-grid">
+            ${FIELD_TYPE_OPTIONS.map(([type, icon, label]) => `
+                <button type="button" class="template-field-type-option" data-template-field-type="${type}">
+                    <i class="fa-solid ${icon}"></i>
+                    <span>${label}</span>
+                </button>
+            `).join('')}
+        </div>`;
+    document.body.appendChild(popover);
+
+    popover.addEventListener('click', event => {
+        const option = event.target.closest('[data-template-field-type]');
+        if (!option) return;
+        createField(option.dataset.templateFieldType);
+    });
+
+    document.addEventListener('click', event => {
+        if (popover.hidden) return;
+        if (event.target.closest('#template-field-type-popover, .template-field-insert-btn')) return;
+        closeModal();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeModal();
+    });
+
+    return popover;
+}
+
+function openTemplateFieldTypePopover(anchor = null, location = currentTargetLocation, insertIndex = null) {
+    const popover = createTemplateFieldTypePopover();
+    const container = document.getElementById(`${location}-fields`);
+    const items = templateFieldItems(container);
+    currentTargetLocation = location;
+    currentInsertIndex = Number.isInteger(insertIndex) && insertIndex >= 0 ? insertIndex : items.length;
+    popover.hidden = false;
+
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    const popoverRect = popover.getBoundingClientRect();
+    const top = anchorRect ? anchorRect.bottom + window.scrollY + 8 : window.scrollY + 120;
+    const preferredLeft = anchorRect
+        ? anchorRect.left + window.scrollX + (anchorRect.width / 2) - (popoverRect.width / 2)
+        : window.scrollX + 24;
+    const left = Math.max(12 + window.scrollX, Math.min(preferredLeft, window.scrollX + window.innerWidth - popoverRect.width - 12));
+    popover.style.top = `${top}px`;
+    popover.style.left = `${left}px`;
+}
+
+function createTemplateInsertPoint(location, index) {
+    const point = document.createElement('div');
+    point.className = 'template-field-insert-point';
+    point.innerHTML = `
+        <button type="button" class="template-field-insert-btn" data-template-location="${location}" data-template-insert-index="${index}" title="Dodaj pole w tym miejscu">
+            <i class="fa-solid fa-plus"></i>
+        </button>`;
+    return point;
+}
+
+function refreshTemplateInsertPoints(container) {
+    if (!container) return;
+    container.querySelectorAll('.template-field-insert-point').forEach(point => point.remove());
+    const location = container.id === 'right-fields' ? 'right' : 'left';
+    const items = templateFieldItems(container);
+    if (!items.length) {
+        container.appendChild(createTemplateInsertPoint(location, 0));
+        return;
+    }
+    items.forEach((item, index) => {
+        container.insertBefore(createTemplateInsertPoint(location, index), item);
+    });
+    container.appendChild(createTemplateInsertPoint(location, items.length));
+}
+
+function removeTemplateField(btn) {
+    const item = btn.closest('.field-item');
+    const container = item?.parentElement;
+    item?.remove();
+    updateAllFieldsLocations();
+    refreshTemplateInsertPoints(container);
 }
 
 // -------------------------------------------------------
@@ -118,6 +235,102 @@ function initExistingTableFields() {
         const wrap = rc.querySelector('.add-row-btn-wrap');
         rows.forEach(r => { const d=document.createElement('div'); d.innerHTML=buildTableRowHtml(r); rc.insertBefore(d.firstElementChild,wrap); });
         bindTableRowListeners(fi);
+    });
+}
+
+function normalizeTableRowConfig(row) {
+    if (typeof row === 'string') return { key: row, label: row, type: 'text', ageFrom: '', defaultValue: '', options: [] };
+    return {
+        key: String(row?.key || row?.label || row?.name || crypto.randomUUID?.() || Date.now()),
+        label: String(row?.label || row?.name || ''),
+        type: ['text', 'date', 'image', 'list', 'age', 'select'].includes(row?.type) ? row.type : 'text',
+        ageFrom: String(row?.ageFrom || ''),
+        defaultValue: String(row?.defaultValue || ''),
+        options: Array.isArray(row?.options) ? row.options.map(option => String(option || '').trim()).filter(Boolean) : []
+    };
+}
+
+function splitTableSelectOptions(value) {
+    return String(value || '')
+        .split(/[\n,;]+/)
+        .map(option => option.trim())
+        .filter(Boolean);
+}
+
+function buildTableRowHtml(row = '') {
+    const cfg = normalizeTableRowConfig(row);
+    const esc = value => String(value || '').replace(/"/g, '&quot;');
+    return `<div class="table-row-definition" style="display:grid;grid-template-columns:minmax(130px,1fr) 110px minmax(130px,0.9fr) minmax(120px,0.9fr) minmax(150px,1fr) auto;align-items:center;gap:8px;margin-bottom:6px;">
+        <input type="hidden" class="table-row-key-input" value="${esc(cfg.key)}">
+        <input type="text" class="table-row-name-input" placeholder="Nazwa wiersza..."
+            value="${esc(cfg.label)}" style="${INPUT_STYLE}">
+        <select class="table-row-type-input" style="${INPUT_STYLE}">
+            <option value="text" ${cfg.type === 'text' ? 'selected' : ''}>Tekst</option>
+            <option value="date" ${cfg.type === 'date' ? 'selected' : ''}>Data</option>
+            <option value="image" ${cfg.type === 'image' ? 'selected' : ''}>Zdjecie</option>
+            <option value="list" ${cfg.type === 'list' ? 'selected' : ''}>Lista</option>
+            <option value="select" ${cfg.type === 'select' ? 'selected' : ''}>Wybor</option>
+            <option value="age" ${cfg.type === 'age' ? 'selected' : ''}>Wiek z daty</option>
+        </select>
+        <input type="text" class="table-row-age-from-input" placeholder="Nazwa wiersza daty"
+            value="${esc(cfg.ageFrom)}" style="${INPUT_STYLE}${cfg.type === 'age' ? '' : 'display:none;'}">
+        <input type="text" class="table-row-default-input" placeholder="Domyślna wartość"
+            value="${esc(cfg.defaultValue)}" style="${INPUT_STYLE}${cfg.type === 'text' ? '' : 'display:none;'}">
+        <input type="text" class="table-row-options-input" placeholder="Opcje po przecinku"
+            value="${esc((cfg.options || []).join(', '))}" style="${INPUT_STYLE}${cfg.type === 'select' ? '' : 'display:none;'}">
+        <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+            <button type="button" onclick="moveTableRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w gore">
+                <i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveTableRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w dol">
+                <i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="removeTableRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usun">
+                <i class="fa-solid fa-minus"></i></button>
+        </div></div>`;
+}
+
+function moveTableRow(btn, direction) {
+    const row = btn.closest('.table-row-definition');
+    const container = btn.closest('.table-rows-container');
+    if (!row || !container) return;
+    if (direction < 0 && row.previousElementSibling?.classList.contains('table-row-definition')) {
+        container.insertBefore(row, row.previousElementSibling);
+    } else if (direction > 0 && row.nextElementSibling?.classList.contains('table-row-definition')) {
+        container.insertBefore(row.nextElementSibling, row);
+    }
+    updateTablePlaceholder(btn.closest('.field-item'));
+}
+
+function updateTablePlaceholder(fi) {
+    const rows = [...fi.querySelectorAll('.table-row-definition')].map(row => {
+        const key = row.querySelector('.table-row-key-input')?.value || crypto.randomUUID?.() || Date.now().toString();
+        const label = row.querySelector('.table-row-name-input')?.value.trim() || '';
+        const type = row.querySelector('.table-row-type-input')?.value || 'text';
+        const ageFrom = row.querySelector('.table-row-age-from-input')?.value.trim() || '';
+        const defaultValue = type === 'text' ? (row.querySelector('.table-row-default-input')?.value.trim() || '') : '';
+        const options = type === 'select' ? splitTableSelectOptions(row.querySelector('.table-row-options-input')?.value || '') : [];
+        return { key, label, type, ageFrom, defaultValue, options };
+    }).filter(row => row.label);
+    const ph = fi.querySelector('.field-placeholder');
+    if (ph) ph.value = JSON.stringify({ type: 'table', rows });
+    updateGlobalDateSettings();
+}
+
+function bindTableRowListeners(fi) {
+    fi.addEventListener('input', e => {
+        if (e.target.classList.contains('table-row-name-input') || e.target.classList.contains('table-row-age-from-input') || e.target.classList.contains('table-row-default-input') || e.target.classList.contains('table-row-options-input')) {
+            updateTablePlaceholder(fi);
+        }
+    });
+    fi.addEventListener('change', e => {
+        if (!e.target.classList.contains('table-row-type-input')) return;
+        const row = e.target.closest('.table-row-definition');
+        const ageFrom = row?.querySelector('.table-row-age-from-input');
+        const defaultInput = row?.querySelector('.table-row-default-input');
+        const optionsInput = row?.querySelector('.table-row-options-input');
+        if (ageFrom) ageFrom.style.display = e.target.value === 'age' ? '' : 'none';
+        if (defaultInput) defaultInput.style.display = e.target.value === 'text' ? '' : 'none';
+        if (optionsInput) optionsInput.style.display = e.target.value === 'select' ? '' : 'none';
+        updateTablePlaceholder(fi);
     });
 }
 
@@ -237,14 +450,74 @@ function removeEraRow(btn) {
 }
 
 function updateDatePlaceholder(fi) {
-    const months = [...fi.querySelectorAll('.month-row')].map(row => ({
+    const ph = fi?.querySelector('.field-placeholder');
+    if (ph) ph.value = '';
+}
+
+function updateGlobalDateSettings() {
+    const hidden = document.getElementById('template-date-settings');
+    if (!hidden) return;
+    const months = [...document.querySelectorAll('#global-months-container .month-row')].map(row => ({
         name: row.querySelector('.month-name-input')?.value.trim() || '',
-        days: parseInt(row.querySelector('.month-days-input')?.value) || 30
-    }));
-    const eras = [...fi.querySelectorAll('.era-input')].map(i=>i.value.trim()).filter(Boolean);
-    const defaultYear = fi.querySelector('.default-year-input')?.value.trim() || '';
-    const ph = fi.querySelector('.field-placeholder');
-    if (ph) ph.value = JSON.stringify({type:'date', months, eras, defaultYear});
+        days: parseInt(row.querySelector('.month-days-input')?.value, 10) || 30
+    })).filter(month => month.name);
+    const eras = [...document.querySelectorAll('#global-eras-container .era-input')]
+        .map(input => input.value.trim())
+        .filter(Boolean);
+    const defaultYear = document.getElementById('global-default-year')?.value.trim() || String(new Date().getFullYear());
+    const currentDateMode = document.getElementById('template-current-date-mode')?.value || 'fixed';
+    const currentDateAnchor = document.getElementById('template-current-date-anchor')?.value.trim() || '';
+    hidden.value = JSON.stringify({ type: 'date', months, eras, defaultYear, currentDateMode, currentDateAnchor });
+}
+
+function addGlobalMonthRow(btn) {
+    const rc = document.getElementById('global-months-container');
+    const idx = rc.querySelectorAll('.month-row').length;
+    const d = document.createElement('div');
+    d.innerHTML = buildMonthRowHtml('', 30, idx);
+    rc.insertBefore(d.firstElementChild, btn.parentElement);
+    renumberMonths(rc);
+    updateGlobalDateSettings();
+}
+
+function addGlobalEraRow(btn) {
+    const rc = document.getElementById('global-eras-container');
+    const d = document.createElement('div');
+    d.innerHTML = buildEraRowHtml('');
+    rc.insertBefore(d.firstElementChild, btn.parentElement);
+    updateGlobalDateSettings();
+}
+
+function initGlobalDateSettings() {
+    const hidden = document.getElementById('template-date-settings');
+    if (!hidden) return;
+    let cfg = {};
+    try { cfg = JSON.parse(hidden.value || '{}'); } catch(e){}
+    const months = Array.isArray(cfg.months) && cfg.months.length ? cfg.months : DEFAULT_MONTHS;
+    const eras = Array.isArray(cfg.eras) ? cfg.eras : [];
+    const mc = document.getElementById('global-months-container');
+    const ec = document.getElementById('global-eras-container');
+    const mWrap = mc?.querySelector('.add-month-btn-wrap');
+    const eWrap = ec?.querySelector('.add-era-btn-wrap');
+    months.forEach((month, index) => {
+        const d = document.createElement('div');
+        d.innerHTML = buildMonthRowHtml(month.name, month.days, index);
+        mc.insertBefore(d.firstElementChild, mWrap);
+    });
+    eras.forEach(era => {
+        const d = document.createElement('div');
+        d.innerHTML = buildEraRowHtml(era);
+        ec.insertBefore(d.firstElementChild, eWrap);
+    });
+    const defaultYearInput = document.getElementById('global-default-year');
+    if (defaultYearInput) defaultYearInput.value = cfg.defaultYear || String(new Date().getFullYear());
+    const currentDateModeInput = document.getElementById('template-current-date-mode');
+    if (currentDateModeInput) currentDateModeInput.value = cfg.currentDateMode || 'fixed';
+    const currentDateAnchorInput = document.getElementById('template-current-date-anchor');
+    if (currentDateAnchorInput) currentDateAnchorInput.value = cfg.currentDateAnchor || '';
+    document.querySelector('.template-date-settings-panel')?.addEventListener('input', updateGlobalDateSettings);
+    document.querySelector('.template-date-settings-panel')?.addEventListener('change', updateGlobalDateSettings);
+    updateGlobalDateSettings();
 }
 
 function bindDateListeners(fi) {
@@ -259,25 +532,150 @@ function initExistingDateFields() {
     document.querySelectorAll('.field-item').forEach(fi => {
         if (fi.querySelector('.field-type')?.value !== 'date') return;
         const editor = fi.querySelector('.date-editor');
+        editor?.remove();
+        updateDatePlaceholder(fi);
+    });
+}
+
+// -------------------------------------------------------
+// ZDJECIE
+// -------------------------------------------------------
+function updateImagePlaceholder(fi) {
+    const size = fi.querySelector('.image-size-input')?.value || 'medium';
+    const ph = fi.querySelector('.field-placeholder');
+    if (ph) ph.value = JSON.stringify({type:'image', size});
+}
+
+function bindImageListeners(fi) {
+    fi.addEventListener('change', e => {
+        if (e.target.classList.contains('image-size-input')) updateImagePlaceholder(fi);
+    });
+}
+
+function initExistingImageFields() {
+    document.querySelectorAll('.field-item').forEach(fi => {
+        if (fi.querySelector('.field-type')?.value !== 'image') return;
+        const editor = fi.querySelector('.image-size-editor');
+        if (!editor) return;
+        editor.style.display = 'none';
+        let cfg = {};
+        try { cfg = JSON.parse(fi.querySelector('.field-placeholder')?.value||'{}'); } catch(e){}
+        const size = ['small', 'medium', 'large', 'full'].includes(cfg.size) ? cfg.size : 'medium';
+        const input = editor.querySelector('.image-size-input');
+        if (input) input.value = size;
+        bindImageListeners(fi);
+        updateImagePlaceholder(fi);
+    });
+}
+
+function normalizeStatsRowConfig(row) {
+    if (typeof row === 'string') return { key: row, label: row, defaultValue: '' };
+    return {
+        key: String(row?.key || row?.label || row?.name || crypto.randomUUID?.() || Date.now()),
+        label: String(row?.label || row?.name || ''),
+        defaultValue: String(row?.defaultValue ?? '')
+    };
+}
+
+function buildStatsRowHtml(row = '') {
+    const cfg = normalizeStatsRowConfig(row);
+    const esc = value => String(value || '').replace(/"/g, '&quot;');
+    return `<div class="stats-row-definition" style="display:grid;grid-template-columns:minmax(130px,1fr) minmax(90px,0.45fr) auto;align-items:center;gap:8px;margin-bottom:6px;">
+        <input type="hidden" class="stats-row-key-input" value="${esc(cfg.key)}">
+        <input type="text" class="stats-row-name-input" placeholder="Nazwa statystyki..."
+            value="${esc(cfg.label)}" style="${INPUT_STYLE}">
+        <input type="number" min="0" step="1" class="stats-row-default-input" placeholder="Domyślna"
+            value="${esc(cfg.defaultValue)}" style="${INPUT_STYLE}">
+        <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+            <button type="button" onclick="moveStatsRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w gore"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveStatsRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w dol"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="removeStatsRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usun"><i class="fa-solid fa-minus"></i></button>
+        </div>
+    </div>`;
+}
+
+function ensureStatsEditor(fi) {
+    const fc = fi.querySelector('.field-content');
+    let editor = fi.querySelector('.stats-editor');
+    if (!fc || editor) return editor;
+    fc.insertAdjacentHTML('beforeend', `<div class="stats-editor" style="${EDITOR_WRAP}">
+        <span style="${LABEL_SM}"><i class="fa-solid fa-chart-simple"></i> Pula punktow:</span>
+        <input type="number" min="0" step="1" class="stats-max-input" value="33" style="${INPUT_STYLE}width:140px;display:block;margin-bottom:10px;">
+        <span style="${LABEL_SM}"><i class="fa-solid fa-list"></i> Statystyki:</span>
+        <div class="stats-rows-container">
+            <div class="add-stat-btn-wrap"><button type="button" onclick="addStatsRow(this)" style="${DASHED_BTN}">
+                <i class="fa-solid fa-plus"></i> Dodaj statystyke</button></div>
+        </div>
+    </div>`);
+    return fi.querySelector('.stats-editor');
+}
+
+function addStatsRow(btn) {
+    const rc = btn.closest('.stats-rows-container');
+    const d = document.createElement('div');
+    d.innerHTML = buildStatsRowHtml('');
+    rc.insertBefore(d.firstElementChild, btn.parentElement);
+    updateStatsPlaceholder(btn.closest('.field-item'));
+}
+
+function removeStatsRow(btn) {
+    const fi = btn.closest('.field-item');
+    btn.closest('.stats-row-definition')?.remove();
+    updateStatsPlaceholder(fi);
+}
+
+function moveStatsRow(btn, direction) {
+    const row = btn.closest('.stats-row-definition');
+    const container = btn.closest('.stats-rows-container');
+    if (!row || !container) return;
+    if (direction < 0 && row.previousElementSibling?.classList.contains('stats-row-definition')) {
+        container.insertBefore(row, row.previousElementSibling);
+    } else if (direction > 0 && row.nextElementSibling?.classList.contains('stats-row-definition')) {
+        container.insertBefore(row.nextElementSibling, row);
+    }
+    updateStatsPlaceholder(btn.closest('.field-item'));
+}
+
+function updateStatsPlaceholder(fi) {
+    const maxPoints = Math.max(0, parseInt(fi.querySelector('.stats-max-input')?.value, 10) || 0);
+    const rows = [...fi.querySelectorAll('.stats-row-definition')].map(row => {
+        const key = row.querySelector('.stats-row-key-input')?.value || crypto.randomUUID?.() || Date.now().toString();
+        const label = row.querySelector('.stats-row-name-input')?.value.trim() || '';
+        const defaultValue = row.querySelector('.stats-row-default-input')?.value.trim() || '';
+        return { key, label, defaultValue };
+    }).filter(row => row.label);
+    const ph = fi.querySelector('.field-placeholder');
+    if (ph) ph.value = JSON.stringify({ type: 'stats', maxPoints, rows });
+}
+
+function bindStatsListeners(fi) {
+    fi.addEventListener('input', e => {
+        if (e.target.classList.contains('stats-row-name-input') || e.target.classList.contains('stats-row-default-input') || e.target.classList.contains('stats-max-input')) {
+            updateStatsPlaceholder(fi);
+        }
+    });
+}
+
+function initExistingStatsFields() {
+    document.querySelectorAll('.field-item').forEach(fi => {
+        if (fi.querySelector('.field-type')?.value !== 'stats') return;
+        const editor = ensureStatsEditor(fi);
         if (!editor) return;
         editor.style.display = 'block';
         let cfg = {};
-        try { cfg = JSON.parse(fi.querySelector('.field-placeholder')?.value||'{}'); } catch(e){}
-        const months = Array.isArray(cfg.months) ? cfg.months : [];
-        const eras   = Array.isArray(cfg.eras)   ? cfg.eras   : [];
-        const defYear = cfg.defaultYear || '';
-
-        const mc = editor.querySelector('.months-container');
-        const mWrap = mc.querySelector('.add-month-btn-wrap');
-        months.forEach((m,i) => { const d=document.createElement('div'); d.innerHTML=buildMonthRowHtml(m.name,m.days,i); mc.insertBefore(d.firstElementChild,mWrap); });
-
-        const ec = editor.querySelector('.eras-container');
-        const eWrap = ec.querySelector('.add-era-btn-wrap');
-        eras.forEach(e => { const d=document.createElement('div'); d.innerHTML=buildEraRowHtml(e); ec.insertBefore(d.firstElementChild,eWrap); });
-
-        const dyInput = editor.querySelector('.default-year-input');
-        if (dyInput) dyInput.value = defYear;
-        bindDateListeners(fi);
+        try { cfg = JSON.parse(fi.querySelector('.field-placeholder')?.value || '{}'); } catch(e){}
+        const maxInput = editor.querySelector('.stats-max-input');
+        if (maxInput) maxInput.value = Number.isFinite(parseInt(cfg.maxPoints, 10)) ? parseInt(cfg.maxPoints, 10) : 33;
+        const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+        const rc = editor.querySelector('.stats-rows-container');
+        const wrap = rc.querySelector('.add-stat-btn-wrap');
+        rows.forEach(row => {
+            const d = document.createElement('div');
+            d.innerHTML = buildStatsRowHtml(row);
+            rc.insertBefore(d.firstElementChild, wrap);
+        });
+        bindStatsListeners(fi);
+        updateStatsPlaceholder(fi);
     });
 }
 
@@ -291,6 +689,7 @@ const TYPE_META = {
     image:           { icon:'fa-image',          label:'Typ: Zdjęcie',        color:'var(--success,#27ae60)' },
     'image-gallery': { icon:'fa-images',         label:'Typ: Galeria',        color:'var(--success,#27ae60)' },
     table:           { icon:'fa-table',          label:'Typ: Tabela',         color:'var(--secondary,#8e44ad)' },
+    stats:           { icon:'fa-chart-simple',   label:'Typ: Statystyki',     color:'var(--secondary,#8e44ad)' },
     date:            { icon:'fa-calendar-days',  label:'Typ: Data',           color:'var(--warning,#e67e22)' },
     select:          { icon:'fa-chevron-down',   label:'Typ: Wybór z listy',  color:'var(--info,#2980b9)' },
 };
@@ -299,16 +698,20 @@ const TYPE_META = {
 // Tworzenie pola
 // -------------------------------------------------------
 const DEFAULT_MONTHS = [
-    {name:'Styczeń',days:31},{name:'Luty',days:28},{name:'Marzec',days:31},
-    {name:'Kwiecień',days:30},{name:'Maj',days:31},{name:'Czerwiec',days:30},
-    {name:'Lipiec',days:31},{name:'Sierpień',days:31},{name:'Wrzesień',days:30},
-    {name:'Październik',days:31},{name:'Listopad',days:30},{name:'Grudzień',days:31}
+    {name:'Styczen',days:31},{name:'Luty',days:28},{name:'Marzec',days:31},
+    {name:'Kwiecien',days:30},{name:'Maj',days:31},{name:'Czerwiec',days:30},
+    {name:'Lipiec',days:31},{name:'Sierpien',days:31},{name:'Wrzesien',days:30},
+    {name:'Pazdziernik',days:31},{name:'Listopad',days:30},{name:'Grudzien',days:31}
 ];
 
 function createField(type) {
     const container = document.getElementById(currentTargetLocation + '-fields');
     const tmpl = document.getElementById('field-template');
     if (!container || !tmpl) return;
+    container.querySelectorAll('.template-field-insert-point').forEach(point => point.remove());
+    const targetIndex = Number.isInteger(currentInsertIndex) && currentInsertIndex >= 0
+        ? currentInsertIndex
+        : templateFieldItems(container).length;
 
     const clone = tmpl.content.cloneNode(true);
     const fi = clone.querySelector('.field-item');
@@ -352,10 +755,21 @@ function createField(type) {
             <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-star"></i> Domyślny rok:</span>
             <input type="text" class="default-year-input" placeholder="np. 1200" style="${INPUT_STYLE}display:block;">
         </div>`);
+    } else if (type === 'image') {
+        fc.insertAdjacentHTML('beforeend', `<div class="image-size-editor" style="${EDITOR_WRAP}">
+            <span style="${LABEL_SM}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Rozmiar zdjęcia w podglądzie:</span>
+            <select class="image-size-input" style="${INPUT_STYLE}width:100%;">
+                <option value="small">Małe</option>
+                <option value="medium" selected>Średnie</option>
+                <option value="large">Duże</option>
+                <option value="full">Pełna szerokość</option>
+            </select>
+        </div>`);
     }
 
-    container.appendChild(clone);
-    const newItem = container.lastElementChild;
+    const before = templateFieldItems(container)[Math.min(targetIndex, templateFieldItems(container).length)] || null;
+    before ? container.insertBefore(clone, before) : container.appendChild(clone);
+    const newItem = before ? before.previousElementSibling : container.lastElementChild;
 
     // Seed danych dla nowych pól
     if (type === 'table') {
@@ -369,14 +783,34 @@ function createField(type) {
         const d = document.createElement('div'); d.innerHTML = buildSelectOptionHtml(''); rc.insertBefore(d.firstElementChild, wrap);
         bindSelectListeners(newItem);
     } else if (type === 'date') {
+        newItem.querySelector('.date-editor')?.remove();
+        newItem.querySelector('.field-placeholder').value = '';
+        updateDatePlaceholder(newItem);
+    } else if (type === 'date-legacy-unused') {
         const mc = newItem.querySelector('.months-container');
         const mWrap = mc.querySelector('.add-month-btn-wrap');
         DEFAULT_MONTHS.forEach((m,i) => { const d=document.createElement('div'); d.innerHTML=buildMonthRowHtml(m.name,m.days,i); mc.insertBefore(d.firstElementChild,mWrap); });
         bindDateListeners(newItem);
         updateDatePlaceholder(newItem);
+    } else if (type === 'image') {
+        bindImageListeners(newItem);
+        updateImagePlaceholder(newItem);
+    } else if (type === 'stats') {
+        const editor = ensureStatsEditor(newItem);
+        const rc = editor.querySelector('.stats-rows-container');
+        const wrap = rc.querySelector('.add-stat-btn-wrap');
+        ['Strength', 'Stamina', 'Agility'].forEach(name => {
+            const d = document.createElement('div');
+            d.innerHTML = buildStatsRowHtml(name);
+            rc.insertBefore(d.firstElementChild, wrap);
+        });
+        bindStatsListeners(newItem);
+        updateStatsPlaceholder(newItem);
     }
 
     updateAllFieldsLocations();
+    refreshTemplateInsertPoints(container);
+    updateGlobalDateSettings();
     closeModal();
 }
 
@@ -389,7 +823,10 @@ function syncAllPlaceholders() {
         if (type === 'table')  updateTablePlaceholder(fi);
         if (type === 'select') updateSelectPlaceholder(fi);
         if (type === 'date')   updateDatePlaceholder(fi);
+        if (type === 'image')  updateImagePlaceholder(fi);
+        if (type === 'stats')  updateStatsPlaceholder(fi);
     });
+    updateGlobalDateSettings();
 }
 
 // -------------------------------------------------------
@@ -404,6 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'opt-image':         'image',
         'opt-image-gallery': 'image-gallery',
         'opt-table':         'table',
+        'opt-stats':         'stats',
         'opt-date':          'date',
         'opt-select':        'select',
     };
@@ -415,24 +853,48 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 
     document.getElementById('template-form')?.addEventListener('submit', syncAllPlaceholders);
+    document.getElementById('template-form')?.addEventListener('input', e => {
+        if (e.target.classList.contains('field-label')) {
+            updateGlobalDateSettings();
+        }
+    });
+    document.getElementById('template-form')?.addEventListener('change', e => {
+        if (e.target.classList.contains('field-type') || e.target.classList.contains('table-row-type-input')) {
+            updateGlobalDateSettings();
+        }
+    });
 
     initExistingTableFields();
     initExistingSelectFields();
     initExistingDateFields();
+    initGlobalDateSettings();
+    initExistingImageFields();
+    initExistingStatsFields();
 
     // Drag & drop
     document.querySelectorAll('.fields-container').forEach(container => {
         container.addEventListener('dragstart', e => { e.target.closest('.field-item')?.classList.add('dragging'); });
         container.addEventListener('dragend', e => {
             const d = e.target.closest('.field-item');
-            if (d) { d.classList.remove('dragging'); updateAllFieldsLocations(); }
+            if (d) { d.classList.remove('dragging'); updateAllFieldsLocations(); refreshTemplateInsertPoints(container); }
         });
         container.addEventListener('dragover', e => {
             e.preventDefault();
             const dragging = document.querySelector('.dragging');
             if (!dragging) return;
+            container.querySelectorAll('.template-field-insert-point').forEach(point => point.remove());
             const after = getDragAfterElement(container, e.clientY);
             after == null ? container.appendChild(dragging) : container.insertBefore(dragging, after);
         });
+        container.addEventListener('click', e => {
+            const button = e.target.closest('.template-field-insert-btn');
+            if (!button) return;
+            openFieldModal(
+                button.dataset.templateLocation || (container.id === 'right-fields' ? 'right' : 'left'),
+                button,
+                Number(button.dataset.templateInsertIndex || 0)
+            );
+        });
+        refreshTemplateInsertPoints(container);
     });
 });

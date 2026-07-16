@@ -68,8 +68,10 @@ overflow: hidden;
 }
 
 .main-content {
-height: 100vh;
+min-height: 100vh;
+height: auto;
 width: 100%;
+margin-left: 0;
 }
 
 .top-header {
@@ -90,6 +92,18 @@ max-width: none;
 .content-view > div:first-child,
 .content-view > section:first-child > div:first-child {
 min-width: 0;
+}
+
+.folder-toolbar {
+align-items: flex-start;
+}
+
+.folder-toolbar-actions {
+flex-wrap: wrap;
+}
+
+.content-view.has-folder-background::before {
+left: 0;
 }
 
 .header-right {
@@ -149,6 +163,39 @@ display: none;
 padding: 16px;
 }
 
+.folder-toolbar {
+align-items: stretch;
+flex-direction: column;
+gap: 12px;
+position: static;
+background: transparent;
+backdrop-filter: none;
+padding: 0;
+}
+
+.folder-toolbar-actions {
+justify-content: flex-start;
+width: 100%;
+gap: 8px;
+}
+
+.folder-toolbar-btn {
+flex: 1 1 150px;
+min-width: 0;
+padding: 10px 12px;
+}
+
+.folder-toolbar-btn span {
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+
+.content-view.has-folder-background::before {
+top: 64px;
+left: 0;
+}
+
 .dashboard-grid {
 grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 gap: 12px;
@@ -162,7 +209,10 @@ grid-template-columns: 1fr !important;
 
 .stats-container,
 .templates-grid,
-.admin-users {
+.admin-users,
+.admin-backup-panel,
+.admin-effects-panel,
+.admin-effects-form {
 grid-template-columns: 1fr;
 gap: 14px;
 }
@@ -184,6 +234,33 @@ margin-top: 10px;
 }
 
 .admin-search {
+grid-template-columns: 1fr;
+}
+
+.admin-effect-date-row {
+grid-template-columns: 1fr;
+}
+
+.admin-effect-dates-header {
+align-items: stretch;
+flex-direction: column;
+}
+
+.folder-form-panel {
+max-height: calc(100vh - 20px);
+padding: 16px;
+}
+
+.folder-form-scroll {
+grid-template-columns: 1fr;
+}
+
+.folder-effect-controls {
+grid-template-columns: 1fr;
+justify-content: stretch;
+}
+
+.folder-image-field {
 grid-template-columns: 1fr;
 }
 

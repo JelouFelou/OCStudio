@@ -18,6 +18,9 @@ class SecurityController extends AppController{
         }
 
         if (!$this->isPost()) {
+            if (isset($_SESSION['user_id'])) {
+                $this->destroySession();
+            }
             return $this->render('login', [
                 'showCaptcha' => $this->shouldRequireCaptcha(),
                 'turnstileSiteKey' => $this->getTurnstileSiteKey()
@@ -26,6 +29,7 @@ class SecurityController extends AppController{
 
         $loginInput = trim($_POST["login"] ?? '');
         $password = $_POST["password"] ?? '';
+        $keepLoggedIn = !empty($_POST['remember_login']);
 
         if ($this->isLockedOut()) {
             http_response_code(403);
@@ -74,6 +78,8 @@ class SecurityController extends AppController{
         $_SESSION['first_name'] = $user->getFirstName(); 
         $_SESSION['last_name'] = $user->getLastName();
         $_SESSION['account_type'] = $user->getAccountType();
+        $this->applyRememberMeCookie($keepLoggedIn);
+        $this->resetRevealHiddenPreference();
 
         http_response_code(303);
         $url = $this->baseUrl();
@@ -169,7 +175,7 @@ class SecurityController extends AppController{
 
     private function ensureHttps(): bool
     {
-        if ($this->isSecureRequest() || $this->isLocalRequest()) {
+        if (!$this->shouldForceHttps() || $this->isSecureRequest() || $this->isLocalRequest()) {
             return true;
         }
 
@@ -183,6 +189,17 @@ class SecurityController extends AppController{
         http_response_code(301);
         header("Location: {$url}");
         return false;
+    }
+
+    private function shouldForceHttps(): bool
+    {
+        $value = strtolower(trim((string) getenv('FORCE_HTTPS')));
+
+        if (in_array($value, ['0', 'false', 'off', 'no'], true)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function isSecureRequest(): bool
@@ -204,6 +221,26 @@ class SecurityController extends AppController{
     {
         $scheme = $this->isSecureRequest() ? 'https' : 'http';
         return "{$scheme}://{$_SERVER['HTTP_HOST']}";
+    }
+
+    private function applyRememberMeCookie(bool $keepLoggedIn): void
+    {
+        $secure = $this->isSecureRequest();
+        $expires = $keepLoggedIn ? time() + 60 * 60 * 24 * 30 : 0;
+        setcookie('oc_keep_logged_in', $keepLoggedIn ? '1' : '', [
+            'expires' => $keepLoggedIn ? $expires : time() - 3600,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        setcookie(session_name(), session_id(), [
+            'expires' => $expires,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 
     private function isLoginInputValid(string $loginInput, string $password): bool
@@ -329,6 +366,16 @@ class SecurityController extends AppController{
     private function getTurnstileSiteKey(): ?string
     {
         return getenv('CLOUDFLARE_TURNSTILE_SITE_KEY') ?: null;
+    }
+
+    private function resetRevealHiddenPreference(): void
+    {
+        $_COOKIE['oc_reveal_hidden'] = '0';
+        setcookie('oc_reveal_hidden', '0', [
+            'expires' => time() + 60 * 60 * 24 * 365,
+            'path' => '/',
+            'samesite' => 'Lax'
+        ]);
     }
 
     private function verifyTurnstile(): bool

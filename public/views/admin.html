@@ -6,6 +6,202 @@
         </div>
     </section>
 
+    <section class="admin-backup-panel">
+        <div>
+            <h2>Backup bazy danych</h2>
+            <p>
+                Uzywaj tej funkcji wylacznie jako zabezpieczenia danych i awaryjnej kopii systemu.
+                Backup moze zawierac prywatne tresci uzytkownikow, dlatego nie naduzywaj dostepu
+                i nie przegladaj danych bez uzasadnionej potrzeby administracyjnej.
+            </p>
+            <?php if (($_GET['backup'] ?? '') === 'ok'): ?>
+                <p class="admin-backup-message success">Utworzono backup: <?= htmlspecialchars($_GET['file'] ?? '', ENT_QUOTES, 'UTF-8') ?></p>
+            <?php elseif (($_GET['backup'] ?? '') === 'error'): ?>
+                <p class="admin-backup-message error">Nie udalo sie utworzyc backupu. Sprawdz logi aplikacji.</p>
+            <?php endif; ?>
+            <?php if (($_GET['import'] ?? '') === 'ok'): ?>
+                <p class="admin-backup-message success">Import globalnego backupu zakonczony.</p>
+            <?php elseif (($_GET['import'] ?? '') === 'missing_file'): ?>
+                <p class="admin-backup-message error">Wybierz plik backupu do importu.</p>
+            <?php elseif (($_GET['import'] ?? '') === 'error'): ?>
+                <p class="admin-backup-message error">Nie udalo sie zaimportowac backupu. Sprawdz logi aplikacji.</p>
+            <?php endif; ?>
+        </div>
+        <div class="admin-backup-actions">
+            <form method="POST" action="/admin/backup">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                <button class="btn-secondary" type="submit">
+                    <i class="fa-solid fa-database"></i>
+                    Zapisz kopie bazy
+                </button>
+            </form>
+            <form method="POST" action="/admin/import" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                <label>
+                    Globalny import backupu
+                    <input type="file" name="database_import" accept=".sql,.zip,application/sql,application/zip">
+                </label>
+                <button class="btn-secondary danger" type="submit">
+                    <i class="fa-solid fa-file-import"></i>
+                    Odtworz globalnie
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <section class="admin-effects-panel">
+        <div>
+            <h2>Efekty strony</h2>
+            <p>Auto: snieg w grudniu, konfetti 31.12 i 01.01, serduszka 14.02. Reczne ustawienie nadpisuje kalendarz.</p>
+        </div>
+        <?php $effectSettings = $effectSettings ?? ['mode' => 'auto', 'symbols' => '', 'intensity' => 'medium', 'size' => 'medium', 'layer' => 'under']; ?>
+        <?php $activePageEffect = $activePageEffect ?? ['name' => 'none']; ?>
+        <form method="POST" action="/admin/effects" class="admin-effects-form">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+            <label>
+                Efekt globalny
+                <select name="effect_mode">
+                    <?php foreach ([
+                        'auto' => 'Automatyczny kalendarz',
+                        'off' => 'Wylaczony',
+                        'snow' => 'Snieg',
+                        'confetti' => 'Konfetti',
+                        'hearts' => 'Serduszka',
+                        'stars' => 'Gwiazdy',
+                        'sunrays' => 'Promienie slonca',
+                        'sakura' => 'Sakura',
+                        'custom' => 'Wlasne symbole',
+                    ] as $value => $label): ?>
+                        <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($effectSettings['mode'] ?? 'auto') === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                Intensywnosc
+                <select name="effect_intensity">
+                    <?php foreach (['low' => 'Niska', 'medium' => 'Srednia', 'high' => 'Wysoka'] as $value => $label): ?>
+                        <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($effectSettings['intensity'] ?? 'medium') === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                Wielkosc
+                <select name="effect_size">
+                    <?php foreach (['small' => 'Mala', 'medium' => 'Srednia', 'large' => 'Duza'] as $value => $label): ?>
+                        <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($effectSettings['size'] ?? 'medium') === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                Warstwa
+                <select name="effect_layer">
+                    <?php foreach (['under' => 'Pod trescia', 'over' => 'Nad trescia'] as $value => $label): ?>
+                        <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($effectSettings['layer'] ?? 'under') === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                Wlasne symbole
+                <input type="text" name="effect_symbols" maxlength="120" value="<?= htmlspecialchars($effectSettings['symbols'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="np. * + .">
+            </label>
+            <button class="btn-primary" type="submit">Zapisz efekty</button>
+            <button class="btn-secondary" type="button" id="preview-admin-effect">Podglad efektu</button>
+            <span class="admin-effects-active">Aktywny: <?= htmlspecialchars($activePageEffect['name'] ?? 'none', ENT_QUOTES, 'UTF-8') ?></span>
+            <div class="admin-effect-dates">
+                <div class="admin-effect-dates-header">
+                    <strong>Kalendarz automatyczny</strong>
+                    <button class="btn-secondary" type="button" id="add-effect-date">Dodaj date</button>
+                </div>
+                <p>Format: MM-DD co roku albo YYYY-MM-DD dla konkretnego roku. Pole "do" moze zostac puste dla pojedynczej daty.</p>
+                <div id="effect-date-list">
+                    <?php $effectDateRules = $effectSettings['dateRules'] ?? []; ?>
+                    <?php if (empty($effectDateRules)): ?>
+                        <?php $effectDateRules = [['date_start' => '', 'date_end' => '', 'effect' => 'snow', 'symbols' => '']]; ?>
+                    <?php endif; ?>
+                    <?php foreach ($effectDateRules as $rule): ?>
+                        <div class="admin-effect-date-row">
+                            <input type="text" name="effect_date_start[]" value="<?= htmlspecialchars($rule['date_start'] ?? $rule['date_value'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Od: MM-DD lub YYYY-MM-DD" pattern="(\d{2}-\d{2}|\d{4}-\d{2}-\d{2})">
+                            <input type="text" name="effect_date_end[]" value="<?= htmlspecialchars($rule['date_end'] ?? $rule['date_value'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Do: puste = jeden dzien" pattern="(\d{2}-\d{2}|\d{4}-\d{2}-\d{2})">
+                            <select name="effect_date_effect[]">
+                                <?php foreach ([
+                                    'snow' => 'Snieg',
+                                    'confetti' => 'Konfetti',
+                                    'hearts' => 'Serduszka',
+                                    'stars' => 'Gwiazdy',
+                                    'sunrays' => 'Promienie slonca',
+                                    'sakura' => 'Sakura',
+                                    'custom' => 'Wlasne symbole',
+                                ] as $value => $label): ?>
+                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($rule['effect'] ?? '') === $value ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="text" name="effect_date_symbols[]" maxlength="120" value="<?= htmlspecialchars($rule['symbols'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Symbole custom">
+                            <button class="btn-secondary admin-effect-date-remove" type="button">Usun</button>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const list = document.getElementById('effect-date-list');
+            const addBtn = document.getElementById('add-effect-date');
+            const previewBtn = document.getElementById('preview-admin-effect');
+            if (!list || !addBtn) return;
+
+            function bindRemove(row) {
+                row.querySelector('.admin-effect-date-remove')?.addEventListener('click', () => row.remove());
+            }
+
+            function makeRow() {
+                const row = document.createElement('div');
+                row.className = 'admin-effect-date-row';
+                row.innerHTML = `
+                    <input type="text" name="effect_date_start[]" value="" placeholder="Od: MM-DD lub YYYY-MM-DD" pattern="(\\d{2}-\\d{2}|\\d{4}-\\d{2}-\\d{2})">
+                    <input type="text" name="effect_date_end[]" value="" placeholder="Do: puste = jeden dzien" pattern="(\\d{2}-\\d{2}|\\d{4}-\\d{2}-\\d{2})">
+                    <select name="effect_date_effect[]">
+                        <option value="snow">Snieg</option>
+                        <option value="confetti">Konfetti</option>
+                        <option value="hearts">Serduszka</option>
+                        <option value="stars">Gwiazdy</option>
+                        <option value="sunrays">Promienie slonca</option>
+                        <option value="sakura">Sakura</option>
+                        <option value="custom">Wlasne symbole</option>
+                    </select>
+                    <input type="text" name="effect_date_symbols[]" maxlength="120" value="" placeholder="Symbole custom">
+                    <button class="btn-secondary admin-effect-date-remove" type="button">Usun</button>
+                `;
+                bindRemove(row);
+                return row;
+            }
+
+            list.querySelectorAll('.admin-effect-date-row').forEach(bindRemove);
+            addBtn.addEventListener('click', () => list.appendChild(makeRow()));
+            previewBtn?.addEventListener('click', () => {
+                const form = previewBtn.closest('form');
+                window.OCPageEffects?.preview({
+                    effect: form?.querySelector('[name="effect_mode"]')?.value || 'none',
+                    symbols: form?.querySelector('[name="effect_symbols"]')?.value || '',
+                    intensity: form?.querySelector('[name="effect_intensity"]')?.value || 'medium',
+                    size: form?.querySelector('[name="effect_size"]')?.value || 'medium',
+                    layer: form?.querySelector('[name="effect_layer"]')?.value || 'over',
+                });
+            });
+        });
+    </script>
+
     <form class="admin-search" method="GET" action="/admin">
         <input
             type="search"
@@ -19,6 +215,34 @@
             <a class="btn-secondary" href="/admin">Wyczysc</a>
         <?php endif; ?>
     </form>
+
+    <section class="admin-activity-panel">
+        <div class="admin-activity-header">
+            <h2>Ostatnie działania admina</h2>
+            <span>Audyt prywatności i bezpieczeństwa</span>
+        </div>
+        <?php if (!empty($adminActivityLogs)): ?>
+            <div class="admin-activity-list">
+                <?php foreach ($adminActivityLogs as $log): ?>
+                    <article class="admin-activity-item">
+                        <strong><?= htmlspecialchars($log['action'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        <span><?= htmlspecialchars($log['created_at'], ENT_QUOTES, 'UTF-8') ?></span>
+                        <small>
+                            <?= htmlspecialchars($log['username'] ?: $log['email'] ?: ('Admin #' . (int)$log['admin_user_id']), ENT_QUOTES, 'UTF-8') ?>
+                            <?php if (!empty($log['target_type'])): ?>
+                                · <?= htmlspecialchars($log['target_type'], ENT_QUOTES, 'UTF-8') ?><?= !empty($log['target_id']) ? ' #' . (int)$log['target_id'] : '' ?>
+                            <?php endif; ?>
+                            <?php if (!empty($log['details'])): ?>
+                                · <?= htmlspecialchars($log['details'], ENT_QUOTES, 'UTF-8') ?>
+                            <?php endif; ?>
+                        </small>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p class="admin-empty">Brak zapisanych działań.</p>
+        <?php endif; ?>
+    </section>
 
     <div class="admin-users">
         <?php if (!empty($adminUsers)): ?>

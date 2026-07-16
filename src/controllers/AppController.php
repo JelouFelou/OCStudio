@@ -1,6 +1,8 @@
 <?php
 
 class AppController {
+    private const AUTH_TEMPLATES = ['login', 'register', 'forgot_password'];
+
     protected function isGet(): bool
     {
         return $_SERVER["REQUEST_METHOD"] === 'GET';
@@ -9,6 +11,40 @@ class AppController {
     protected function isPost(): bool
     {
         return $_SERVER["REQUEST_METHOD"] === 'POST';
+    }
+
+    protected function requireJsonPost(): array
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->isPost()) {
+            $this->jsonResponse(['error' => 'Method not allowed'], 405);
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        return is_array($input) ? $input : [];
+    }
+
+    protected function jsonResponse(array $payload, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit();
+    }
+
+    protected function jsonError(string $message, int $status = 400, array $extra = []): void
+    {
+        $this->jsonResponse(array_merge(['error' => $message], $extra), $status);
+    }
+
+    protected function jsonException(Throwable $e, string $fallbackMessage = 'Nie udalo sie wykonac operacji.'): void
+    {
+        $code = $e->getCode();
+        $status = ($code >= 400 && $code <= 599) ? $code : 500;
+        $message = $status === 500 ? $fallbackMessage : $e->getMessage();
+
+        $this->jsonError($message, $status);
     }
 
     protected function requireLogin()
@@ -67,34 +103,25 @@ class AppController {
     {
         // Określamy ścieżkę bazową do widoków
         $basePath = __DIR__.'/../../public/views/';
-        $variables['userSettings'] = $variables['userSettings'] ?? $this->getUserInterfaceSettings();
-        $authTemplates = ['login', 'register', 'forgot_password'];
+        $__viewName = (string)$template;
+        $variables = $this->prepareLayoutVariables($__viewName, $variables);
         
-        $templatePath = $basePath . $template . '.html';
+        $templatePath = $basePath . $__viewName . '.html';
         $headPath = $basePath . 'partials/head.html';
+        $mediaFramePath = $basePath . 'partials/media-frame.html';
+        $mediaUploadPath = $basePath . 'partials/media-upload.html';
         $navPath = $basePath . 'partials/nav.html';
         
         // Pobierz światy użytkownika dla nav (tylko jeśli jest zalogowany)
-        if (!in_array($template, $authTemplates, true) && isset($_SESSION['user_id'])) {
-            if (!isset($variables['worlds'])) {
-                require_once __DIR__ . '/../repositories/WorldRepository.php';
-                $worldRepository = new WorldRepository();
-                // Pobierz tylko pierwsze podfoldery (bez root-a)
-                $variables['worlds'] = $worldRepository->getChildWorlds($_SESSION['user_id'], null);
-            }
-
-            if (!isset($variables['storage'])) {
-                $variables['storage'] = $this->getUserStorageStats((int) $_SESSION['user_id']);
-            }
-
-            if (!isset($variables['isAdmin'])) {
-                $variables['isAdmin'] = (int)($_SESSION['account_type'] ?? 0) === 1;
-            }
-        }
-        
         if(file_exists($templatePath)){
             extract($variables);
             ob_start();
+            if (file_exists($mediaFramePath)) {
+                require_once $mediaFramePath;
+            }
+            if (file_exists($mediaUploadPath)) {
+                require_once $mediaUploadPath;
+            }
             
             // Dołączamy nagłówek
             if (file_exists($headPath)) {
@@ -104,14 +131,14 @@ class AppController {
             
             
             // Jeśli to nie jest login, dołączamy nawigację
-            if (!in_array($template, $authTemplates, true) && file_exists($navPath)) {
+            if (!$this->isAuthTemplate($__viewName) && file_exists($navPath)) {
                 include $navPath;
             }
 
             include $templatePath;
 
             // Domykamy tagi, jeśli to nie login
-            if (!in_array($template, $authTemplates, true)) {
+            if (!$this->isAuthTemplate($__viewName)) {
                 echo '    </main>'; 
                 echo '</div>';      
             }
@@ -127,31 +154,78 @@ class AppController {
         echo $output;
     }
 
+    private function prepareLayoutVariables(?string $template, array $variables): array
+    {
+        $variables['userSettings'] = $variables['userSettings'] ?? $this->getUserInterfaceSettings();
+
+        if ($this->isAuthTemplate($template) || !isset($_SESSION['user_id'])) {
+            return $variables;
+        }
+
+        $userId = (int) $_SESSION['user_id'];
+
+        if (!isset($variables['worlds'])) {
+            require_once __DIR__ . '/../repositories/WorldRepository.php';
+            $worldRepository = new WorldRepository();
+            $variables['worlds'] = $worldRepository->getChildWorlds(
+                $userId,
+                null,
+                !empty($variables['userSettings']['revealHidden'])
+            );
+        }
+
+        if (!isset($variables['storage'])) {
+            $variables['storage'] = $this->getUserStorageStats($userId);
+        }
+
+        if (!isset($variables['adultImageFilenames'])) {
+            $variables['adultImageFilenames'] = $this->getAdultImageFilenames($userId);
+        }
+
+        if (!isset($variables['isAdmin'])) {
+            $variables['isAdmin'] = (int)($_SESSION['account_type'] ?? 0) === 1;
+        }
+
+        if (!isset($variables['pageEffect'])) {
+            $variables['pageEffect'] = $this->getActivePageEffect();
+        }
+
+        return $variables;
+    }
+
+    private function isAuthTemplate(?string $template): bool
+    {
+        return in_array($template, self::AUTH_TEMPLATES, true);
+    }
+
+    private function getAdultImageFilenames(int $userId): array
+    {
+        try {
+            require_once __DIR__ . '/../repositories/ImageRepository.php';
+            return (new ImageRepository())->listAdultFilenames($userId);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function getActivePageEffect(): array
+    {
+        try {
+            require_once __DIR__ . '/../repositories/SiteEffectRepository.php';
+            return (new SiteEffectRepository())->activeEffect();
+        } catch (Throwable $e) {
+            return ['name' => 'none', 'symbols' => '', 'intensity' => 'medium'];
+        }
+    }
+
     protected function getUserStorageStats(int $userId): array
     {
         $limitBytes = 500 * 1024 * 1024;
         $bytes = 0;
-        $filenames = [];
 
         try {
-            require_once __DIR__ . '/../repositories/CharacterRepository.php';
-            $characterRepository = new CharacterRepository();
-
-            foreach ($characterRepository->getCharactersByUserId($userId) as $character) {
-                $this->collectImageFilename($filenames, $character->getImage());
-
-                foreach ($characterRepository->getCharacterVariants($character->getId()) as $variant) {
-                    $this->collectImageFilename($filenames, $variant['image'] ?? null);
-                }
-            }
-
-            $uploadDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
-            foreach (array_keys($filenames) as $filename) {
-                $path = $uploadDir . $filename;
-                if (is_file($path)) {
-                    $bytes += filesize($path) ?: 0;
-                }
-            }
+            require_once __DIR__ . '/../repositories/ImageRepository.php';
+            $bytes = (new ImageRepository())->getStorageBytes($userId);
         } catch (Throwable $e) {
             $bytes = 0;
         }
@@ -177,19 +251,6 @@ class AppController {
         ];
     }
 
-    private function collectImageFilename(array &$filenames, ?string $image): void
-    {
-        $image = trim((string) $image);
-        if ($image === '' || in_array($image, ['default.png', 'default.jpg', 'default_dark.png'], true)) {
-            return;
-        }
-
-        $filename = basename($image);
-        if ($filename !== '' && $filename === $image) {
-            $filenames[$filename] = true;
-        }
-    }
-
     protected function getUserInterfaceSettings(): array
     {
         $theme = $_COOKIE['oc_theme'] ?? 'light';
@@ -209,6 +270,10 @@ class AppController {
             'theme' => $theme,
             'accent' => $accent,
             'columns' => $columns,
+            'revealHidden' => ($_COOKIE['oc_reveal_hidden'] ?? '0') === '1',
+            'revealAdultImages' => ($_COOKIE['oc_reveal_adult_images'] ?? '0') === '1',
+            'rememberCharacterVariant' => ($_COOKIE['oc_remember_character_variant'] ?? '0') === '1',
+            'defaultCharacterImage' => $theme === 'dark' ? 'default_dark.png' : 'default.png',
         ];
     }
 
@@ -258,13 +323,23 @@ class AppController {
         return strtotime($bannedUntil) > time();
     }
 
-    private function destroySession(): void
+    protected function destroySession(): void
     {
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();
             setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
         }
+        setcookie('oc_keep_logged_in', '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'secure' => (
+                (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+                (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+            ),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
         session_destroy();
     }
 }

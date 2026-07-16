@@ -1,0 +1,186 @@
+.oc-page-effects {
+    position: fixed;
+    inset: 70px 0 0 var(--sidebar-w, 260px);
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    contain: layout paint;
+}
+
+.oc-folder-bg-layer {
+    position: fixed;
+    inset: 70px 0 0 var(--sidebar-w, 260px);
+    z-index: 0;
+    pointer-events: none;
+    background: var(--folder-page-bg) center center / cover no-repeat;
+}
+
+.content-view.has-folder-background > .oc-folder-bg-layer {
+    position: fixed;
+    z-index: 0;
+}
+
+.content-view.has-folder-background.has-page-effect-layer::before {
+    display: none;
+}
+
+.content-view > .oc-page-effects {
+    z-index: 0 !important;
+}
+
+.content-view > :not(.oc-page-effects):not(.oc-folder-bg-layer) {
+    position: relative;
+    z-index: 1;
+}
+
+.content-view.has-folder-background > .oc-page-effects {
+    position: fixed;
+    inset: 70px 0 0 var(--sidebar-w, 260px);
+    z-index: 1 !important;
+    opacity: 1;
+}
+
+.content-view > .oc-page-effects.is-effect-over,
+.content-view.has-folder-background > .oc-page-effects.is-effect-over {
+    z-index: 1200 !important;
+}
+
+.content-view.has-folder-background > :not(.oc-page-effects):not(.oc-folder-bg-layer) {
+    z-index: 2;
+}
+
+.content-view:not(.has-folder-background) > .oc-page-effects {
+    opacity: 0.9;
+}
+
+.oc-effect-particle {
+    position: absolute;
+    top: -10vh;
+    left: var(--x, 50%);
+    color: var(--effect-color, rgba(255,255,255,0.88));
+    font-size: var(--size, 14px);
+    line-height: 1;
+    opacity: var(--opacity, 0.72);
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+    animation: oc-effect-fall var(--duration, 12s) linear var(--delay, 0s) infinite;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    will-change: transform;
+}
+
+.oc-page-effects[data-effect="confetti"] .oc-effect-particle {
+    width: var(--size, 9px);
+    height: calc(var(--size, 9px) * 1.55);
+    border-radius: 2px;
+    background: var(--effect-color, #7B61FF);
+    color: transparent;
+}
+
+.oc-page-effects[data-effect="stars"] .oc-effect-particle {
+    top: var(--y, 50%);
+    transform: translate3d(-50%, -50%, 0) scale(0.62);
+    animation: oc-effect-twinkle var(--duration, 4.8s) ease-in-out var(--delay, 0s) infinite;
+    text-shadow:
+        0 0 5px rgba(255, 255, 255, 0.95),
+        0 0 14px rgba(155, 196, 255, 0.78),
+        0 0 28px rgba(122, 97, 255, 0.42),
+        0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+.oc-page-effects[data-effect="sakura"] .oc-effect-particle {
+    animation: oc-effect-sakura var(--duration, 15s) ease-in-out var(--delay, 0s) infinite;
+    text-shadow:
+        0 1px 4px rgba(126, 38, 80, 0.2),
+        0 0 10px rgba(255, 196, 224, 0.42);
+    transform-origin: center;
+}
+
+.oc-page-effects[data-effect="sunrays"] {
+    background:
+        linear-gradient(118deg, transparent 0 44%, rgba(255, 230, 150, 0.09) 48%, transparent 57%),
+        linear-gradient(128deg, transparent 0 55%, rgba(255, 255, 230, 0.13) 60%, transparent 69%),
+        linear-gradient(104deg, transparent 0 66%, rgba(255, 214, 118, 0.07) 70%, transparent 78%);
+    background-size: 135% 135%, 160% 160%, 120% 120%;
+    animation: oc-sunrays 8s ease-in-out infinite alternate;
+    opacity: 0.95;
+}
+
+.oc-page-effects[data-effect="sunrays"] .oc-effect-particle {
+    display: none;
+}
+
+@keyframes oc-effect-fall {
+    from {
+        transform: translate3d(0, -12vh, 0) rotate(0deg);
+    }
+    to {
+        transform: translate3d(var(--drift, 24px), 112vh, 0) rotate(var(--spin, 180deg));
+    }
+}
+
+@keyframes oc-effect-twinkle {
+    0%, 100% {
+        opacity: 0.22;
+        transform: translate3d(-50%, -50%, 0) scale(0.58) rotate(-8deg);
+        filter: brightness(1);
+    }
+    42% {
+        opacity: var(--opacity, 0.86);
+        transform: translate3d(-50%, -50%, 0) scale(1.18) rotate(6deg);
+        filter: brightness(1.8);
+    }
+    64% {
+        opacity: 0.42;
+        transform: translate3d(-50%, -50%, 0) scale(0.76) rotate(2deg);
+        filter: brightness(1.15);
+    }
+}
+
+@keyframes oc-effect-sakura {
+    0% {
+        transform: translate3d(0, -12vh, 0) rotate(0deg) scale(0.86);
+        opacity: 0;
+    }
+    10% {
+        opacity: var(--opacity, 0.78);
+    }
+    35% {
+        transform: translate3d(var(--sway, 42px), 32vh, 0) rotate(calc(var(--spin, 420deg) * .35)) scale(1);
+    }
+    70% {
+        transform: translate3d(calc(var(--drift, 24px) - var(--sway, 42px)), 74vh, 0) rotate(calc(var(--spin, 420deg) * .72)) scale(0.94);
+    }
+    100% {
+        transform: translate3d(var(--drift, 24px), 112vh, 0) rotate(var(--spin, 420deg)) scale(0.88);
+        opacity: 0;
+    }
+}
+
+@keyframes oc-sunrays {
+    0% {
+        background-position: 8% 50%, 100% 45%, 72% 65%;
+        filter: brightness(1) saturate(1);
+        transform: translate3d(0, 0, 0) skewX(0deg);
+    }
+    50% {
+        background-position: 18% 54%, 86% 52%, 62% 60%;
+        filter: brightness(1.12) saturate(1.08);
+    }
+    100% {
+        background-position: 3% 58%, 76% 56%, 52% 68%;
+        filter: brightness(1.04) saturate(1.02);
+        transform: translate3d(-16px, 0, 0) skewX(-1deg);
+    }
+}
+
+@media (max-width: 1100px) {
+    .oc-page-effects,
+    .oc-folder-bg-layer {
+        inset: 64px 0 0 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .oc-page-effects {
+        display: none;
+    }
+}
