@@ -3,25 +3,24 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
             <div>
                 <h1 style="margin:0;font-size:1.4rem;">Dashboard</h1>
-                <p style="margin:6px 0 0;color:var(--text-muted,#777);">Do 6 postaci losowo, z priorytetem niedokończonych. Pełna lista w zakładce Postacie.</p>
+                <p style="margin:6px 0 0;color:var(--text-muted,#777);">Bezpieczny podglad ostatnich postaci, historii i szablonow.</p>
             </div>
-            <a href="/characters" class="btn-primary" style="padding:10px 18px;font-size:0.95rem;">Przejdź do Postacie</a>
+            <a href="/characters" class="btn-primary" style="padding:10px 18px;font-size:0.95rem;">Przejdz do Postaci</a>
         </div>
     </section>
 
-    <!-- Statystyki -->
     <div class="stats-container">
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-person"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Wszystkie postacie</span>
+                <span class="stat-label">Postacie</span>
                 <span class="stat-value"><?= isset($characterCount) ? $characterCount : 0; ?></span>
             </div>
         </div>
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-file-code"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Szablony postaci</span>
+                <span class="stat-label">Szablony</span>
                 <span class="stat-value"><?= isset($templateCount) ? $templateCount : 0; ?></span>
             </div>
         </div>
@@ -32,51 +31,103 @@
                 <span class="stat-value"><?= isset($worldCount) ? $worldCount : 0; ?></span>
             </div>
         </div>
+        <div class="stat-card">
+            <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
+            <div class="stat-info">
+                <span class="stat-label">Historie</span>
+                <span class="stat-value"><?= isset($storyCount) ? $storyCount : 0; ?></span>
+            </div>
+        </div>
     </div>
 
-    <div class="dashboard-grid">
-        <?php if(isset($characters) && is_array($characters)): ?>
-            <?php foreach ($characters as $char): ?>
-                <?php 
-                    $isDraggable = false;
-                    $showAddStatusBtn = false;
-                    $showFilters = false;
-                    include 'partials/character-card-block.html'; 
-                ?>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    </div>
-
-    <?php if(isset($characterCount) && $characterCount > 6): ?>
-        <div style="text-align:center;margin-top:20px;">
-            <a href="/characters" class="btn-secondary" style="padding:10px 20px;">Pokaż wszystkie postacie</a>
+    <?php if(isset($characters) && is_array($characters) && !empty($characters)): ?>
+        <section class="dashboard-section">
+            <div class="dashboard-section-header">
+                <h2>Postacie</h2>
+                <a href="/characters" class="btn-secondary">Wszystkie</a>
+            </div>
+            <div class="dashboard-grid">
+                <?php foreach ($characters as $char): ?>
+                    <?php
+                        $isDraggable = false;
+                        $showAddStatusBtn = false;
+                        $showFilters = false;
+                        include 'partials/character-card-block.html';
+                    ?>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php else: ?>
+        <div class="oc-empty-state">
+            <i class="fa-solid fa-person-circle-plus"></i>
+            <p>Nie masz jeszcze widocznych postaci.</p>
+            <a href="/createCharacter" class="btn-primary">Dodaj postac</a>
         </div>
     <?php endif; ?>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const slider     = document.getElementById('column-slider');
-            const columnText = document.getElementById('column-count');
+    <?php if(isset($stories) && is_array($stories) && !empty($stories)): ?>
+        <section class="dashboard-section">
+            <div class="dashboard-section-header">
+                <h2>Historie</h2>
+                <a href="/stories" class="btn-secondary">Wszystkie</a>
+            </div>
+            <div class="dashboard-story-grid">
+                <?php foreach($stories as $story): ?>
+                    <?php
+                        $filters = $storyFiltersById[$story->getId()] ?? [];
+                        $storyDate = trim($story->getStoryDate());
+                        $storyImage = trim((string)$story->getImage());
+                        $storyDefaultImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_story_dark.png' : 'default_story.png';
+                        $storyImage = in_array($storyImage, ['default_story.png', 'default_story.jpg', 'default_story_dark.png', ''], true) ? $storyDefaultImage : $storyImage;
+                        $storyImageVars = '--story-cover-fit:' . htmlspecialchars($story->getCardImageFit(), ENT_QUOTES, 'UTF-8')
+                            . ';--story-cover-focus-x:' . (int)$story->getCardImageFocusX() . '%'
+                            . ';--story-cover-focus-y:' . (int)$story->getCardImageFocusY() . '%'
+                            . ';--story-cover-zoom:' . htmlspecialchars((string)$story->getCardImageZoom(), ENT_QUOTES, 'UTF-8') . ';';
+                    ?>
+                    <a class="story-tile-card story-list-card" href="/story/<?= htmlspecialchars($story->getPublicId(), ENT_QUOTES, 'UTF-8') ?>" style="<?= $storyImageVars ?>">
+                        <?php oc_render_media_frame([
+                            'variant' => 'story-card',
+                            'src' => '/public/uploads/' . $storyImage,
+                            'alt' => 'Okladka historii',
+                        ]); ?>
+                        <?php oc_render_tile_body([
+                            'class' => 'story-preview-body',
+                            'title' => $storyDate !== '' ? $storyDate . ' - ' . $story->getTitle() : $story->getTitle(),
+                            'description' => $story->getDescription(),
+                            'filters' => $filters,
+                            'maxFilters' => 4,
+                        ]); ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php endif; ?>
 
-            if (!slider) return;
-
-            function adjustSliderLimits() {
-                const width = window.innerWidth;
-                if (width < 800)       { slider.max = 3; if (slider.value > 3) slider.value = 3; }
-                else if (width < 1200) { slider.max = 6; }
-                else                   { slider.max = 10; }
-                document.documentElement.style.setProperty('--grid-columns', slider.value);
-                if (columnText) columnText.innerText = slider.value;
-            }
-
-            window.addEventListener('resize', adjustSliderLimits);
-            adjustSliderLimits();
-
-            slider.addEventListener('input', function () {
-                if (columnText) columnText.innerText = this.value;
-                document.documentElement.style.setProperty('--grid-columns', this.value);
-                localStorage.setItem('dashboard-columns', this.value);
-            });
-        });
-    </script>
+    <?php if(isset($templates) && is_array($templates) && !empty($templates)): ?>
+        <section class="dashboard-section">
+            <div class="dashboard-section-header">
+                <h2>Szablony</h2>
+                <a href="/templates" class="btn-secondary">Wszystkie</a>
+            </div>
+            <div class="templates-grid dashboard-template-grid">
+                <?php foreach($templates as $template): ?>
+                    <?php $filters = $templateFiltersById[$template->getId()] ?? []; ?>
+                    <a class="template-card" href="/templates/<?= htmlspecialchars($template->getPublicId(), ENT_QUOTES, 'UTF-8') ?>/edit">
+                        <div class="template-top-row">
+                            <div class="template-icon">
+                                <i class="fa-solid fa-file-invoice"></i>
+                            </div>
+                            <div class="template-info">
+                                <h3><?= htmlspecialchars($template->getName(), ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p><?= htmlspecialchars($template->getDescription(), ENT_QUOTES, 'UTF-8') ?></p>
+                            </div>
+                        </div>
+                        <?php if(!empty($filters)): ?>
+                            <small class="dashboard-template-filters"><?= htmlspecialchars(implode(', ', array_slice(array_map(fn($filter) => $filter->getName(), $filters), 0, 4)), ENT_QUOTES, 'UTF-8') ?></small>
+                        <?php endif; ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </section>
+    <?php endif; ?>
 </div>

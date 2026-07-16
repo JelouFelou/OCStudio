@@ -1,0 +1,606 @@
+<?php
+$worldId = $story->getIdWorld();
+$returnUrl = $oldInput['return_url'] ?? ($_SERVER['HTTP_REFERER'] ?? "/stories?world=$worldId");
+$messages = $messages ?? [];
+$message = $message ?? '';
+$storyTitle = (string)($oldInput['title'] ?? $story->getTitle());
+$storyDescription = (string)($oldInput['description'] ?? $story->getDescription());
+$storyDate = (string)($oldInput['story_date'] ?? $story->getStoryDate());
+$storyImage = trim((string)($oldInput['image'] ?? $story->getImage() ?? 'default_story.png'));
+$storyImage = $storyImage !== '' ? $storyImage : 'default_story.png';
+$storyDefaultImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_story_dark.png' : 'default_story.png';
+$storyPreviewImage = in_array($storyImage, ['default_story.png', 'default_story.jpg', 'default_story_dark.png', ''], true)
+    ? $storyDefaultImage
+    : $storyImage;
+$storyImageFit = $oldInput['image_fit'] ?? $story->getImageFit();
+$storyImageFocusX = (int)($oldInput['image_focus_x'] ?? $story->getImageFocusX());
+$storyImageFocusY = (int)($oldInput['image_focus_y'] ?? $story->getImageFocusY());
+$storyImageZoom = (float)($oldInput['image_zoom'] ?? $story->getImageZoom());
+$storyCardImageFit = $oldInput['card_image_fit'] ?? $story->getCardImageFit();
+$storyCardImageFocusX = (int)($oldInput['card_image_focus_x'] ?? $story->getCardImageFocusX());
+$storyCardImageFocusY = (int)($oldInput['card_image_focus_y'] ?? $story->getCardImageFocusY());
+$storyCardImageZoom = (float)($oldInput['card_image_zoom'] ?? $story->getCardImageZoom());
+$storyImageVars = "--story-cover-fit:" . htmlspecialchars($storyImageFit, ENT_QUOTES, 'UTF-8') . ";--story-cover-focus-x:{$storyImageFocusX}%;--story-cover-focus-y:{$storyImageFocusY}%;--story-cover-zoom:{$storyImageZoom};";
+$storyCardImageVars = "--story-cover-fit:" . htmlspecialchars($storyCardImageFit, ENT_QUOTES, 'UTF-8') . ";--story-cover-focus-x:{$storyCardImageFocusX}%;--story-cover-focus-y:{$storyCardImageFocusY}%;--story-cover-zoom:{$storyCardImageZoom};";
+$storyStatuses = [
+    'draft' => ['name' => 'Do zrobienia', 'color' => '#E74C3C'],
+    'in_progress' => ['name' => 'W trakcie', 'color' => '#F39C12'],
+    'published' => ['name' => 'Gotowa', 'color' => '#27AE60'],
+    'archived' => ['name' => 'Archiwum', 'color' => '#6C757D'],
+];
+$storyStatus = $storyStatuses[$story->getStatus()] ?? $storyStatuses['draft'];
+$storyInheritedFilters = $storyInheritedFilters ?? [];
+$storyDirectFilters = $storyDirectFilters ?? [];
+$storyDirectFilterTags = $storyDirectFilterTags ?? null;
+if ($storyDirectFilterTags === null) {
+    $storyDirectFilterTags = implode(', ', array_map(fn($filter) => $filter->getName(), $storyDirectFilters));
+}
+$storyDirectFilterTags = trim((string)$storyDirectFilterTags);
+$defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+$characterImageSrc = function (?string $image) use ($defaultCharacterImage): string {
+    $image = trim((string)$image);
+    $resolved = in_array($image, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $image;
+    return '/public/uploads/' . htmlspecialchars($resolved, ENT_QUOTES, 'UTF-8');
+};
+?>
+
+<div class="template-container story-edit-container">
+    <header class="template-header story-template-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+        <div class="header-info">
+            <h1>
+                <?= htmlspecialchars($story->getTitle(), ENT_QUOTES, 'UTF-8') ?>
+            </h1>
+            <p>Edytuj swoją historię.</p>
+        </div>
+
+        <div class="header-actions" style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary" onclick="window.location.href='<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>'">Anuluj</button>
+            <button type="submit" form="story-form" class="btn-primary">Zapisz historię</button>
+        </div>
+        <div class="story-header-filter-panel">
+            <div class="story-header-filter-row">
+                <span class="story-header-filter-label">Dziedziczone filtry</span>
+                <div class="story-header-filter-chips">
+                    <?php if (!empty($storyInheritedFilters)): ?>
+                        <?php foreach ($storyInheritedFilters as $filter): ?>
+                            <span class="story-filter-chip is-inherited"><?= htmlspecialchars($filter->getName(), ENT_QUOTES, 'UTF-8') ?></span>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <span class="story-filter-empty">Brak dziedziczonych filtrow</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <label class="story-header-filter-row story-header-filter-input-row">
+                <span class="story-header-filter-label">Filtry historii</span>
+                <input type="text"
+                       class="tag-input"
+                       data-tag-input
+                       name="filter_tags"
+                       form="story-form"
+                       value="<?= htmlspecialchars($storyDirectFilterTags, ENT_QUOTES, 'UTF-8') ?>"
+                       placeholder="np. adult, romans, horror">
+            </label>
+        </div>
+    </header>
+
+    <?php if (!empty($messages)): ?>
+        <?php foreach ($messages as $msg): ?>
+            <div class="messages">
+                <i class="fa-solid fa-circle-exclamation"></i> <?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8'); ?>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
+    <form id="story-form" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="return_url" value="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>">
+
+        <!-- PODSTAWOWE INFORMACJE -->
+        <section class="story-create-layout story-cover-editor-layout" style="margin-bottom: 20px;">
+            <div class="story-create-main story-cover-form-panel">
+                <h2>Podstawowe informacje</h2>
+
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label>Tytul historii <span style="color: red;">*</span></label>
+                    <input type="text" name="title" id="story-title-input" value="<?= htmlspecialchars($storyTitle, ENT_QUOTES, 'UTF-8') ?>" placeholder="Np. Spotkanie w karczmie" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Opis</label>
+                    <textarea name="description" id="story-description-input" rows="4" placeholder="Krotko opisz historie..."><?= htmlspecialchars($storyDescription, ENT_QUOTES, 'UTF-8') ?></textarea>
+                </div>
+
+                <div class="input-group">
+                    <label>Data historii</label>
+                    <input type="text" name="story_date" value="<?= htmlspecialchars($storyDate, ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2077, 113 l.s. albo 2026-06-21">
+                </div>
+
+                <div class="input-group">
+                    <label>Nazwa rozgalezienia timeline</label>
+                    <input type="text" name="timeline_branch_name" value="<?= htmlspecialchars($story->getTimelineBranchName(), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. Alternatywna rzeczywistosc">
+                </div>
+
+                <div class="input-group">
+                    <label>Kiedy sie rozgalezia</label>
+                    <input type="text" name="timeline_split_date" value="<?= htmlspecialchars($story->getTimelineSplitDate(), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2077, 113 l.s. albo 2026-06-21">
+                </div>
+
+                <div class="input-group">
+                    <label>Kiedy wraca na glowna linie</label>
+                    <input type="text" name="timeline_merge_date" value="<?= htmlspecialchars($story->getTimelineMergeDate(), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2079">
+                </div>
+
+                <div class="story-cover-framing-panel">
+                    <h3>Okładka w podglądzie historii</h3>
+                    <div class="story-cover-framing-actions" hidden>
+                        <button type="button"
+                                class="story-cover-framing-toggle"
+                                id="story-cover-framing-toggle"
+                                aria-expanded="false"
+                                aria-controls="story-cover-framing-body">
+                            <i class="fa-solid fa-sliders"></i>
+                            Dostosuj
+                        </button>
+                    </div>
+                    <div class="story-cover-control-switches" id="story-cover-control-switches" hidden>
+                        <button type="button" class="story-cover-control-switch is-active" data-story-cover-target="card">
+                            Kontrola okładki
+                        </button>
+                        <button type="button" class="story-cover-control-switch" data-story-cover-target="reader">
+                            Kontrola okładki w podglądzie historii
+                        </button>
+                    </div>
+                    <input type="hidden" name="image_fit" id="story-cover-fit" value="<?= htmlspecialchars($storyImageFit, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="image_focus_x" id="story-cover-focus-x" value="<?= (int)$storyImageFocusX ?>">
+                    <input type="hidden" name="image_focus_y" id="story-cover-focus-y" value="<?= (int)$storyImageFocusY ?>">
+                    <input type="hidden" name="image_zoom" id="story-cover-zoom" value="<?= htmlspecialchars((string)$storyImageZoom, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="card_image_fit" id="story-card-cover-fit" value="<?= htmlspecialchars($storyCardImageFit, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="card_image_focus_x" id="story-card-cover-focus-x" value="<?= (int)$storyCardImageFocusX ?>">
+                    <input type="hidden" name="card_image_focus_y" id="story-card-cover-focus-y" value="<?= (int)$storyCardImageFocusY ?>">
+                    <input type="hidden" name="card_image_zoom" id="story-card-cover-zoom" value="<?= htmlspecialchars((string)$storyCardImageZoom, ENT_QUOTES, 'UTF-8') ?>">
+                    <div class="image-frame-controls story-cover-frame-controls" id="story-cover-framing-body" hidden>
+                        <label>
+                            Dopasowanie
+                            <select id="story-cover-fit-select">
+                                <option value="cover" <?= $storyImageFit === 'cover' ? 'selected' : '' ?>>Wypełnij ramkę</option>
+                                <option value="contain" <?= $storyImageFit === 'contain' ? 'selected' : '' ?>>Pokaż całe zdjęcie</option>
+                            </select>
+                        </label>
+                        <label>
+                            Przybliżenie
+                            <input type="range" id="story-cover-zoom-range" min="1" max="6" step="0.05" value="<?= htmlspecialchars((string)$storyImageZoom, ENT_QUOTES, 'UTF-8') ?>">
+                        </label>
+                        <label>
+                            Pozycja pozioma
+                            <input type="range" id="story-cover-focus-x-range" min="0" max="100" value="<?= (int)$storyImageFocusX ?>">
+                        </label>
+                        <label>
+                            Pozycja pionowa
+                            <input type="range" id="story-cover-focus-y-range" min="0" max="100" value="<?= (int)$storyImageFocusY ?>">
+                        </label>
+                    </div>
+                    <div class="story-reader-hero story-reader-hero-preview" id="story-reader-cover-card-preview" style="<?= $storyImageVars ?>">
+                        <?php oc_render_media_frame([
+                            'variant' => 'story-reader',
+                            'imgId' => 'story-reader-cover-preview',
+                            'src' => '/public/uploads/' . $storyPreviewImage,
+                            'alt' => 'Podgląd okładki historii',
+                        ]); ?>
+                        <div class="story-reader-hero-body">
+                            <span class="story-reader-status story-status-<?= htmlspecialchars($story->getStatus(), ENT_QUOTES, 'UTF-8') ?>"
+                                  style="background: <?= htmlspecialchars($storyStatus['color'], ENT_QUOTES, 'UTF-8') ?>; color: white;">
+                                <?= htmlspecialchars($storyStatus['name'], ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                            <h1 id="story-reader-title-preview"><?= htmlspecialchars($storyTitle !== '' ? $storyTitle : 'Tytul historii', ENT_QUOTES, 'UTF-8') ?></h1>
+                            <p id="story-reader-description-preview">
+                                <?= htmlspecialchars($storyDescription !== '' ? mb_substr($storyDescription, 0, 140) : 'Krótki opis historii pojawi się tutaj.', ENT_QUOTES, 'UTF-8') ?>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="story-create-preview-panel">
+                <h2>Okladka</h2>
+                <article class="story-preview-card story-tile-card story-list-card" id="story-cover-card-preview" style="<?= $storyCardImageVars ?>">
+                    <div class="status-badge story-preview-status-badge"
+                         style="background: <?= htmlspecialchars($storyStatus['color'], ENT_QUOTES, 'UTF-8') ?>; color: white;">
+                        <?= htmlspecialchars($storyStatus['name'], ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                    <?php oc_render_media_frame([
+                        'variant' => 'story-card',
+                        'imgId' => 'story-cover-preview',
+                        'src' => '/public/uploads/' . $storyPreviewImage,
+                        'alt' => 'Okladka historii',
+                    ]); ?>
+                    <?php oc_render_tile_body([
+                        'class' => 'story-preview-body',
+                        'title' => $storyTitle !== '' ? $storyTitle : 'Tytul historii',
+                        'description' => $storyDescription !== '' ? $storyDescription : 'Krotki opis historii pojawi sie tutaj.',
+                        'titleAttrs' => ['id' => 'story-card-title-preview'],
+                        'descriptionAttrs' => ['id' => 'story-card-description-preview'],
+                    ]); ?>
+                </article>
+
+                <input type="hidden" name="image" id="story-image-input" value="<?= htmlspecialchars($storyImage, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" id="story-image-id" value="">
+                <?php oc_render_image_upload_controls([
+                    'class' => 'profile-image-actions-row story-cover-actions',
+                    'previewSelector' => '#story-cover-preview',
+                    'filenameSelector' => '#story-image-input',
+                    'imageIdSelector' => '#story-image-id',
+                    'resetId' => 'story-cover-reset-btn',
+                    'resetLabel' => 'Domyslna',
+                ]); ?>
+
+                <div class="story-cover-side-controls" id="story-cover-side-controls">
+                    <h3>Kadrowanie okĹ‚adki</h3>
+                    <div class="story-cover-side-controls-body" id="story-cover-side-controls-body"></div>
+                </div>
+            </aside>
+        </section>
+
+        <!-- POLA HISTORII -->
+        <section class="story-editor-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Pola historii</h2>
+            </div>
+
+            <div id="story-fields-container" class="story-fields-container">
+                <?php if (!empty($fields)): ?>
+                    <?php foreach ($fields as $field): ?>
+                        <div class="story-field-item"
+                             data-field-id="<?= $field['id'] ?>"
+                             data-field-label="<?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?>"
+                             data-field-type="<?= htmlspecialchars($field['field_type'], ENT_QUOTES, 'UTF-8') ?>"
+                             style="margin-bottom: 15px; padding: 15px; background: var(--surface-soft); border-radius: 8px; border: 1px solid var(--border-color);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 800; margin-bottom: 8px;"><?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <div style="font-size: 0.85rem; color: var(--text-muted);">Typ: <strong><?= htmlspecialchars($field['field_type'], ENT_QUOTES, 'UTF-8') ?></strong></div>
+                                </div>
+                                <button type="button" class="btn-secondary" style="width: 40px; height: 40px; padding: 0;" onclick="removeStoryField(this)" title="Usuń pole">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+
+                            <!-- EDYTOR POLA -->
+                            <div style="margin-top: 12px;">
+                                <?php if ($field['field_type'] === 'text'): ?>
+                                    <input type="text" name="story_fields[<?= $field['id'] ?>]" class="story-field-input" value="<?= htmlspecialchars($fieldValues[$field['id']] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Tekst..." style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg);">
+
+                                <?php elseif ($field['field_type'] === 'textarea'): ?>
+                                    <textarea name="story_fields[<?= $field['id'] ?>]" class="story-field-input" placeholder="Długi tekst..." rows="5" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); font-family: inherit; resize: vertical;"><?= htmlspecialchars($fieldValues[$field['id']] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+
+                                <?php elseif ($field['field_type'] === 'image'): ?>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <button type="button" class="btn-secondary" style="flex: 1;">Wybierz zdjęcie</button>
+                                        <input type="hidden" name="story_fields[<?= $field['id'] ?>]" class="story-field-input" value="<?= htmlspecialchars($fieldValues[$field['id']] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                    </div>
+
+                                <?php elseif ($field['field_type'] === 'dialog'): ?>
+                                    <div style="background: #1a1a1a; border-left: 4px solid #7289da; padding: 12px; border-radius: 4px; color: #fff; font-family: 'Courier New', monospace; font-size: 0.9rem; white-space: pre-wrap;">
+                                        <textarea name="story_fields[<?= $field['id'] ?>]" class="story-field-input" placeholder="Dialog postaci..." rows="5" style="width: 100%; padding: 8px; border: none; border-radius: 4px; background: #2f3136; color: #fff; font-family: 'Courier New', monospace; resize: vertical;"><?= htmlspecialchars($fieldValues[$field['id']] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                                    </div>
+
+                                <?php elseif ($field['field_type'] === 'section'): ?>
+                                    <input type="text" name="story_fields[<?= $field['id'] ?>]" class="story-field-input" value="<?= htmlspecialchars($fieldValues[$field['id']] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Nazwa sekcji..." style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--input-bg); font-weight: 800; font-size: 1.1rem;">
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">Brak pól. Dodaj pierwsze pole aby zacząć pisanie historii.</p>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <!-- POSTACIE W HISTORII -->
+        <section class="story-editor-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Postacie w historii</h2>
+            </div>
+
+            <div id="story-characters-container" class="story-character-grid story-character-grid-selected">
+                <?php if (!empty($characters)): ?>
+                    <?php foreach ($characters as $char): ?>
+                        <div class="story-character-item" data-character-id="<?= $char['id_character'] ?>" data-variant-id="<?= (int)($char['id_variant'] ?? 0) ?: '' ?>" style="margin-bottom: 10px; padding: 12px; background: var(--surface-soft); border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: 800;"><?= htmlspecialchars($char['character_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <div style="font-size: 0.85rem; color: var(--text-muted);">Pseudonimy pobierane z pola szablonu (jeśli dostępne)</div>
+                            </div>
+                            <button type="button" class="btn-secondary" style="width: 40px; height: 40px; padding: 0;" onclick="removeStoryCharacter(<?= $char['id_character'] ?>, <?= (int)($char['id_variant'] ?? 0) ?>)" title="Usuń postać">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p style="color: var(--text-muted); text-align: center; padding: 20px;">Brak postaci. Dodaj postacie aby pojawić się w historii.</p>
+                <?php endif; ?>
+            </div>
+            <div class="add-field-container">
+                <button type="button" class="add-circle-btn" id="add-character-btn" onclick="openCharacterSelector()" title="Dodaj postac">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+        </section>
+    </form>
+</div>
+
+<div class="story-scroll-jump" aria-label="Szybka nawigacja historii">
+    <button type="button" onclick="scrollStoryEditor('top')" title="Początek historii" aria-label="Przejdź na początek historii">
+        <i class="fa-solid fa-chevron-up"></i>
+    </button>
+    <button type="button" class="story-quick-save-btn" onclick="quickSaveStory()" title="Szybki zapis" aria-label="Szybki zapis historii">
+        <i class="fa-solid fa-floppy-disk"></i>
+    </button>
+    <button type="button" onclick="scrollStoryEditor('bottom')" title="Koniec historii" aria-label="Przejdź na koniec historii">
+        <i class="fa-solid fa-chevron-down"></i>
+    </button>
+</div>
+
+<!-- MODAL SELEKCJI POSTACI -->
+<div id="character-selector-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--surface); border-radius: 12px; padding: 24px; max-width: 400px; width: 90%;">
+        <h3 style="margin-bottom: 15px;">Dodaj postać do historii</h3>
+        <div id="character-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
+            <?php if (!empty($availableCharacters)): ?>
+                <?php foreach ($availableCharacters as $char): ?>
+                    <div style="padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;" onclick="selectCharacter(<?= $char->getId() ?>, '<?= htmlspecialchars(addslashes($char->getName()), ENT_QUOTES, 'UTF-8') ?>')">
+                        <strong><?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?></strong>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p style="color: var(--text-muted); text-align: center;">Brak dostępnych postaci.</p>
+            <?php endif; ?>
+        </div>
+        <button type="button" class="btn-secondary" onclick="closeCharacterSelector()" style="width: 100%;">Anuluj</button>
+    </div>
+</div>
+
+<script src="/public/scripts/story_editor.js"></script>
+
+<script>
+    window.storyId = <?= $story->getId() ?>;
+    window.storyPublicId = '<?= htmlspecialchars($story->getPublicId(), ENT_QUOTES, 'UTF-8') ?>';
+    window.storyCharacters = <?= json_encode($characters ?? []) ?>;
+    window.storyPseudonymSources = <?= json_encode($pseudonymSources ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    window.availableCharacters = <?= json_encode(array_map(function ($c) use ($availableCharacterVariantsById) {
+        $variants = $availableCharacterVariantsById[$c->getId()] ?? [];
+        return [
+        'id' => $c->getId(),
+        'publicId' => $c->getPublicId(),
+        'name' => $c->getName(),
+        'image' => $c->getImage(),
+        'imageDisplayMode' => $c->getImageDisplayMode(),
+        'imageFit' => $c->getImageFit(),
+        'imageFocusX' => $c->getImageFocusX(),
+        'imageFocusY' => $c->getImageFocusY(),
+        'imageZoom' => $c->getImageZoom(),
+        'variants' => array_map(fn($variant) => [
+            'id' => (int)$variant['id'],
+            'name' => (string)$variant['name'],
+            'description' => (string)($variant['description'] ?? ''),
+            'image' => (string)($variant['image'] ?? ''),
+            'imageFit' => (string)($variant['image_fit'] ?? $c->getImageFit()),
+            'imageFocusX' => (int)($variant['image_focus_x'] ?? $c->getImageFocusX()),
+            'imageFocusY' => (int)($variant['image_focus_y'] ?? $c->getImageFocusY()),
+            'imageZoom' => (float)($variant['image_zoom'] ?? $c->getImageZoom()),
+        ], $variants),
+    ];
+    }, $availableCharacters ?? []), JSON_UNESCAPED_UNICODE) ?>;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const titleInput = document.getElementById('story-title-input');
+        const descriptionInput = document.getElementById('story-description-input');
+        const titlePreview = document.getElementById('story-card-title-preview');
+        const descriptionPreview = document.getElementById('story-card-description-preview');
+        const readerTitlePreview = document.getElementById('story-reader-title-preview');
+        const readerDescriptionPreview = document.getElementById('story-reader-description-preview');
+        const imageInput = document.getElementById('story-image-input');
+        const imagePreview = document.getElementById('story-cover-preview');
+        const readerImagePreview = document.getElementById('story-reader-cover-preview');
+        const coverCard = document.getElementById('story-cover-card-preview');
+        const readerCoverCard = document.getElementById('story-reader-cover-card-preview');
+        const imageId = document.getElementById('story-image-id');
+        const resetBtn = document.getElementById('story-cover-reset-btn');
+        const framingToggle = document.getElementById('story-cover-framing-toggle');
+        const framingBody = document.getElementById('story-cover-framing-body');
+        const framingSwitches = document.getElementById('story-cover-control-switches');
+        const framingSideControls = document.getElementById('story-cover-side-controls-body');
+        const controlSwitches = [...document.querySelectorAll('[data-story-cover-target]')];
+        const fitInput = document.getElementById('story-cover-fit');
+        const focusXInput = document.getElementById('story-cover-focus-x');
+        const focusYInput = document.getElementById('story-cover-focus-y');
+        const zoomInput = document.getElementById('story-cover-zoom');
+        const cardFitInput = document.getElementById('story-card-cover-fit');
+        const cardFocusXInput = document.getElementById('story-card-cover-focus-x');
+        const cardFocusYInput = document.getElementById('story-card-cover-focus-y');
+        const cardZoomInput = document.getElementById('story-card-cover-zoom');
+        const fitSelect = document.getElementById('story-cover-fit-select');
+        const focusXRange = document.getElementById('story-cover-focus-x-range');
+        const focusYRange = document.getElementById('story-cover-focus-y-range');
+        const zoomRange = document.getElementById('story-cover-zoom-range');
+        let activeCoverTarget = 'card';
+
+        if (framingSideControls) {
+            if (framingSwitches) {
+                framingSwitches.hidden = false;
+                framingSideControls.appendChild(framingSwitches);
+            }
+            if (framingBody) {
+                framingBody.hidden = false;
+                framingSideControls.appendChild(framingBody);
+            }
+        }
+
+        function bindTextareaTabs(root = document) {
+            root.querySelectorAll('textarea.story-field-input, #story-description-input').forEach(textarea => {
+                if (textarea.dataset.tabIndentBound) return;
+                textarea.dataset.tabIndentBound = '1';
+                textarea.addEventListener('keydown', event => {
+                    if (event.key !== 'Tab') return;
+                    event.preventDefault();
+
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const value = textarea.value;
+
+                    if (event.shiftKey) {
+                        const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+                        if (value.slice(lineStart, lineStart + 1) === '\t') {
+                            textarea.value = value.slice(0, lineStart) + value.slice(lineStart + 1);
+                            textarea.selectionStart = Math.max(lineStart, start - 1);
+                            textarea.selectionEnd = Math.max(lineStart, end - 1);
+                            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                        } else if (value.slice(lineStart, lineStart + 4) === '    ') {
+                            textarea.value = value.slice(0, lineStart) + value.slice(lineStart + 4);
+                            textarea.selectionStart = Math.max(lineStart, start - 4);
+                            textarea.selectionEnd = Math.max(lineStart, end - 4);
+                            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        return;
+                    }
+
+                    textarea.value = value.slice(0, start) + '\t' + value.slice(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 1;
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            });
+        }
+
+        function storyDefaultImageName() {
+            return document.body?.dataset.theme === 'dark' ? 'default_story_dark.png' : 'default_story.png';
+        }
+
+        function storyImageSrc(filename) {
+            const clean = String(filename || '').split('/').pop();
+            const resolved = !clean || ['default_story.png', 'default_story.jpg', 'default_story_dark.png'].includes(clean)
+                ? storyDefaultImageName()
+                : clean;
+            return '/public/uploads/' + resolved;
+        }
+
+        function syncTextPreview() {
+            const title = titleInput?.value.trim() || 'Tytul historii';
+            const description = descriptionInput?.value.trim() || 'Krotki opis historii pojawi sie tutaj.';
+            if (titlePreview) titlePreview.textContent = title;
+            if (readerTitlePreview) readerTitlePreview.textContent = title;
+            if (descriptionPreview) {
+                descriptionPreview.textContent = description;
+            }
+            if (readerDescriptionPreview) {
+                readerDescriptionPreview.textContent = description.length > 140 ? description.slice(0, 140) + '...' : description;
+            }
+        }
+
+        function coverState(target) {
+            return target === 'reader'
+                ? { fit: fitInput, focusX: focusXInput, focusY: focusYInput, zoom: zoomInput, card: readerCoverCard }
+                : { fit: cardFitInput, focusX: cardFocusXInput, focusY: cardFocusYInput, zoom: cardZoomInput, card: coverCard };
+        }
+
+        function clampCoverValues(focusX, focusY, zoom) {
+            return {
+                focusX: Math.max(0, Math.min(100, Number(focusX || 50))),
+                focusY: Math.max(0, Math.min(100, Number(focusY || 50))),
+                zoom: Math.max(1, Math.min(6, Number(zoom || 1))),
+            };
+        }
+
+        function applyCoverState(target, fit, focusX, focusY, zoom) {
+            const state = coverState(target);
+            const clean = clampCoverValues(focusX, focusY, zoom);
+            const cleanFit = ['cover', 'contain'].includes(fit) ? fit : 'cover';
+
+            if (state.fit) state.fit.value = cleanFit;
+            if (state.focusX) state.focusX.value = String(clean.focusX);
+            if (state.focusY) state.focusY.value = String(clean.focusY);
+            if (state.zoom) state.zoom.value = String(clean.zoom);
+
+            if (state.card) {
+                state.card.style.setProperty('--story-cover-fit', cleanFit);
+                state.card.style.setProperty('--story-cover-focus-x', `${clean.focusX}%`);
+                state.card.style.setProperty('--story-cover-focus-y', `${clean.focusY}%`);
+                state.card.style.setProperty('--story-cover-zoom', String(clean.zoom));
+                window.OCMediaFrame?.refresh(state.card);
+            }
+        }
+
+        function loadCoverControls(target) {
+            const state = coverState(target);
+            if (fitSelect) fitSelect.value = state.fit?.value || 'cover';
+            if (focusXRange) focusXRange.value = state.focusX?.value || '50';
+            if (focusYRange) focusYRange.value = state.focusY?.value || '50';
+            if (zoomRange) zoomRange.value = state.zoom?.value || '1';
+            controlSwitches.forEach(button => {
+                const isActive = button.dataset.storyCoverTarget === target;
+                button.classList.toggle('is-active', isActive);
+            });
+        }
+
+        function syncCoverFraming() {
+            applyCoverState(
+                activeCoverTarget,
+                fitSelect?.value || 'cover',
+                focusXRange?.value || 50,
+                focusYRange?.value || 50,
+                zoomRange?.value || 1
+            );
+        }
+
+        framingToggle?.addEventListener('click', () => {
+            const isOpen = framingToggle.getAttribute('aria-expanded') === 'true';
+            framingToggle.setAttribute('aria-expanded', String(!isOpen));
+            if (framingBody) framingBody.hidden = isOpen;
+            if (framingSwitches) framingSwitches.hidden = isOpen;
+            framingToggle.classList.toggle('is-active', !isOpen);
+            if (!isOpen) loadCoverControls(activeCoverTarget);
+        });
+
+        controlSwitches.forEach(button => {
+            button.addEventListener('click', () => {
+                activeCoverTarget = button.dataset.storyCoverTarget || 'card';
+                loadCoverControls(activeCoverTarget);
+            });
+        });
+
+        titleInput?.addEventListener('input', syncTextPreview);
+        descriptionInput?.addEventListener('input', syncTextPreview);
+        fitSelect?.addEventListener('change', syncCoverFraming);
+        focusXRange?.addEventListener('input', syncCoverFraming);
+        focusYRange?.addEventListener('input', syncCoverFraming);
+        zoomRange?.addEventListener('input', syncCoverFraming);
+        syncTextPreview();
+        bindTextareaTabs();
+        applyCoverState('card', cardFitInput?.value || 'cover', cardFocusXInput?.value || 50, cardFocusYInput?.value || 50, cardZoomInput?.value || 1);
+        applyCoverState('reader', fitInput?.value || 'cover', focusXInput?.value || 50, focusYInput?.value || 50, zoomInput?.value || 1);
+        loadCoverControls(activeCoverTarget);
+
+        resetBtn?.addEventListener('click', () => {
+            if (imageInput) imageInput.value = 'default_story.png';
+            if (imageId) imageId.value = '';
+            if (imagePreview) imagePreview.src = storyImageSrc('default_story.png');
+            if (readerImagePreview) readerImagePreview.src = storyImageSrc('default_story.png');
+            if (fitSelect) fitSelect.value = 'cover';
+            if (focusXRange) focusXRange.value = '50';
+            if (focusYRange) focusYRange.value = '50';
+            if (zoomRange) zoomRange.value = '1';
+            applyCoverState('card', 'cover', 50, 50, 1);
+            applyCoverState('reader', 'cover', 50, 50, 1);
+            loadCoverControls(activeCoverTarget);
+        });
+
+        if (imagePreview) {
+            imagePreview.onerror = () => {
+                imagePreview.src = storyImageSrc('default_story.png');
+            };
+            new MutationObserver(() => {
+                if (readerImagePreview && readerImagePreview.src !== imagePreview.src) {
+                    readerImagePreview.src = imagePreview.src;
+                }
+            }).observe(imagePreview, { attributes: true, attributeFilter: ['src'] });
+        }
+
+        window.OCImageTools?.bindImagePickerButtons(document);
+    });
+</script>

@@ -7,6 +7,9 @@
     if ($currentPath === '') {
         $currentPath = 'dashboard';
     }
+    $storyPaths = ['stories', 'createStory', 'editStory', 'viewStory', 'story'];
+    $currentSection = strtok($currentPath, '/');
+    $isStoriesPath = in_array($currentSection, $storyPaths, true);
 ?>
 <div class="sidebar-top">
             <div class="logo-container">
@@ -33,6 +36,18 @@
                     </a>
                 </li>
                 <li>
+                    <a href="/stories" class="<?= $isStoriesPath ? 'active' : '' ?>">
+                        <i class="fa-solid fa-book-open"></i>
+                        <span>Historie</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/gallery" class="<?= $currentPath === 'gallery' ? 'active' : '' ?>">
+                        <i class="fa-solid fa-images"></i>
+                        <span>Galeria</span>
+                    </a>
+                </li>
+                <li>
                     <a href="/templates" class="<?= $currentPath === 'templates' ? 'active' : '' ?>">
                         <i class="fa-solid fa-layer-group"></i>
                         <span>Szablony postaci</span>
@@ -53,9 +68,12 @@
                 <ul class="nav-menu characters-list sidebar-folders-list">
                     <?php if(isset($worlds) && !empty($worlds)): ?>
                         <?php foreach($worlds as $world): ?>
+                            <?php $worldIconColor = method_exists($world, 'getIconColor') ? $world->getIconColor() : '#7B61FF'; ?>
                             <li>
-                                <a href="/characters?world=<?= $world->getId() ?>">
-                                    <div class="char-avatar-mini"><?= htmlspecialchars(mb_substr($world->getName(), 0, 1), ENT_QUOTES, 'UTF-8') ?></div>
+                                <a href="/characters/<?= htmlspecialchars($world->getPublicId(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="char-avatar-mini" style="background:<?= htmlspecialchars($worldIconColor, ENT_QUOTES, 'UTF-8') ?>;">
+                                        <?= htmlspecialchars(mb_substr($world->getName(), 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                                    </div>
                                     <span><?= htmlspecialchars($world->getName(), ENT_QUOTES, 'UTF-8') ?></span>
                                 </a>
                             </li>
@@ -124,6 +142,9 @@
                  </div>
             
             <div class="header-right">
+                <button type="button" class="editor-shortcuts-btn" data-editor-shortcuts-toggle hidden title="Skróty klawiszowe" aria-label="Pokaż skróty klawiszowe">
+                    <i class="fa-solid fa-keyboard"></i>
+                </button>
                 <a href="login" class="logout-header-btn" title="Wyloguj się">
                     <i class="fa-solid fa-right-from-bracket"></i>
                 </a>
@@ -190,10 +211,30 @@
         dropdown.style.display = 'block';
     }
 
+    function searchNumericValue(primary, fallback, defaultValue) {
+        const value = Number.parseFloat(primary ?? fallback);
+        return Number.isFinite(value) ? value : defaultValue;
+    }
+
+    function characterCropStyle(character) {
+        const fitValue = character?.image_fit ?? character?.imageFit;
+        const fit = ['cover', 'contain'].includes(fitValue) ? fitValue : 'cover';
+        const focusX = Math.max(0, Math.min(100, searchNumericValue(character?.image_focus_x, character?.imageFocusX, 50)));
+        const focusY = Math.max(0, Math.min(100, searchNumericValue(character?.image_focus_y, character?.imageFocusY, 50)));
+        const zoom = Math.max(1, searchNumericValue(character?.image_zoom, character?.imageZoom, 1));
+
+        return {
+            fit,
+            focusX: `${focusX}%`,
+            focusY: `${focusY}%`,
+            zoom: String(zoom),
+            mode: (character?.image_display_mode ?? character?.imageDisplayMode) === 'natural' ? 'natural' : 'square'
+        };
+    }
+
     function makeCharRow(char, subtitle) {
-        const img = char.image || 'default.png';
         const row = document.createElement('a');
-        row.href  = '/viewCharacter?id=' + char.id;
+        row.href  = '/character/' + encodeURIComponent(char.publicId || char.id);
         row.style.cssText = `
             display:flex;align-items:center;gap:10px;padding:10px 14px;
             text-decoration:none;color:inherit;cursor:pointer;
@@ -202,10 +243,28 @@
         row.addEventListener('mouseenter', () => row.style.background = 'var(--hover,#f5f5f5)');
         row.addEventListener('mouseleave', () => row.style.background = 'transparent');
 
+        const crop = characterCropStyle(char);
+        const avatarFrame = document.createElement('span');
+        avatarFrame.className = 'search-char-img-wrap oc-media-frame oc-media-frame--portrait oc-media-frame--anchored-cover ' + (crop.mode === 'natural' ? 'oc-media-frame--natural' : 'image-mode-square');
+        avatarFrame.style.cssText = 'width:66px;height:66px;border-radius:8px;overflow:hidden;flex:0 0 66px;border:2px solid var(--border-color,var(--border,#eee));background:var(--surface-alt,var(--surface,#fff));';
+        avatarFrame.style.setProperty('--image-fit', crop.fit);
+        avatarFrame.style.setProperty('--image-focus-x', crop.focusX);
+        avatarFrame.style.setProperty('--image-focus-y', crop.focusY);
+        avatarFrame.style.setProperty('--image-zoom', crop.zoom);
+
         const avatar = document.createElement('img');
-        avatar.src   = '/public/uploads/' + img;
-        avatar.onerror = () => { avatar.src = '/public/uploads/default.png'; };
-        avatar.style.cssText = 'width:34px;height:34px;border-radius:8px;object-fit:cover;flex-shrink:0;';
+        avatar.src   = window.OCDefaults?.characterImageSrc
+            ? window.OCDefaults.characterImageSrc(char.image)
+            : '/public/uploads/' + (char.image || 'default.png');
+        avatar.alt = '';
+        avatar.draggable = false;
+        avatar.onerror = () => {
+            avatar.src = window.OCDefaults?.characterImageSrc
+                ? window.OCDefaults.characterImageSrc()
+                : '/public/uploads/default.png';
+        };
+        avatar.addEventListener('load', () => window.OCMediaFrame?.refresh?.(avatarFrame), { passive: true });
+        avatar.style.cssText = 'width:100%;height:100%;border-radius:0;object-fit:' + crop.fit + ';object-position:var(--image-focus-x,50%) var(--image-focus-y,50%);transform:scale(var(--image-zoom,1));transform-origin:var(--image-focus-x,50%) var(--image-focus-y,50%);display:block;';
 
         const info = document.createElement('div');
         info.style.cssText = 'display:flex;flex-direction:column;line-height:1.3;overflow:hidden;';
@@ -224,8 +283,10 @@
             info.appendChild(name);
         }
 
-        row.appendChild(avatar);
+        avatarFrame.appendChild(avatar);
+        row.appendChild(avatarFrame);
         row.appendChild(info);
+        requestAnimationFrame(() => window.OCMediaFrame?.refresh?.(avatarFrame));
         return row;
     }
 
@@ -253,9 +314,30 @@
         return el;
     }
 
+    function uploadSrc(filename, fallback) {
+        return '/public/uploads/' + (filename || fallback);
+    }
+
+    function makeThumb(filename, fallback, iconClass, size = 34) {
+        const thumbSize = Math.max(28, Math.min(72, Number.parseInt(size, 10) || 34));
+        const thumbStyle = `width:${thumbSize}px;height:${thumbSize}px;border-radius:8px;flex-shrink:0;background:var(--surface-alt,#f5f5f5);`;
+        if (!filename && !fallback) {
+            const fallbackIcon = document.createElement('i');
+            fallbackIcon.className = iconClass;
+            fallbackIcon.style.cssText = thumbStyle + 'display:flex;align-items:center;justify-content:center;color:var(--primary,#7B61FF);';
+            return fallbackIcon;
+        }
+
+        const thumb = document.createElement('img');
+        thumb.src = uploadSrc(filename, fallback);
+        thumb.onerror = () => { thumb.src = uploadSrc(fallback, fallback); };
+        thumb.style.cssText = thumbStyle + 'object-fit:cover;';
+        return thumb;
+    }
+
     function makeFolderRow(world) {
         const row = document.createElement('a');
-        row.href  = '/characters?world=' + world.id;
+        row.href  = '/characters/' + encodeURIComponent(world.publicId || world.id);
         row.style.cssText = `
             display:flex;align-items:center;gap:10px;padding:10px 14px;
             text-decoration:none;color:inherit;cursor:pointer;
@@ -264,13 +346,7 @@
         row.addEventListener('mouseenter', () => row.style.background = 'var(--hover,#f5f5f5)');
         row.addEventListener('mouseleave', () => row.style.background = 'transparent');
 
-        const icon = document.createElement('div');
-        icon.style.cssText = `
-            width:34px;height:34px;border-radius:8px;flex-shrink:0;
-            background:var(--primary,#6c3fd4);color:#fff;
-            display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;
-        `;
-        icon.textContent = world.name.charAt(0).toUpperCase();
+        const icon = makeThumb(world.image, 'default.jpg', 'fa-solid fa-folder');
 
         const label = document.createElement('div');
         label.style.cssText = 'display:flex;flex-direction:column;line-height:1.3;';
@@ -290,15 +366,51 @@
         return row;
     }
 
+    function makeSimpleRow(iconClass, title, subtitle, href, thumbnail, fallbackThumbnail, options = {}) {
+        const row = document.createElement('a');
+        row.href = href;
+        row.style.cssText = `
+            display:flex;align-items:center;gap:10px;padding:10px 14px;
+            text-decoration:none;color:inherit;cursor:pointer;transition:background .15s;
+        `;
+        row.addEventListener('mouseenter', () => row.style.background = 'var(--hover,#f5f5f5)');
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+
+        const iconSize = options.iconSize || 34;
+        const icon = thumbnail || fallbackThumbnail ? makeThumb(thumbnail, fallbackThumbnail, iconClass, iconSize) : document.createElement('i');
+        if (!thumbnail && !fallbackThumbnail) {
+            icon.className = iconClass;
+            icon.style.cssText = `width:${iconSize}px;height:${iconSize}px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--surface-alt,#f5f5f5);color:var(--primary,#7B61FF);flex-shrink:0;`;
+        }
+
+        const info = document.createElement('div');
+        info.style.cssText = 'display:flex;flex-direction:column;line-height:1.3;overflow:hidden;';
+        const name = document.createElement('span');
+        name.textContent = title;
+        name.style.cssText = 'font-size:0.9rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        info.appendChild(name);
+        if (subtitle) {
+            const sub = document.createElement('span');
+            sub.textContent = subtitle;
+            sub.style.cssText = 'font-size:0.75rem;color:var(--text-muted,#999);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            info.appendChild(sub);
+        }
+        row.append(icon, info);
+        return row;
+    }
+
     // ── Render ───────────────────────────────────────────────────────────────
 
     function renderResults(data) {
         dropdown.innerHTML = '';
-        const { characters, worlds } = data;
+        const { characters, worlds, stories, templates, filters } = data;
         const hasChars  = characters  && characters.length  > 0;
         const hasWorlds = worlds       && worlds.length       > 0;
+        const hasStories = stories && stories.length > 0;
+        const hasTemplates = templates && templates.length > 0;
+        const hasFilters = filters && filters.length > 0;
 
-        if (!hasChars && !hasWorlds) {
+        if (!hasChars && !hasWorlds && !hasStories && !hasTemplates && !hasFilters) {
             dropdown.appendChild(makeEmpty());
             openDropdown();
             return;
@@ -312,7 +424,7 @@
 
         // Sekcja: Foldery + ich postacie
         if (hasWorlds) {
-            if (hasChars) dropdown.appendChild(makeDivider());
+            if (dropdown.children.length) dropdown.appendChild(makeDivider());
             worlds.forEach(world => {
                 dropdown.appendChild(makeSectionLabel('Folder: ' + world.name));
                 dropdown.appendChild(makeFolderRow(world));
@@ -326,6 +438,42 @@
                     dropdown.appendChild(sub);
                 }
             });
+        }
+
+        if (hasStories) {
+            if (dropdown.children.length) dropdown.appendChild(makeDivider());
+            dropdown.appendChild(makeSectionLabel('Historie'));
+            stories.forEach(story => dropdown.appendChild(makeSimpleRow(
+                'fa-solid fa-book-open',
+                story.title,
+                [story.date, story.description || story.status || ''].filter(Boolean).join(' - '),
+                '/story/' + encodeURIComponent(story.publicId || story.id),
+                story.image,
+                'default_story.png',
+                { iconSize: 54 }
+            )));
+        }
+
+        if (hasTemplates) {
+            if (dropdown.children.length) dropdown.appendChild(makeDivider());
+            dropdown.appendChild(makeSectionLabel('Szablony'));
+            templates.forEach(template => dropdown.appendChild(makeSimpleRow(
+                'fa-solid fa-file-code',
+                template.name,
+                template.description || '',
+                '/templates/' + encodeURIComponent(template.publicId || template.id) + '/edit'
+            )));
+        }
+
+        if (hasFilters) {
+            if (dropdown.children.length) dropdown.appendChild(makeDivider());
+            dropdown.appendChild(makeSectionLabel('Filtry'));
+            filters.forEach(filter => dropdown.appendChild(makeSimpleRow(
+                'fa-solid fa-tag',
+                filter.name,
+                filter.slug || '',
+                '/characters?q=' + encodeURIComponent(filter.name)
+            )));
         }
 
         openDropdown();

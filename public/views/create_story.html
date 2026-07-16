@@ -1,0 +1,451 @@
+<?php
+$worldId = isset($worldId) ? (int)$worldId : (int)($_GET['world'] ?? 0);
+$worlds = $worlds ?? [];
+$messages = $messages ?? [];
+$returnUrl = $_SERVER['HTTP_REFERER'] ?? ($worldId > 0 ? "/stories?world=$worldId" : '/stories');
+$storyTitle = (string)($_POST['title'] ?? '');
+$storyDescription = (string)($_POST['description'] ?? '');
+$storyDate = (string)($_POST['story_date'] ?? '');
+$storyImage = trim((string)($_POST['image'] ?? 'default_story.png'));
+$storyImage = $storyImage !== '' ? $storyImage : 'default_story.png';
+$storyDefaultImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_story_dark.png' : 'default_story.png';
+$storyPreviewImage = in_array($storyImage, ['default_story.png', 'default_story.jpg', 'default_story_dark.png', ''], true)
+    ? $storyDefaultImage
+    : $storyImage;
+$storyImageFit = $_POST['image_fit'] ?? 'cover';
+$storyImageFocusX = (int)($_POST['image_focus_x'] ?? 50);
+$storyImageFocusY = (int)($_POST['image_focus_y'] ?? 50);
+$storyImageZoom = (float)($_POST['image_zoom'] ?? 1);
+$storyCardImageFit = $_POST['card_image_fit'] ?? $storyImageFit;
+$storyCardImageFocusX = (int)($_POST['card_image_focus_x'] ?? $storyImageFocusX);
+$storyCardImageFocusY = (int)($_POST['card_image_focus_y'] ?? $storyImageFocusY);
+$storyCardImageZoom = (float)($_POST['card_image_zoom'] ?? $storyImageZoom);
+$storyImageVars = "--story-cover-fit:" . htmlspecialchars($storyImageFit, ENT_QUOTES, 'UTF-8') . ";--story-cover-focus-x:{$storyImageFocusX}%;--story-cover-focus-y:{$storyImageFocusY}%;--story-cover-zoom:{$storyImageZoom};";
+$worldInheritedFiltersById = $worldInheritedFiltersById ?? [];
+$currentInheritedFilters = $currentInheritedFilters ?? [];
+$storyDirectFilterTags = trim((string)($storyDirectFilterTags ?? ($_POST['filter_tags'] ?? '')));
+$postedStoryFields = isset($_POST['story_fields']) && is_array($_POST['story_fields']) ? $_POST['story_fields'] : [];
+$postedStoryFieldLabels = isset($_POST['story_field_labels']) && is_array($_POST['story_field_labels']) ? $_POST['story_field_labels'] : [];
+$postedStoryFieldTypes = isset($_POST['story_field_types']) && is_array($_POST['story_field_types']) ? $_POST['story_field_types'] : [];
+$postedStoryCharacterRefs = isset($_POST['story_character_ids']) && is_array($_POST['story_character_ids'])
+    ? array_values(array_unique(array_map(fn($value) => trim((string)$value), $_POST['story_character_ids'])))
+    : [];
+$postedStoryPseudonymFields = isset($_POST['story_character_pseudonym_fields']) && is_array($_POST['story_character_pseudonym_fields'])
+    ? array_map('intval', $_POST['story_character_pseudonym_fields'])
+    : [];
+$availableCharacters = $availableCharacters ?? [];
+$availableCharacterVariantsById = $availableCharacterVariantsById ?? [];
+$pseudonymSources = $pseudonymSources ?? [];
+$availableCharacterById = [];
+foreach ($availableCharacters as $availableCharacter) {
+    $availableCharacterById[$availableCharacter->getId()] = $availableCharacter;
+}
+$storyFieldMeta = [
+    'text' => ['icon' => 'fa-font', 'label' => 'Tekst'],
+    'textarea' => ['icon' => 'fa-align-left', 'label' => 'Dlugi tekst'],
+    'image' => ['icon' => 'fa-image', 'label' => 'Zdjecie'],
+    'dialog' => ['icon' => 'fa-comments', 'label' => 'Dialog'],
+    'section' => ['icon' => 'fa-heading', 'label' => 'Sekcja'],
+];
+?>
+
+<div class="template-container">
+    <header class="template-header story-template-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+        <div class="header-info">
+            <h1>Nowa historia</h1>
+            <p>Stworz nowa historie dla wybranego folderu swiata.</p>
+        </div>
+
+        <div class="header-actions" style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary" onclick="window.location.href='<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>'">Anuluj</button>
+            <button type="submit" form="story-form" class="btn-primary" <?= empty($worlds) ? 'disabled' : '' ?>>Utworz historie</button>
+        </div>
+
+        <div class="story-header-filter-panel">
+            <div class="story-header-filter-row">
+                <span class="story-header-filter-label">Dziedziczone filtry</span>
+                <div class="story-header-filter-chips" id="story-inherited-filter-chips">
+                    <?php if (!empty($currentInheritedFilters)): ?>
+                        <?php foreach ($currentInheritedFilters as $filter): ?>
+                            <span class="story-filter-chip is-inherited"><?= htmlspecialchars($filter->getName(), ENT_QUOTES, 'UTF-8') ?></span>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <span class="story-filter-empty">Brak dziedziczonych filtrow</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <label class="story-header-filter-row story-header-filter-input-row">
+                <span class="story-header-filter-label">Filtry historii</span>
+                <input type="text"
+                       class="tag-input"
+                       data-tag-input
+                       name="filter_tags"
+                       form="story-form"
+                       value="<?= htmlspecialchars($storyDirectFilterTags, ENT_QUOTES, 'UTF-8') ?>"
+                       placeholder="np. adult, romans, horror">
+            </label>
+        </div>
+    </header>
+
+    <?php if (!empty($messages)): ?>
+        <?php foreach ($messages as $message): ?>
+            <div class="messages">
+                <i class="fa-solid fa-circle-exclamation"></i> <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
+    <form id="story-form" method="POST" enctype="multipart/form-data" class="story-create-layout">
+        <section class="story-create-main">
+            <h2>Podstawowe informacje</h2>
+
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Folder swiata <span style="color: red;">*</span></label>
+                <select name="world_id" id="story-world-select" required>
+                    <option value="">-- Wybierz folder --</option>
+                    <?php foreach ($worlds as $worldOption): ?>
+                        <option value="<?= htmlspecialchars((string)$worldOption->getId(), ENT_QUOTES, 'UTF-8') ?>" <?= $worldId === $worldOption->getId() ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($worldOption->getName(), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Tytul historii <span style="color: red;">*</span></label>
+                <input type="text" name="title" id="story-title-input" value="<?= htmlspecialchars($storyTitle, ENT_QUOTES, 'UTF-8') ?>" placeholder="Np. Spotkanie w karczmie" required>
+            </div>
+
+            <div class="input-group" style="margin-bottom: 0;">
+                <label>Opis</label>
+                <textarea name="description" id="story-description-input" rows="4" placeholder="Krotko opisz historie..."><?= htmlspecialchars($storyDescription, ENT_QUOTES, 'UTF-8') ?></textarea>
+            </div>
+
+            <div class="input-group" style="margin-top: 15px;">
+                <label>Data historii</label>
+                <input type="text" name="story_date" value="<?= htmlspecialchars($storyDate, ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2077, 113 l.s. albo 2026-06-21">
+            </div>
+
+            <div class="input-group" style="margin-top: 15px;">
+                <label>Nazwa rozgalezienia timeline</label>
+                <input type="text" name="timeline_branch_name" value="<?= htmlspecialchars((string)($_POST['timeline_branch_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. Alternatywna rzeczywistosc">
+            </div>
+
+            <div class="input-group" style="margin-top: 15px;">
+                <label>Kiedy sie rozgalezia</label>
+                <input type="text" name="timeline_split_date" value="<?= htmlspecialchars((string)($_POST['timeline_split_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2077, 113 l.s. albo 2026-06-21">
+            </div>
+
+            <div class="input-group" style="margin-top: 15px;">
+                <label>Kiedy wraca na glowna linie</label>
+                <input type="text" name="timeline_merge_date" value="<?= htmlspecialchars((string)($_POST['timeline_merge_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="np. 2079">
+            </div>
+        </section>
+
+        <aside class="story-create-preview-panel">
+            <h2>Okladka</h2>
+            <article class="story-preview-card story-tile-card story-list-card" style="<?= $storyImageVars ?>">
+                <div class="status-badge story-preview-status-badge" style="background:#E74C3C;color:white;">
+                    Do zrobienia
+                </div>
+                <?php oc_render_media_frame([
+                    'variant' => 'story-card',
+                    'imgId' => 'story-cover-preview',
+                    'src' => '/public/uploads/' . $storyPreviewImage,
+                    'alt' => 'Okladka historii',
+                ]); ?>
+                <?php oc_render_tile_body([
+                    'class' => 'story-preview-body',
+                    'title' => $storyTitle !== '' ? $storyTitle : 'Tytul historii',
+                    'description' => $storyDescription !== '' ? $storyDescription : 'Krotki opis historii pojawi sie tutaj.',
+                    'titleAttrs' => ['id' => 'story-card-title-preview'],
+                    'descriptionAttrs' => ['id' => 'story-card-description-preview'],
+                ]); ?>
+            </article>
+
+            <input type="hidden" name="image" id="story-image-input" value="<?= htmlspecialchars($storyImage, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="image_fit" value="<?= htmlspecialchars($storyImageFit, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="image_focus_x" value="<?= (int)$storyImageFocusX ?>">
+            <input type="hidden" name="image_focus_y" value="<?= (int)$storyImageFocusY ?>">
+            <input type="hidden" name="image_zoom" value="<?= htmlspecialchars((string)$storyImageZoom, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="card_image_fit" value="<?= htmlspecialchars($storyCardImageFit, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="card_image_focus_x" value="<?= (int)$storyCardImageFocusX ?>">
+            <input type="hidden" name="card_image_focus_y" value="<?= (int)$storyCardImageFocusY ?>">
+            <input type="hidden" name="card_image_zoom" value="<?= htmlspecialchars((string)$storyCardImageZoom, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" id="story-image-id" value="">
+            <?php oc_render_image_upload_controls([
+                'class' => 'profile-image-actions-row story-cover-actions',
+                'previewSelector' => '#story-cover-preview',
+                'filenameSelector' => '#story-image-input',
+                'imageIdSelector' => '#story-image-id',
+                'resetId' => 'story-cover-reset-btn',
+                'resetLabel' => 'Domyslna',
+            ]); ?>
+        </aside>
+
+        <section class="story-editor-section story-create-fullwidth">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Pola historii</h2>
+            </div>
+
+            <div id="story-fields-container" class="story-fields-container">
+                <?php if (!empty($postedStoryFields)): ?>
+                    <?php foreach ($postedStoryFields as $fieldId => $value): ?>
+                        <?php
+                        $fieldType = (string)($postedStoryFieldTypes[$fieldId] ?? 'text');
+                        $fieldType = isset($storyFieldMeta[$fieldType]) ? $fieldType : 'text';
+                        $fieldLabel = (string)($postedStoryFieldLabels[$fieldId] ?? '');
+                        $meta = $storyFieldMeta[$fieldType];
+                        ?>
+                        <div class="story-field-item story-schema-field draggable" data-field-id="<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>" tabindex="0">
+                            <i class="fa-solid fa-grip-vertical drag-handle" aria-hidden="true" draggable="true"></i>
+                            <div class="field-content">
+                                <input type="text" class="story-field-label-input" name="story_field_labels[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" value="<?= htmlspecialchars($fieldLabel, ENT_QUOTES, 'UTF-8') ?>" placeholder="Naglowek/etykieta pola">
+                                <input type="hidden" name="story_field_types[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" value="<?= htmlspecialchars($fieldType, ENT_QUOTES, 'UTF-8') ?>">
+                                <div class="type-preview-tag story-type-preview-tag">
+                                    <small><i class="fa-solid <?= htmlspecialchars($meta['icon'], ENT_QUOTES, 'UTF-8') ?>"></i> Typ: <?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></small>
+                                </div>
+                                <div class="story-field-editor">
+                                    <?php if ($fieldType === 'textarea'): ?>
+                                        <textarea name="story_fields[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" class="story-field-input" placeholder="Dlugi tekst..." rows="5"><?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?></textarea>
+                                    <?php elseif ($fieldType === 'image'): ?>
+                                        <div class="story-field-image-row">
+                                            <div class="story-field-image-preview" <?= trim((string)$value) === '' ? 'hidden' : '' ?>>
+                                                <img src="/public/uploads/<?= htmlspecialchars(basename((string)$value), ENT_QUOTES, 'UTF-8') ?>" alt="">
+                                            </div>
+                                            <button type="button" class="btn-secondary" data-story-image-picker style="flex:1;"><?= trim((string)$value) !== '' ? 'Zdjecie: ' . htmlspecialchars(basename((string)$value), ENT_QUOTES, 'UTF-8') : 'Wybierz zdjecie' ?></button>
+                                            <input type="hidden" name="story_fields[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" class="story-field-input" value="<?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?>">
+                                        </div>
+                                    <?php elseif ($fieldType === 'dialog'): ?>
+                                        <div class="story-dialog-editor">
+                                            <textarea name="story_fields[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" class="story-field-input" placeholder="Dialog postaci..." rows="5"><?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?></textarea>
+                                        </div>
+                                    <?php elseif ($fieldType === 'section'): ?>
+                                        <input type="text" name="story_fields[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" class="story-field-input story-section-input" value="<?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?>" placeholder="Nazwa sekcji...">
+                                    <?php else: ?>
+                                        <input type="text" name="story_fields[<?= htmlspecialchars((string)$fieldId, ENT_QUOTES, 'UTF-8') ?>]" class="story-field-input" value="<?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?>" placeholder="Tekst...">
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="story-field-actions">
+                                <button type="button" class="story-field-move-btn" onclick="moveStoryField(this, -1)" title="Przesun wyzej"><i class="fa-solid fa-chevron-up"></i></button>
+                                <button type="button" class="story-field-move-btn" onclick="moveStoryField(this, 1)" title="Przesun nizej"><i class="fa-solid fa-chevron-down"></i></button>
+                                <button type="button" class="story-field-tool-btn" onclick="duplicateStoryField(this)" title="Duplikuj pole"><i class="fa-solid fa-copy"></i></button>
+                                <button type="button" class="story-field-tool-btn" onclick="toggleStoryFieldCollapse(this)" title="Zwin pole"><i class="fa-solid fa-minimize"></i></button>
+                                <button type="button" class="delete-field-btn" onclick="removeStoryField(this)" title="Usun pole"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p class="story-empty-note">Dodaj pierwsze pole, zeby zaczac pisanie historii.</p>
+                <?php endif; ?>
+            </div>
+            <div class="add-field-container">
+                <button type="button" class="add-circle-btn" onclick="openStoryFieldModal(this)" title="Dodaj pole historii">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+        </section>
+
+        <section class="story-editor-section story-create-fullwidth">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Postacie w historii</h2>
+            </div>
+
+            <div id="story-characters-container" class="story-character-grid story-character-grid-selected">
+                <?php if (!empty($postedStoryCharacterRefs)): ?>
+                    <?php foreach ($postedStoryCharacterRefs as $selectedCharacterRef): ?>
+                        <?php
+                        [$selectedCharacterIdRaw, $selectedVariantIdRaw] = array_pad(explode(':', (string)$selectedCharacterRef, 2), 2, '0');
+                        $selectedCharacterId = (int)$selectedCharacterIdRaw;
+                        $selectedVariantId = (int)$selectedVariantIdRaw;
+                        $selectedCharacter = $availableCharacterById[$selectedCharacterId] ?? null;
+                        $selectedVariant = null;
+                        foreach (($availableCharacterVariantsById[$selectedCharacterId] ?? []) as $candidateVariant) {
+                            if ((int)$candidateVariant['id'] === $selectedVariantId) {
+                                $selectedVariant = $candidateVariant;
+                                break;
+                            }
+                        }
+                        $selectedLabel = $selectedVariant
+                            ? $selectedCharacter->getName() . ' - ' . (string)$selectedVariant['name']
+                            : ($selectedCharacter ? $selectedCharacter->getName() : '');
+                        $selectedRefKey = $selectedCharacterId . ':' . ($selectedVariantId ?: 0);
+                        ?>
+                        <?php if (!$selectedCharacter) continue; ?>
+                        <div class="story-character-item story-character-chip" data-character-id="<?= (int)$selectedCharacterId ?>" data-variant-id="<?= $selectedVariantId ?: '' ?>">
+                            <input type="hidden" name="story_character_ids[]" value="<?= htmlspecialchars($selectedRefKey, ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="story_character_pseudonym_fields[<?= htmlspecialchars($selectedRefKey, ENT_QUOTES, 'UTF-8') ?>]" value="<?= (int)($postedStoryPseudonymFields[$selectedRefKey] ?? $postedStoryPseudonymFields[$selectedCharacterId] ?? 0) ?>">
+                            <span><?= htmlspecialchars($selectedLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                            <button type="button" class="story-character-remove-btn" onclick="removeStoryCharacter(<?= (int)$selectedCharacterId ?>, <?= (int)$selectedVariantId ?>)" title="Usun postac">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p class="story-empty-note">Brak postaci. Dodaj postacie, ktore maja pojawic sie w historii.</p>
+                <?php endif; ?>
+            </div>
+            <div class="add-field-container">
+                <button type="button" class="add-circle-btn" id="add-character-btn" onclick="openCharacterSelector()" title="Dodaj postac">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+            </div>
+        </section>
+
+        <input type="hidden" name="return_url" value="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>">
+    </form>
+</div>
+
+<div id="character-selector-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--surface); border-radius: 12px; padding: 24px; max-width: 520px; width: 90%;">
+        <h3 style="margin-bottom: 15px;">Dodaj postac do historii</h3>
+        <div id="character-list" class="story-character-grid" style="max-height: 420px; overflow-y: auto; margin-bottom: 15px;"></div>
+        <button type="button" class="btn-secondary" onclick="closeCharacterSelector()" style="width: 100%;">Anuluj</button>
+    </div>
+</div>
+
+<script src="/public/scripts/story_editor.js"></script>
+
+<script>
+window.storyId = null;
+window.storyCharacters = [];
+window.storyPseudonymSources = <?= json_encode($pseudonymSources ?? [], JSON_UNESCAPED_UNICODE) ?>;
+window.availableCharacters = <?= json_encode(array_map(function ($c) use ($availableCharacterVariantsById) {
+    $variants = $availableCharacterVariantsById[$c->getId()] ?? [];
+    return [
+        'id' => $c->getId(),
+        'publicId' => $c->getPublicId(),
+        'name' => $c->getName(),
+        'image' => $c->getImage(),
+        'imageDisplayMode' => $c->getImageDisplayMode(),
+        'imageFit' => $c->getImageFit(),
+        'imageFocusX' => $c->getImageFocusX(),
+        'imageFocusY' => $c->getImageFocusY(),
+        'imageZoom' => $c->getImageZoom(),
+        'variants' => array_map(fn($variant) => [
+            'id' => (int)$variant['id'],
+            'name' => (string)$variant['name'],
+            'description' => (string)($variant['description'] ?? ''),
+            'image' => (string)($variant['image'] ?? ''),
+            'imageFit' => (string)($variant['image_fit'] ?? $c->getImageFit()),
+            'imageFocusX' => (int)($variant['image_focus_x'] ?? $c->getImageFocusX()),
+            'imageFocusY' => (int)($variant['image_focus_y'] ?? $c->getImageFocusY()),
+            'imageZoom' => (float)($variant['image_zoom'] ?? $c->getImageZoom()),
+        ], $variants),
+    ];
+}, $availableCharacters ?? []), JSON_UNESCAPED_UNICODE) ?>;
+window.storyWorldInheritedFilters = <?= json_encode(array_map(
+    fn($filters) => array_map(fn($filter) => [
+        'name' => $filter->getName(),
+        'slug' => $filter->getSlug(),
+    ], $filters),
+    $worldInheritedFiltersById
+), JSON_UNESCAPED_UNICODE) ?>;
+document.addEventListener('DOMContentLoaded', () => {
+    const titleInput = document.getElementById('story-title-input');
+    const descriptionInput = document.getElementById('story-description-input');
+    const titlePreview = document.getElementById('story-card-title-preview');
+    const descriptionPreview = document.getElementById('story-card-description-preview');
+    const imageInput = document.getElementById('story-image-input');
+    const imagePreview = document.getElementById('story-cover-preview');
+    const imageId = document.getElementById('story-image-id');
+    const resetBtn = document.getElementById('story-cover-reset-btn');
+    const worldSelect = document.getElementById('story-world-select');
+    const inheritedFilterChips = document.getElementById('story-inherited-filter-chips');
+
+    function bindTextareaTabs(root = document) {
+        root.querySelectorAll('textarea.story-field-input, #story-description-input').forEach(textarea => {
+            if (textarea.dataset.tabIndentBound) return;
+            textarea.dataset.tabIndentBound = '1';
+            textarea.addEventListener('keydown', event => {
+                if (event.key !== 'Tab') return;
+                event.preventDefault();
+
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const value = textarea.value;
+
+                if (event.shiftKey) {
+                    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+                    if (value.slice(lineStart, lineStart + 1) === '\t') {
+                        textarea.value = value.slice(0, lineStart) + value.slice(lineStart + 1);
+                        textarea.selectionStart = Math.max(lineStart, start - 1);
+                        textarea.selectionEnd = Math.max(lineStart, end - 1);
+                    } else if (value.slice(lineStart, lineStart + 4) === '    ') {
+                        textarea.value = value.slice(0, lineStart) + value.slice(lineStart + 4);
+                        textarea.selectionStart = Math.max(lineStart, start - 4);
+                        textarea.selectionEnd = Math.max(lineStart, end - 4);
+                    }
+                    return;
+                }
+
+                textarea.value = value.slice(0, start) + '\t' + value.slice(end);
+                textarea.selectionStart = textarea.selectionEnd = start + 1;
+            });
+        });
+    }
+
+    function renderInheritedFilters() {
+        if (!worldSelect || !inheritedFilterChips) return;
+        const filters = window.storyWorldInheritedFilters?.[worldSelect.value] || [];
+        inheritedFilterChips.innerHTML = '';
+        if (!filters.length) {
+            const empty = document.createElement('span');
+            empty.className = 'story-filter-empty';
+            empty.textContent = 'Brak dziedziczonych filtrow';
+            inheritedFilterChips.appendChild(empty);
+            return;
+        }
+
+        filters.forEach(filter => {
+            const chip = document.createElement('span');
+            chip.className = 'story-filter-chip is-inherited';
+            chip.textContent = filter.name || filter.slug || '';
+            inheritedFilterChips.appendChild(chip);
+        });
+    }
+
+    function storyDefaultImageName() {
+        return document.body?.dataset.theme === 'dark' ? 'default_story_dark.png' : 'default_story.png';
+    }
+
+    function storyImageSrc(filename) {
+        const clean = String(filename || '').split('/').pop();
+        const resolved = !clean || ['default_story.png', 'default_story.jpg', 'default_story_dark.png'].includes(clean)
+            ? storyDefaultImageName()
+            : clean;
+        return '/public/uploads/' + resolved;
+    }
+
+    function syncTextPreview() {
+        const title = titleInput?.value.trim() || 'Tytul historii';
+        const description = descriptionInput?.value.trim() || 'Krotki opis historii pojawi sie tutaj.';
+        if (titlePreview) titlePreview.textContent = title;
+        if (descriptionPreview) {
+            descriptionPreview.textContent = description;
+        }
+    }
+
+    titleInput?.addEventListener('input', syncTextPreview);
+    descriptionInput?.addEventListener('input', syncTextPreview);
+    worldSelect?.addEventListener('change', renderInheritedFilters);
+    renderInheritedFilters();
+    syncTextPreview();
+    bindTextareaTabs();
+
+    resetBtn?.addEventListener('click', () => {
+        if (imageInput) imageInput.value = 'default_story.png';
+        if (imageId) imageId.value = '';
+        if (imagePreview) imagePreview.src = storyImageSrc('default_story.png');
+    });
+
+    if (imagePreview) {
+        imagePreview.onerror = () => {
+            imagePreview.src = storyImageSrc('default_story.png');
+        };
+    }
+
+    window.OCImageTools?.bindImagePickerButtons(document);
+});
+</script>

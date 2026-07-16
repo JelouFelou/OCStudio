@@ -1,0 +1,132 @@
+<?php
+$story = $story ?? null;
+$fields = $fields ?? [];
+$fieldValues = $fieldValues ?? [];
+$characters = $characters ?? [];
+$pseudonyms = $pseudonyms ?? [];
+$filledFields = array_values(array_filter($fields, function ($field) use ($fieldValues) {
+    return trim((string)($fieldValues[$field['id']] ?? '')) !== '';
+}));
+$sectionCount = count(array_filter($filledFields, fn($field) => ($field['field_type'] ?? '') === 'section'));
+$readingBlocksCount = count(array_filter($filledFields, fn($field) => in_array($field['field_type'] ?? '', ['text', 'textarea', 'dialog'], true)));
+
+$uploadSrc = function (?string $filename, string $fallback): string {
+    $filename = trim((string)$filename);
+    if ($filename === '') {
+        $filename = $fallback;
+    }
+    if (preg_match('#^(https?://|/)#', $filename)) {
+        return $filename;
+    }
+    return '/public/uploads/' . basename($filename);
+};
+
+$storyStatusLabel = match ($story?->getStatus()) {
+    'published' => 'Opublikowana',
+    'in_progress' => 'W trakcie',
+    'archived' => 'Archiwum',
+    default => 'Szkic',
+};
+$storyCoverVars = $story
+    ? '--story-cover-fit:' . htmlspecialchars($story->getImageFit(), ENT_QUOTES, 'UTF-8')
+        . ';--story-cover-focus-x:' . (int)$story->getImageFocusX() . '%'
+        . ';--story-cover-focus-y:' . (int)$story->getImageFocusY() . '%'
+        . ';--story-cover-zoom:' . htmlspecialchars((string)$story->getImageZoom(), ENT_QUOTES, 'UTF-8') . ';'
+    : '';
+?>
+
+<div class="story-reader-scroll">
+<?php if (!$story): ?>
+    <div class="story-reader-empty">
+        <h1>Historia nie znaleziona</h1>
+        <a href="/stories" class="btn-primary">Wróć do listy</a>
+    </div>
+<?php else: ?>
+
+<article class="story-reader">
+    <header class="story-reader-hero" style="<?= $storyCoverVars ?>">
+        <?php oc_render_media_frame([
+            'variant' => 'story-reader',
+            'src' => $uploadSrc($story->getImage(), 'default_story.png'),
+            'alt' => '',
+        ]); ?>
+        <div class="story-reader-hero-body">
+            <span class="story-reader-status story-status-<?= htmlspecialchars($story->getStatus(), ENT_QUOTES, 'UTF-8') ?>">
+                <?= htmlspecialchars($storyStatusLabel, ENT_QUOTES, 'UTF-8') ?>
+            </span>
+            <h1><?= htmlspecialchars($story->getTitle(), ENT_QUOTES, 'UTF-8') ?></h1>
+            <?php if (trim($story->getDescription()) !== ''): ?>
+                <p><?= htmlspecialchars($story->getDescription(), ENT_QUOTES, 'UTF-8') ?></p>
+            <?php endif; ?>
+
+            <div class="story-reader-meta" aria-label="Informacje o historii">
+                <span><i class="fa-regular fa-file-lines"></i><?= count($filledFields) ?> blokow</span>
+                <?php if ($sectionCount > 0): ?>
+                    <span><i class="fa-solid fa-layer-group"></i><?= $sectionCount ?> sekcji</span>
+                <?php endif; ?>
+                <?php if ($readingBlocksCount > 0): ?>
+                    <span><i class="fa-solid fa-book-open"></i><?= $readingBlocksCount ?> fragmentow</span>
+                <?php endif; ?>
+                <?php if (!empty($characters)): ?>
+                    <span><i class="fa-solid fa-users"></i><?= count($characters) ?> postaci</span>
+                <?php endif; ?>
+            </div>
+
+            <nav class="story-reader-actions" aria-label="Akcje historii">
+                <?php if (!empty($_SESSION['user_id']) && (int)$_SESSION['user_id'] === $story->getIdUser()): ?>
+                    <a href="/editStory/<?= htmlspecialchars($story->getPublicId(), ENT_QUOTES, 'UTF-8') ?>" class="btn-primary">
+                        <i class="fa-solid fa-edit"></i> Edytuj
+                    </a>
+                <?php endif; ?>
+                <a href="/stories" class="btn-secondary">
+                    <i class="fa-solid fa-arrow-left"></i> Wróć
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="story-reader-layout story-reader-layout-full">
+        <section class="story-content story-reader-paper">
+            <?php if (!empty($fields)): ?>
+                <?php foreach ($fields as $field): ?>
+                    <?php
+                        $value = trim((string)($fieldValues[$field['id']] ?? ''));
+                        $fieldType = $field['field_type'];
+                    ?>
+
+                    <?php if ($value === ''): ?>
+                        <?php continue; ?>
+
+                    <?php elseif ($fieldType === 'section'): ?>
+                        <h2><?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?></h2>
+
+                    <?php elseif ($fieldType === 'dialog'): ?>
+                        <div class="story-dialog-block"><?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?></div>
+
+                    <?php elseif ($fieldType === 'text'): ?>
+                        <p class="story-text-block"><span class="story-field-text"><?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?></span></p>
+
+                    <?php elseif ($fieldType === 'textarea'): ?>
+                        <div class="story-prose-block"><span class="story-field-text"><?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?></span></div>
+
+                    <?php elseif ($fieldType === 'image'): ?>
+                        <figure class="story-image-block">
+                            <img src="<?= htmlspecialchars($uploadSrc($value, ''), ENT_QUOTES, 'UTF-8') ?>" alt="Ilustracja historii">
+                        </figure>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p class="story-empty-note">Historia jest pusta.</p>
+            <?php endif; ?>
+        </section>
+
+    </div>
+</article>
+
+<script>
+    window.storyPublicId = '<?= htmlspecialchars($story->getPublicId(), ENT_QUOTES, 'UTF-8') ?>';
+</script>
+<script src="/public/scripts/story_pseudonyms.js"></script>
+
+<?php endif; ?>
+</div>
