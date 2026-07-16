@@ -22,9 +22,10 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $userId = (int)$_SESSION['user_id'];
-        $boards = $this->relationRepository->getBoards($userId);
-        $worlds = $this->worldRepository->getWorldsByUserId($userId);
-        $characters = $this->characterRepository->getCharactersByUserId($userId);
+        $includeHidden = !empty($this->getUserInterfaceSettings()['revealHidden']);
+        $boards = $this->relationRepository->getBoards($userId, $includeHidden);
+        $worlds = $this->worldRepository->getWorldsByUserId($userId, $includeHidden);
+        $characters = $this->characterRepository->getCharactersByUserId($userId, $includeHidden);
 
         $this->render('relations', [
             'title' => 'Relacje - OCStudio',
@@ -38,32 +39,71 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $userId = (int)$_SESSION['user_id'];
-        $boardId = (int)($_GET['board'] ?? 0);
+        $includeHidden = !empty($this->getUserInterfaceSettings()['revealHidden']);
+        $boardParam = trim((string)($_GET['board'] ?? ''));
         $focusCharacterId = isset($_GET['focusCharacter']) ? (int)$_GET['focusCharacter'] : null;
+        $returnUrl = $this->safeReturnUrl($_GET['return_url'] ?? '', '/relations');
+        $returnLabel = strpos($returnUrl, '/characters/') === 0 ? 'Wroc do folderu' : 'Wroc do listy relacji';
 
-        $board = $boardId > 0 ? $this->relationRepository->getBoard($userId, $boardId) : null;
+        $board = $boardParam !== ''
+            ? (ctype_digit($boardParam)
+                ? $this->relationRepository->getBoard($userId, (int)$boardParam, $includeHidden)
+                : $this->relationRepository->getBoardByPublicId($userId, $boardParam, $includeHidden))
+            : null;
         if (!$board) {
             header('Location: /relations');
             exit();
         }
+        $boardId = (int)$board['id'];
 
         $this->render('relations_editor', [
             'title' => 'Edytor relacji - OCStudio',
             'board' => $board,
             'boardId' => $boardId,
             'focusCharacterId' => $focusCharacterId,
+            'returnUrl' => $returnUrl,
+            'returnLabel' => $returnLabel,
         ]);
+    }
+
+    private function safeReturnUrl(?string $url, string $fallback): string
+    {
+        $url = trim((string)$url);
+        if ($url === '') {
+            return $fallback;
+        }
+
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return $fallback;
+        }
+
+        if (isset($parts['host']) && strcasecmp($parts['host'], $_SERVER['HTTP_HOST'] ?? '') !== 0) {
+            return $fallback;
+        }
+
+        $path = $parts['path'] ?? '';
+        if ($path === '' || $path[0] !== '/') {
+            return $fallback;
+        }
+
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+        return $path . $query;
     }
 
     public function tree(): void
     {
         $this->requireLogin();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $boardId = (int)($_GET['boardId'] ?? 0);
             if ($boardId <= 0) {
                 throw new InvalidArgumentException('Brak pola relacji.');
             }
-            return $this->relationRepository->getTreeData((int)$_SESSION['user_id'], $boardId);
+            return $this->relationRepository->getTreeData(
+                (int)$_SESSION['user_id'],
+                $boardId,
+                !empty($this->getUserInterfaceSettings()['revealHidden'])
+            );
         });
     }
 
@@ -71,7 +111,7 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $name = trim((string)($input['name'] ?? ''));
             if ($name === '') {
@@ -87,7 +127,8 @@ class RelationController extends AppController
                 is_array($input['characterIds'] ?? null) ? $input['characterIds'] : []
             );
 
-            return ['success' => true, 'id' => $id];
+            $board = $this->relationRepository->getBoard((int)$_SESSION['user_id'], $id);
+            return ['success' => true, 'id' => $id, 'publicId' => $board['public_id'] ?? (string)$id];
         });
     }
 
@@ -95,14 +136,16 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
             if ($boardId <= 0) {
                 throw new InvalidArgumentException('Brak pola relacji.');
             }
 
-            return ['success' => true, 'id' => $this->relationRepository->duplicateBoard((int)$_SESSION['user_id'], $boardId)];
+            $newId = $this->relationRepository->duplicateBoard((int)$_SESSION['user_id'], $boardId);
+            $board = $this->relationRepository->getBoard((int)$_SESSION['user_id'], $newId);
+            return ['success' => true, 'id' => $newId, 'publicId' => $board['public_id'] ?? (string)$newId];
         });
     }
 
@@ -110,7 +153,7 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
             if ($boardId <= 0) {
@@ -122,15 +165,37 @@ class RelationController extends AppController
         });
     }
 
+    public function toggleBoardHidden(): void
+    {
+        $this->requireLogin();
+        $this->requirePost();
+        $this->relationJsonResponse(function () {
+            $input = $this->jsonInput();
+            $boardId = (int)($input['boardId'] ?? 0);
+            if ($boardId <= 0) {
+                throw new InvalidArgumentException('Brak pola relacji.');
+            }
+
+            $this->relationRepository->setBoardHidden(
+                (int)$_SESSION['user_id'],
+                $boardId,
+                !empty($input['hidden'])
+            );
+
+            return ['success' => true];
+        });
+    }
+
     public function addNode(): void
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
 
             $characterId = (int)($input['characterId'] ?? 0);
+            $variantId = ((int)($input['variantId'] ?? 0)) ?: null;
             if ($characterId <= 0) {
                 throw new InvalidArgumentException('Brak postaci.');
             }
@@ -141,6 +206,7 @@ class RelationController extends AppController
                     (int)$_SESSION['user_id'],
                     $boardId,
                     $characterId,
+                    $variantId,
                     (float)($input['x'] ?? 0),
                     (float)($input['y'] ?? 0)
                 ),
@@ -152,11 +218,12 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
 
             $characterId = (int)($input['characterId'] ?? 0);
+            $variantId = ((int)($input['variantId'] ?? 0)) ?: null;
             if ($characterId <= 0) {
                 throw new InvalidArgumentException('Brak postaci.');
             }
@@ -165,6 +232,7 @@ class RelationController extends AppController
                 (int)$_SESSION['user_id'],
                 $boardId,
                 $characterId,
+                $variantId,
                 (float)($input['x'] ?? 0),
                 (float)($input['y'] ?? 0)
             );
@@ -177,16 +245,17 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
 
             $characterId = (int)($input['characterId'] ?? 0);
+            $variantId = ((int)($input['variantId'] ?? 0)) ?: null;
             if ($characterId <= 0) {
                 throw new InvalidArgumentException('Brak postaci.');
             }
 
-            $this->relationRepository->removeNode((int)$_SESSION['user_id'], $boardId, $characterId);
+            $this->relationRepository->removeNode((int)$_SESSION['user_id'], $boardId, $characterId, $variantId);
             return ['success' => true];
         });
     }
@@ -195,14 +264,18 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $relationId = $this->relationRepository->saveRelation(
                 (int)$_SESSION['user_id'],
                 (int)($input['characterAId'] ?? 0),
+                ((int)($input['characterAVariantId'] ?? 0)) ?: null,
                 (int)($input['characterBId'] ?? 0),
+                ((int)($input['characterBVariantId'] ?? 0)) ?: null,
                 (int)($input['relationTypeId'] ?? 0),
                 $this->cleanOptionalString($input['customName'] ?? null, 100),
+                $this->cleanOptionalString($input['customIcon'] ?? null, 16),
+                $this->cleanColorHex($input['customColorHex'] ?? null),
                 $this->cleanOptionalString($input['note'] ?? '', 1000) ?? ''
             );
 
@@ -214,7 +287,7 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $relationId = (int)($input['relationId'] ?? 0);
             if ($relationId <= 0) {
@@ -230,7 +303,7 @@ class RelationController extends AppController
     {
         $this->requireLogin();
         $this->requirePost();
-        $this->jsonResponse(function () {
+        $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $worldId = $this->parseNullableWorldId($input['worldId'] ?? null);
             $this->assertWorldAccess($worldId);
@@ -246,7 +319,7 @@ class RelationController extends AppController
         });
     }
 
-    private function jsonResponse(callable $callback): void
+    private function relationJsonResponse(callable $callback): void
     {
         header('Content-Type: application/json');
         try {
@@ -313,5 +386,11 @@ class RelationController extends AppController
         }
 
         return mb_substr($value, 0, $maxLength);
+    }
+
+    private function cleanColorHex(mixed $value): ?string
+    {
+        $value = trim((string)$value);
+        return preg_match('/^#[0-9a-f]{6}$/i', $value) ? strtoupper($value) : null;
     }
 }

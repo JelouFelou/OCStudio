@@ -95,7 +95,7 @@
                 worldIds: selectedIds('.relation-board-world'),
                 characterIds: selectedIds('.relation-board-character')
             });
-            window.location.href = '/relations/editor?board=' + data.id;
+            window.location.href = '/relations/' + encodeURIComponent(data.publicId || data.id);
         } catch (error) {
             alert(error.message);
         }
@@ -113,6 +113,21 @@
             const card = event.currentTarget.closest('.relations-index-card');
             try {
                 await postJson('/api/relation-boards/duplicate', { boardId: parseInt(card.dataset.boardId, 10) });
+                location.reload();
+            } catch (error) {
+                alert(error.message);
+            }
+        });
+    });
+
+    document.querySelectorAll('.toggle-board-hidden-btn').forEach(button => {
+        button.addEventListener('click', async event => {
+            const card = event.currentTarget.closest('.relations-index-card');
+            try {
+                await postJson('/api/relation-boards/hidden', {
+                    boardId: parseInt(card.dataset.boardId, 10),
+                    hidden: button.dataset.hidden === '1'
+                });
                 location.reload();
             } catch (error) {
                 alert(error.message);

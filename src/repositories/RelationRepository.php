@@ -15,7 +15,26 @@ class RelationRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getBoards(int $userId): array
+    public function getCustomRelationPresets(int $userId): array
+    {
+        $stmt = $this->database->connect()->prepare("
+            SELECT DISTINCT ON (LOWER(custom_name), COALESCE(is_nsfw, FALSE))
+                custom_name,
+                COALESCE(custom_icon, '') AS custom_icon,
+                COALESCE(custom_color_hex, '#8E44AD') AS custom_color_hex,
+                COALESCE(is_nsfw, FALSE) AS is_nsfw
+            FROM character_relations
+            WHERE id_user = :userId
+              AND custom_name IS NOT NULL
+              AND BTRIM(custom_name) <> ''
+            ORDER BY LOWER(custom_name), COALESCE(is_nsfw, FALSE), updated_at DESC, id DESC
+        ");
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getBoards(int $userId, bool $includeHidden = false): array
     {
         $stmt = $this->database->connect()->prepare('
             SELECT
@@ -24,12 +43,20 @@ class RelationRepository extends Repository
                 (SELECT COUNT(*) FROM relation_tree_nodes n WHERE n.id_board = b.id) AS node_count
             FROM relation_boards b
             WHERE b.id_user = :userId
+              ' . $this->hiddenBoardClause('b', $includeHidden) . '
             ORDER BY b.updated_at DESC, b.id DESC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->execute();
 
         $boards = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$includeHidden) {
+            $boards = array_values(array_filter(
+                $boards,
+                fn($board) => !$this->boardHasHiddenContent($userId, (int)$board['id'])
+            ));
+        }
+
         foreach ($boards as &$board) {
             $board['worldIds'] = $this->getBoardWorldIds((int)$board['id']);
             $board['characterIds'] = $this->getBoardCharacterIds((int)$board['id']);
@@ -39,12 +66,13 @@ class RelationRepository extends Repository
         return $boards;
     }
 
-    public function getBoard(int $userId, int $boardId): ?array
+    public function getBoard(int $userId, int $boardId, bool $includeHidden = true): ?array
     {
         $stmt = $this->database->connect()->prepare('
             SELECT *
             FROM relation_boards
             WHERE id = :boardId AND id_user = :userId
+              ' . $this->hiddenBoardClause('', $includeHidden) . '
         ');
         $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
@@ -52,6 +80,37 @@ class RelationRepository extends Repository
 
         $board = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$board) {
+            return null;
+        }
+
+        if (!$includeHidden && $this->boardHasHiddenContent($userId, $boardId)) {
+            return null;
+        }
+
+        $board['worldIds'] = $this->getBoardWorldIds($boardId);
+        $board['characterIds'] = $this->getBoardCharacterIds($boardId);
+        return $board;
+    }
+
+    public function getBoardByPublicId(int $userId, string $publicId, bool $includeHidden = true): ?array
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT *
+            FROM relation_boards
+            WHERE public_id::text = :publicId AND id_user = :userId
+              ' . $this->hiddenBoardClause('', $includeHidden) . '
+        ');
+        $stmt->bindValue(':publicId', $publicId);
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $board = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$board) {
+            return null;
+        }
+
+        $boardId = (int)$board['id'];
+        if (!$includeHidden && $this->boardHasHiddenContent($userId, $boardId)) {
             return null;
         }
 
@@ -69,11 +128,6 @@ class RelationRepository extends Repository
         foreach ($worldIds as $worldId) {
             $this->assertWorldBelongsToUser($worldId, $userId);
         }
-
-        $characterIds = array_values(array_unique(array_merge(
-            $characterIds,
-            $this->getCharacterIdsFromWorlds($userId, $worldIds)
-        )));
 
         foreach ($characterIds as $characterId) {
             $this->assertCharacterBelongsToUser($characterId, $userId);
@@ -110,7 +164,7 @@ class RelationRepository extends Repository
                 $boardId = (int)$stmt->fetchColumn();
             }
 
-            $this->replaceBoardMembership($db, $boardId, $worldIds, $characterIds);
+            $this->replaceBoardMembership($db, $boardId, $worldIds, $characterIds, $userId);
 
             $db->commit();
             return $boardId;
@@ -169,9 +223,22 @@ class RelationRepository extends Repository
         $stmt->execute();
     }
 
-    public function getTreeData(int $userId, int $boardId): array
+    public function setBoardHidden(int $userId, int $boardId, bool $hidden): void
     {
-        $board = $this->getBoard($userId, $boardId);
+        $stmt = $this->database->connect()->prepare('
+            UPDATE relation_boards
+            SET is_hidden = :hidden, updated_at = CURRENT_TIMESTAMP
+            WHERE id = :boardId AND id_user = :userId
+        ');
+        $stmt->bindValue(':hidden', $hidden, PDO::PARAM_BOOL);
+        $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+    }
+
+    public function getTreeData(int $userId, int $boardId, bool $includeHidden = false): array
+    {
+        $board = $this->getBoard($userId, $boardId, $includeHidden);
         if (!$board) {
             throw new RuntimeException('Pole relacji nie istnieje.');
         }
@@ -179,11 +246,12 @@ class RelationRepository extends Repository
         return [
             'board' => $board,
             'types' => $this->getRelationTypes(),
-            'nodes' => $this->getTreeNodes($userId, $boardId),
+            'nodes' => $this->getTreeNodes($userId, $boardId, $includeHidden),
             'relations' => $this->getTreeRelations($userId, $boardId),
-            'availableCharacters' => $this->getAvailableCharacters($userId, $boardId),
-            'ruleCharacters' => $this->getAllCharactersForRules($userId),
-            'worlds' => $this->getWorldOptions($userId),
+            'availableCharacters' => $this->getAvailableCharacters($userId, $boardId, $includeHidden),
+            'customRelationPresets' => $this->getCustomRelationPresets($userId),
+            'ruleCharacters' => $this->getAllCharactersForRules($userId, $includeHidden),
+            'worlds' => $this->getWorldOptions($userId, $includeHidden),
             'rules' => ['excludedWorldIds' => [], 'exceptionCharacterIds' => []],
         ];
     }
@@ -201,21 +269,35 @@ class RelationRepository extends Repository
         return $overview;
     }
 
-    public function getTreeNodes(int $userId, int $boardId): array
+    public function getTreeNodes(int $userId, int $boardId, bool $includeHidden = false): array
     {
+        $hiddenClause = $includeHidden ? '' : $this->visibleCharacterClause('c');
+        $variantHiddenClause = $includeHidden ? '' : ' AND (n.id_variant IS NULL OR COALESCE(cv.is_hidden, FALSE) = FALSE)';
         $stmt = $this->database->connect()->prepare('
             SELECT
                 n.id,
                 n.id_character AS character_id,
+                n.id_variant AS variant_id,
+                n.id_character::TEXT || \':\' || COALESCE(n.id_variant, 0)::TEXT AS entity_key,
                 n.position_x,
                 n.position_y,
-                c.name,
-                c.image,
-                c.id_world
+                CASE WHEN cv.id IS NULL THEN c.name ELSE c.name || \' - \' || cv.name END AS name,
+                c.name AS base_name,
+                cv.name AS variant_name,
+                COALESCE(NULLIF(cv.image, \'\'), c.image) AS image,
+                COALESCE(cv.image_fit, c.image_fit) AS image_fit,
+                COALESCE(cv.image_focus_x, c.image_focus_x) AS image_focus_x,
+                COALESCE(cv.image_focus_y, c.image_focus_y) AS image_focus_y,
+                COALESCE(cv.image_zoom, c.image_zoom) AS image_zoom,
+                c.id_world,
+                ' . $this->variantAwareNsfwSelect('c', 'cv') . ' AS is_nsfw
             FROM relation_tree_nodes n
             JOIN characters c ON c.id = n.id_character AND c.id_user = n.id_user
+            LEFT JOIN character_variants cv ON cv.id = n.id_variant AND cv.id_character = c.id
             WHERE n.id_user = :userId
               AND n.id_board = :boardId
+              ' . $hiddenClause . '
+              ' . $variantHiddenClause . '
             ORDER BY n.created_at ASC, n.id ASC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
@@ -228,8 +310,11 @@ class RelationRepository extends Repository
     public function getTreeRelations(int $userId, int $boardId): array
     {
         $stmt = $this->database->connect()->prepare('
-            WITH tree_chars AS (
-                SELECT id_character
+            WITH tree_entities AS (
+                SELECT
+                    id_character,
+                    id_variant,
+                    id_character::TEXT || \':\' || COALESCE(id_variant, 0)::TEXT AS entity_key
                 FROM relation_tree_nodes
                 WHERE id_user = :userId
                   AND id_board = :boardId
@@ -237,9 +322,16 @@ class RelationRepository extends Repository
             SELECT
                 r.id,
                 r.character_a_id,
+                r.character_a_variant_id,
+                r.character_a_id::TEXT || \':\' || COALESCE(r.character_a_variant_id, 0)::TEXT AS character_a_key,
                 r.character_b_id,
+                r.character_b_variant_id,
+                r.character_b_id::TEXT || \':\' || COALESCE(r.character_b_variant_id, 0)::TEXT AS character_b_key,
                 r.relation_type_id,
                 r.custom_name,
+                r.custom_icon,
+                r.custom_color_hex,
+                COALESCE(r.is_nsfw, FALSE) AS is_nsfw,
                 r.note,
                 t.code,
                 t.name AS type_name,
@@ -249,8 +341,16 @@ class RelationRepository extends Repository
             FROM character_relations r
             JOIN relation_types t ON t.id = r.relation_type_id
             WHERE r.id_user = :userId
-              AND r.character_a_id IN (SELECT id_character FROM tree_chars)
-              AND r.character_b_id IN (SELECT id_character FROM tree_chars)
+              AND EXISTS (
+                  SELECT 1 FROM tree_entities te
+                  WHERE te.id_character = r.character_a_id
+                    AND COALESCE(te.id_variant, 0) = COALESCE(r.character_a_variant_id, 0)
+              )
+              AND EXISTS (
+                  SELECT 1 FROM tree_entities te
+                  WHERE te.id_character = r.character_b_id
+                    AND COALESCE(te.id_variant, 0) = COALESCE(r.character_b_variant_id, 0)
+              )
             ORDER BY r.updated_at DESC, r.id DESC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
@@ -260,25 +360,103 @@ class RelationRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getAvailableCharacters(int $userId, int $boardId): array
+    public function getAvailableCharacters(int $userId, int $boardId, bool $includeHidden = false): array
     {
+        $hiddenClause = $includeHidden ? '' : $this->visibleCharacterClause('c');
+        $variantHiddenClause = $includeHidden ? '' : ' AND COALESCE(cv.is_hidden, FALSE) = FALSE';
         $stmt = $this->database->connect()->prepare('
+            WITH RECURSIVE selected_worlds(id) AS (
+                SELECT rbw.id_world
+                FROM relation_board_worlds rbw
+                WHERE rbw.id_board = :boardId
+                UNION
+                SELECT w.id
+                FROM worlds w
+                JOIN selected_worlds sw ON w.parent_id = sw.id
+                WHERE w.id_user = :userId
+            ),
+            selected_characters(id) AS (
+                SELECT id_character
+                FROM relation_board_characters
+                WHERE id_board = :boardId
+                UNION
+                SELECT c2.id
+                FROM characters c2
+                WHERE c2.id_user = :userId
+                  AND c2.id_world IN (SELECT id FROM selected_worlds)
+            ),
+            base_characters AS (
+                SELECT c.*, w.name AS world_name
+                FROM characters c
+                JOIN selected_characters sc ON sc.id = c.id
+                LEFT JOIN worlds w ON w.id = c.id_world AND w.id_user = c.id_user
+                WHERE c.id_user = :userId
+                  ' . $hiddenClause . '
+            ),
+            entities AS (
+                SELECT
+                    c.id AS character_id,
+                    NULL::INTEGER AS variant_id,
+                    c.id::TEXT || \':0\' AS entity_key,
+                    c.name,
+                    c.name AS base_name,
+                    NULL::VARCHAR AS variant_name,
+                    c.image,
+                    c.image_fit,
+                    c.image_focus_x,
+                    c.image_focus_y,
+                    c.image_zoom,
+                    c.id_world,
+                    c.world_name,
+                    ' . $this->characterNsfwSelect('c') . ' AS is_nsfw
+                FROM base_characters c
+
+                UNION ALL
+
+                SELECT
+                    c.id AS character_id,
+                    cv.id AS variant_id,
+                    c.id::TEXT || \':\' || cv.id::TEXT AS entity_key,
+                    c.name || \' - \' || cv.name AS name,
+                    c.name AS base_name,
+                    cv.name AS variant_name,
+                    COALESCE(NULLIF(cv.image, \'\'), c.image) AS image,
+                    COALESCE(cv.image_fit, c.image_fit) AS image_fit,
+                    COALESCE(cv.image_focus_x, c.image_focus_x) AS image_focus_x,
+                    COALESCE(cv.image_focus_y, c.image_focus_y) AS image_focus_y,
+                    COALESCE(cv.image_zoom, c.image_zoom) AS image_zoom,
+                    c.id_world,
+                    c.world_name,
+                    ' . $this->variantAwareNsfwSelect('c', 'cv') . ' AS is_nsfw
+                FROM base_characters c
+                JOIN character_variants cv ON cv.id_character = c.id
+                WHERE TRUE
+                  ' . $variantHiddenClause . '
+            )
             SELECT
-                c.id,
-                c.name,
-                c.image,
-                c.id_world,
-                w.name AS world_name,
+                e.character_id AS id,
+                e.character_id,
+                e.variant_id,
+                e.entity_key,
+                e.name,
+                e.base_name,
+                e.variant_name,
+                e.image,
+                e.image_fit,
+                e.image_focus_x,
+                e.image_focus_y,
+                e.image_zoom,
+                e.id_world,
+                e.world_name,
+                e.is_nsfw,
                 CASE WHEN n.id IS NULL THEN FALSE ELSE TRUE END AS on_tree
-            FROM characters c
-            JOIN relation_board_characters bc ON bc.id_character = c.id AND bc.id_board = :boardId
-            LEFT JOIN worlds w ON w.id = c.id_world AND w.id_user = c.id_user
+            FROM entities e
             LEFT JOIN relation_tree_nodes n
-                ON n.id_user = c.id_user
-               AND n.id_character = c.id
+                ON n.id_user = :userId
+               AND n.id_character = e.character_id
+               AND COALESCE(n.id_variant, 0) = COALESCE(e.variant_id, 0)
                AND n.id_board = :boardId
-            WHERE c.id_user = :userId
-            ORDER BY c.name ASC
+            ORDER BY e.name ASC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
@@ -287,18 +465,24 @@ class RelationRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getAllCharactersForRules(int $userId): array
+    public function getAllCharactersForRules(int $userId, bool $includeHidden = false): array
     {
+        $hiddenClause = $includeHidden ? '' : $this->visibleCharacterClause('c');
         $stmt = $this->database->connect()->prepare('
             SELECT
                 c.id,
                 c.name,
                 c.image,
+                c.image_fit,
+                c.image_focus_x,
+                c.image_focus_y,
+                c.image_zoom,
                 c.id_world,
                 w.name AS world_name
             FROM characters c
             LEFT JOIN worlds w ON w.id = c.id_world AND w.id_user = c.id_user
             WHERE c.id_user = :userId
+              ' . $hiddenClause . '
             ORDER BY c.name ASC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
@@ -307,12 +491,48 @@ class RelationRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getWorldOptions(int $userId): array
+    public function getBoardsForWorld(int $userId, int $worldId, bool $includeHidden = false): array
     {
+        $stmt = $this->database->connect()->prepare('
+            WITH RECURSIVE ancestors(id, parent_id) AS (
+                SELECT id, parent_id FROM worlds WHERE id = :worldId AND id_user = :userId
+                UNION ALL
+                SELECT w.id, w.parent_id
+                FROM worlds w
+                JOIN ancestors a ON w.id = a.parent_id
+                WHERE w.id_user = :userId
+            )
+            SELECT DISTINCT b.id, b.public_id, b.name, b.description, b.is_hidden, b.updated_at
+            FROM relation_boards b
+            JOIN relation_board_worlds rbw ON rbw.id_board = b.id
+            WHERE b.id_user = :userId
+              AND rbw.id_world IN (SELECT id FROM ancestors)
+              ' . $this->hiddenBoardClause('b', $includeHidden) . '
+            ORDER BY b.updated_at DESC, b.id DESC
+        ');
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':worldId', $worldId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $boards = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($includeHidden) {
+            return $boards;
+        }
+
+        return array_values(array_filter(
+            $boards,
+            fn($board) => !$this->boardHasHiddenContent($userId, (int)$board['id'])
+        ));
+    }
+
+    public function getWorldOptions(int $userId, bool $includeHidden = false): array
+    {
+        $hiddenClause = $includeHidden ? '' : $this->visibleWorldClause('worlds');
         $stmt = $this->database->connect()->prepare('
             SELECT id, name, parent_id
             FROM worlds
             WHERE id_user = :userId
+              ' . $hiddenClause . '
             ORDER BY parent_id NULLS FIRST, name ASC
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
@@ -321,23 +541,25 @@ class RelationRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function addNode(int $userId, int $boardId, int $characterId, float $x, float $y): array
+    public function addNode(int $userId, int $boardId, int $characterId, ?int $variantId, float $x, float $y): array
     {
         if (!$this->getBoard($userId, $boardId)) {
             throw new RuntimeException('Pole relacji nie istnieje.');
         }
         $this->assertCharacterBelongsToUser($characterId, $userId);
+        $this->assertVariantBelongsToCharacter($variantId, $characterId, $userId);
 
         $stmt = $this->database->connect()->prepare('
-            INSERT INTO relation_tree_nodes (id_user, id_board, id_character, position_x, position_y)
-            VALUES (:userId, :boardId, :characterId, :x, :y)
-            ON CONFLICT (id_user, id_board, id_character) WHERE id_board IS NOT NULL
+            INSERT INTO relation_tree_nodes (id_user, id_board, id_character, id_variant, position_x, position_y)
+            VALUES (:userId, :boardId, :characterId, :variantId, :x, :y)
+            ON CONFLICT (id_user, id_board, id_character, COALESCE(id_variant, 0)) WHERE id_board IS NOT NULL
             DO UPDATE SET position_x = EXCLUDED.position_x, position_y = EXCLUDED.position_y, updated_at = CURRENT_TIMESTAMP
-            RETURNING id, id_character AS character_id, position_x, position_y
+            RETURNING id, id_character AS character_id, id_variant AS variant_id, id_character::TEXT || \':\' || COALESCE(id_variant, 0)::TEXT AS entity_key, position_x, position_y
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
         $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+        $this->bindNullableInt($stmt, ':variantId', $variantId);
         $stmt->bindValue(':x', $x);
         $stmt->bindValue(':y', $y);
         $stmt->execute();
@@ -345,66 +567,105 @@ class RelationRepository extends Repository
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function updateNodePosition(int $userId, int $boardId, int $characterId, float $x, float $y): void
+    public function updateNodePosition(int $userId, int $boardId, int $characterId, ?int $variantId, float $x, float $y): void
     {
         $stmt = $this->database->connect()->prepare('
             UPDATE relation_tree_nodes
             SET position_x = :x, position_y = :y, updated_at = CURRENT_TIMESTAMP
             WHERE id_user = :userId
               AND id_character = :characterId
+              AND COALESCE(id_variant, 0) = COALESCE(:variantId, 0)
               AND id_board = :boardId
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
         $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+        $this->bindNullableInt($stmt, ':variantId', $variantId);
         $stmt->bindValue(':x', $x);
         $stmt->bindValue(':y', $y);
         $stmt->execute();
     }
 
-    public function removeNode(int $userId, int $boardId, int $characterId): void
+    public function removeNode(int $userId, int $boardId, int $characterId, ?int $variantId): void
     {
         $stmt = $this->database->connect()->prepare('
             DELETE FROM relation_tree_nodes
             WHERE id_user = :userId
               AND id_character = :characterId
+              AND COALESCE(id_variant, 0) = COALESCE(:variantId, 0)
               AND id_board = :boardId
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
         $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+        $this->bindNullableInt($stmt, ':variantId', $variantId);
         $stmt->execute();
     }
 
-    public function saveRelation(int $userId, int $characterAId, int $characterBId, int $typeId, ?string $customName, string $note): int
+    public function saveRelation(int $userId, int $characterAId, ?int $characterAVariantId, int $characterBId, ?int $characterBVariantId, int $typeId, ?string $customName, ?string $customIcon, ?string $customColorHex, string $note): int
     {
-        if ($characterAId === $characterBId) {
+        if ($this->entityKey($characterAId, $characterAVariantId) === $this->entityKey($characterBId, $characterBVariantId)) {
             throw new InvalidArgumentException('Nie mozna polaczyc postaci z sama soba.');
         }
 
         $this->assertCharacterBelongsToUser($characterAId, $userId);
         $this->assertCharacterBelongsToUser($characterBId, $userId);
+        $this->assertVariantBelongsToCharacter($characterAVariantId, $characterAId, $userId);
+        $this->assertVariantBelongsToCharacter($characterBVariantId, $characterBId, $userId);
         $this->assertRelationTypeExists($typeId);
+        $isNsfw = $this->characterEntityHasNsfw($userId, $characterAId, $characterAVariantId)
+            && $this->characterEntityHasNsfw($userId, $characterBId, $characterBVariantId);
+        $customIcon = $this->cleanCustomIcon($customIcon);
+        $customColorHex = preg_match('/^#[0-9a-f]{6}$/i', (string)$customColorHex) ? strtoupper((string)$customColorHex) : null;
 
-        $a = min($characterAId, $characterBId);
-        $b = max($characterAId, $characterBId);
+        $a = [
+            'characterId' => $characterAId,
+            'variantId' => $characterAVariantId,
+            'key' => $this->entityKey($characterAId, $characterAVariantId),
+        ];
+        $b = [
+            'characterId' => $characterBId,
+            'variantId' => $characterBVariantId,
+            'key' => $this->entityKey($characterBId, $characterBVariantId),
+        ];
+        if (strcmp($a['key'], $b['key']) > 0) {
+            [$a, $b] = [$b, $a];
+        }
 
         $stmt = $this->database->connect()->prepare('
-            INSERT INTO character_relations (id_user, character_a_id, character_b_id, relation_type_id, custom_name, note)
-            VALUES (:userId, :a, :b, :typeId, :customName, :note)
-            ON CONFLICT (id_user, (LEAST(character_a_id, character_b_id)), (GREATEST(character_a_id, character_b_id)))
+            INSERT INTO character_relations (id_user, character_a_id, character_a_variant_id, character_b_id, character_b_variant_id, relation_type_id, custom_name, custom_icon, custom_color_hex, is_nsfw, note)
+            VALUES (:userId, :a, :aVariant, :b, :bVariant, :typeId, :customName, :customIcon, :customColorHex, :isNsfw, :note)
+            ON CONFLICT (
+                id_user,
+                (LEAST(
+                    character_a_id::TEXT || \':\' || COALESCE(character_a_variant_id, 0)::TEXT,
+                    character_b_id::TEXT || \':\' || COALESCE(character_b_variant_id, 0)::TEXT
+                )),
+                (GREATEST(
+                    character_a_id::TEXT || \':\' || COALESCE(character_a_variant_id, 0)::TEXT,
+                    character_b_id::TEXT || \':\' || COALESCE(character_b_variant_id, 0)::TEXT
+                ))
+            )
             DO UPDATE SET
                 relation_type_id = EXCLUDED.relation_type_id,
                 custom_name = EXCLUDED.custom_name,
+                custom_icon = EXCLUDED.custom_icon,
+                custom_color_hex = EXCLUDED.custom_color_hex,
+                is_nsfw = EXCLUDED.is_nsfw,
                 note = EXCLUDED.note,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
         ');
         $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
-        $stmt->bindValue(':a', $a, PDO::PARAM_INT);
-        $stmt->bindValue(':b', $b, PDO::PARAM_INT);
+        $stmt->bindValue(':a', $a['characterId'], PDO::PARAM_INT);
+        $this->bindNullableInt($stmt, ':aVariant', $a['variantId']);
+        $stmt->bindValue(':b', $b['characterId'], PDO::PARAM_INT);
+        $this->bindNullableInt($stmt, ':bVariant', $b['variantId']);
         $stmt->bindValue(':typeId', $typeId, PDO::PARAM_INT);
         $stmt->bindValue(':customName', $customName);
+        $stmt->bindValue(':customIcon', $customIcon);
+        $stmt->bindValue(':customColorHex', $customColorHex);
+        $stmt->bindValue(':isNsfw', $isNsfw, PDO::PARAM_BOOL);
         $stmt->bindValue(':note', $note);
         $stmt->execute();
 
@@ -438,7 +699,7 @@ class RelationRepository extends Repository
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
-    private function replaceBoardMembership(PDO $db, int $boardId, array $worldIds, array $characterIds): void
+    private function replaceBoardMembership(PDO $db, int $boardId, array $worldIds, array $characterIds, int $userId): void
     {
         $db->prepare('DELETE FROM relation_board_worlds WHERE id_board = ?')->execute([$boardId]);
         $db->prepare('DELETE FROM relation_board_characters WHERE id_board = ?')->execute([$boardId]);
@@ -453,10 +714,15 @@ class RelationRepository extends Repository
             $insertCharacter->execute([$boardId, $characterId]);
         }
 
-        if (!empty($characterIds)) {
-            $placeholders = implode(',', array_fill(0, count($characterIds), '?'));
+        $allowedCharacterIds = array_values(array_unique(array_merge(
+            $characterIds,
+            $this->getCharacterIdsFromWorlds($userId, $worldIds)
+        )));
+
+        if (!empty($allowedCharacterIds)) {
+            $placeholders = implode(',', array_fill(0, count($allowedCharacterIds), '?'));
             $db->prepare("DELETE FROM relation_tree_nodes WHERE id_board = ? AND id_character NOT IN ($placeholders)")
-                ->execute(array_merge([$boardId], $characterIds));
+                ->execute(array_merge([$boardId], $allowedCharacterIds));
         } else {
             $db->prepare('DELETE FROM relation_tree_nodes WHERE id_board = ?')->execute([$boardId]);
         }
@@ -554,9 +820,17 @@ class RelationRepository extends Repository
         $stmt = $this->database->connect()->prepare("
             SELECT character_id, COUNT(*) AS relation_count
             FROM (
-                SELECT character_a_id AS character_id FROM character_relations WHERE id_user = ? AND character_a_id IN ($placeholders)
+                SELECT character_a_id AS character_id
+                FROM character_relations
+                WHERE id_user = ?
+                  AND character_a_id IN ($placeholders)
+                  AND character_a_variant_id IS NULL
                 UNION ALL
-                SELECT character_b_id AS character_id FROM character_relations WHERE id_user = ? AND character_b_id IN ($placeholders)
+                SELECT character_b_id AS character_id
+                FROM character_relations
+                WHERE id_user = ?
+                  AND character_b_id IN ($placeholders)
+                  AND character_b_variant_id IS NULL
             ) rel
             GROUP BY character_id
         ");
@@ -624,6 +898,250 @@ class RelationRepository extends Repository
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
+    private function boardHasHiddenContent(int $userId, int $boardId): bool
+    {
+        $stmt = $this->database->connect()->prepare("
+            SELECT EXISTS (
+                SELECT 1
+                FROM relation_board_characters bc
+                JOIN characters c ON c.id = bc.id_character AND c.id_user = :userId
+                LEFT JOIN character_variants cv ON cv.id = bc.id_variant AND cv.id_character = c.id
+                WHERE bc.id_board = :boardId
+                  AND (
+                    NOT (" . $this->visibleCharacterCondition('c') . ")
+                    OR COALESCE(cv.is_hidden, FALSE) = TRUE
+                  )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM relation_tree_nodes n
+                JOIN characters c ON c.id = n.id_character AND c.id_user = n.id_user
+                LEFT JOIN character_variants cv ON cv.id = n.id_variant AND cv.id_character = c.id
+                WHERE n.id_user = :userId
+                  AND n.id_board = :boardId
+                  AND (
+                    NOT (" . $this->visibleCharacterCondition('c') . ")
+                    OR COALESCE(cv.is_hidden, FALSE) = TRUE
+                  )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM relation_board_worlds rbw
+                JOIN worlds w ON w.id = rbw.id_world AND w.id_user = :userId
+                WHERE rbw.id_board = :boardId
+                  AND NOT (" . $this->visibleWorldCondition('w') . ")
+            )
+            OR EXISTS (
+                WITH RECURSIVE selected_worlds(id) AS (
+                    SELECT rbw.id_world
+                    FROM relation_board_worlds rbw
+                    JOIN worlds root ON root.id = rbw.id_world AND root.id_user = :userId
+                    WHERE rbw.id_board = :boardId
+                    UNION
+                    SELECT child.id
+                    FROM worlds child
+                    JOIN selected_worlds sw ON child.parent_id = sw.id
+                    WHERE child.id_user = :userId
+                )
+                SELECT 1
+                FROM characters c
+                WHERE c.id_user = :userId
+                  AND c.id_world IN (SELECT id FROM selected_worlds)
+                  AND NOT (" . $this->visibleCharacterCondition('c') . ")
+            )
+        ");
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':boardId', $boardId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return (bool)$stmt->fetchColumn();
+    }
+
+    private function visibleCharacterClause(string $alias): string
+    {
+        return ' AND ' . $this->visibleCharacterCondition($alias);
+    }
+
+    private function hiddenBoardClause(string $alias, bool $includeHidden): string
+    {
+        if ($includeHidden) {
+            return '';
+        }
+
+        $prefix = $alias !== '' ? $alias . '.' : '';
+        return " AND COALESCE({$prefix}is_hidden, FALSE) = FALSE";
+    }
+
+    private function characterNsfwSelect(string $alias): string
+    {
+        return "EXISTS (
+            SELECT 1
+            FROM content_filters cf
+            JOIN filters f ON f.id = cf.id_filter
+            WHERE cf.object_type = 'character'
+              AND cf.object_id = {$alias}.id
+              AND LOWER(f.slug) IN ('nsfw', '+18', '18+')
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM character_filters legacy_cf
+            JOIN filters f ON f.id = legacy_cf.id_filter
+            WHERE legacy_cf.id_character = {$alias}.id
+              AND LOWER(f.slug) IN ('nsfw', '+18', '18+')
+        )
+        OR EXISTS (
+            WITH RECURSIVE ancestors(id, parent_id) AS (
+                SELECT w.id, w.parent_id
+                FROM worlds w
+                WHERE w.id = {$alias}.id_world
+                UNION ALL
+                SELECT parent.id, parent.parent_id
+                FROM worlds parent
+                JOIN ancestors a ON parent.id = a.parent_id
+            )
+            SELECT 1
+            FROM content_filters cf
+            JOIN filters f ON f.id = cf.id_filter
+            WHERE cf.object_type = 'world'
+              AND cf.object_id IN (SELECT id FROM ancestors)
+              AND LOWER(f.slug) IN ('nsfw', '+18', '18+')
+        )
+        OR EXISTS (
+            WITH RECURSIVE ancestors(id, parent_id) AS (
+                SELECT w.id, w.parent_id
+                FROM worlds w
+                WHERE w.id = {$alias}.id_world
+                UNION ALL
+                SELECT parent.id, parent.parent_id
+                FROM worlds parent
+                JOIN ancestors a ON parent.id = a.parent_id
+            )
+            SELECT 1
+            FROM world_filters wf
+            JOIN filters f ON f.id = wf.id_filter
+            WHERE wf.id_world IN (SELECT id FROM ancestors)
+              AND LOWER(f.slug) IN ('nsfw', '+18', '18+')
+        )";
+    }
+
+    private function variantAwareNsfwSelect(string $characterAlias, string $variantAlias): string
+    {
+        return "(
+            {$variantAlias}.id IS NULL
+            AND (" . $this->characterNsfwSelect($characterAlias) . ")
+        ) OR (
+            {$variantAlias}.id IS NOT NULL
+            AND (
+                COALESCE({$variantAlias}.is_adult, FALSE) = TRUE
+                OR EXISTS (
+                    SELECT 1
+                    FROM content_filters variant_cf
+                    JOIN filters variant_f ON variant_f.id = variant_cf.id_filter
+                    WHERE variant_cf.object_type = 'character_variant'
+                      AND variant_cf.object_id = {$variantAlias}.id
+                      AND LOWER(variant_f.slug) IN ('adult', 'nsfw', '+18', '18+')
+                )
+                OR (
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM content_filters variant_any_cf
+                        WHERE variant_any_cf.object_type = 'character_variant'
+                          AND variant_any_cf.object_id = {$variantAlias}.id
+                    )
+                    AND (" . $this->characterNsfwSelect($characterAlias) . ")
+                )
+            )
+        )";
+    }
+
+    private function characterEntityHasNsfw(int $userId, int $characterId, ?int $variantId): bool
+    {
+        if ($variantId !== null) {
+            $stmt = $this->database->connect()->prepare("
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM characters c
+                    JOIN character_variants cv ON cv.id_character = c.id
+                    WHERE c.id = :characterId
+                      AND c.id_user = :userId
+                      AND cv.id = :variantId
+                      AND (" . $this->variantAwareNsfwSelect('c', 'cv') . ")
+                )
+            ");
+            $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+            $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+            $stmt->bindValue(':variantId', $variantId, PDO::PARAM_INT);
+            $stmt->execute();
+            return (bool)$stmt->fetchColumn();
+        }
+
+        $stmt = $this->database->connect()->prepare("
+            SELECT EXISTS (
+                SELECT 1 FROM characters c
+                WHERE c.id = :characterId
+                  AND c.id_user = :userId
+                  AND (" . $this->characterNsfwSelect('c') . ")
+            )
+        ");
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+        $stmt->execute();
+        return (bool)$stmt->fetchColumn();
+    }
+
+    private function entityKey(int $characterId, ?int $variantId): string
+    {
+        return $characterId . ':' . ($variantId ?? 0);
+    }
+
+    private function cleanCustomIcon(?string $value): ?string
+    {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return null;
+        }
+        return mb_substr($value, 0, 8);
+    }
+
+    private function visibleCharacterCondition(string $alias): string
+    {
+        return "COALESCE({$alias}.is_hidden, FALSE) = FALSE
+            AND NOT EXISTS (
+                WITH RECURSIVE ancestors(id, parent_id, is_hidden) AS (
+                    SELECT w.id, w.parent_id, COALESCE(w.is_hidden, FALSE)
+                    FROM worlds w
+                    WHERE w.id = {$alias}.id_world
+                    UNION ALL
+                    SELECT parent.id, parent.parent_id, COALESCE(parent.is_hidden, FALSE)
+                    FROM worlds parent
+                    JOIN ancestors a ON parent.id = a.parent_id
+                )
+                SELECT 1 FROM ancestors WHERE is_hidden = TRUE
+            )";
+    }
+
+    private function visibleWorldClause(string $alias): string
+    {
+        return ' AND ' . $this->visibleWorldCondition($alias);
+    }
+
+    private function visibleWorldCondition(string $alias): string
+    {
+        return "COALESCE({$alias}.is_hidden, FALSE) = FALSE
+            AND NOT EXISTS (
+                WITH RECURSIVE ancestors(id, parent_id, is_hidden) AS (
+                    SELECT w.id, w.parent_id, COALESCE(w.is_hidden, FALSE)
+                    FROM worlds w
+                    WHERE w.id = {$alias}.parent_id
+                    UNION ALL
+                    SELECT parent.id, parent.parent_id, COALESCE(parent.is_hidden, FALSE)
+                    FROM worlds parent
+                    JOIN ancestors a ON parent.id = a.parent_id
+                )
+                SELECT 1 FROM ancestors WHERE is_hidden = TRUE
+            )";
+    }
+
     private function assertCharacterBelongsToUser(int $characterId, int $userId): void
     {
         $stmt = $this->database->connect()->prepare('SELECT 1 FROM characters WHERE id = :id AND id_user = :userId');
@@ -632,6 +1150,29 @@ class RelationRepository extends Repository
         $stmt->execute();
         if (!$stmt->fetchColumn()) {
             throw new RuntimeException('Postac nie nalezy do uzytkownika.');
+        }
+    }
+
+    private function assertVariantBelongsToCharacter(?int $variantId, int $characterId, int $userId): void
+    {
+        if ($variantId === null) {
+            return;
+        }
+
+        $stmt = $this->database->connect()->prepare('
+            SELECT 1
+            FROM character_variants cv
+            JOIN characters c ON c.id = cv.id_character
+            WHERE cv.id = :variantId
+              AND cv.id_character = :characterId
+              AND c.id_user = :userId
+        ');
+        $stmt->bindValue(':variantId', $variantId, PDO::PARAM_INT);
+        $stmt->bindValue(':characterId', $characterId, PDO::PARAM_INT);
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+        if (!$stmt->fetchColumn()) {
+            throw new RuntimeException('Wariant postaci nie nalezy do postaci.');
         }
     }
 

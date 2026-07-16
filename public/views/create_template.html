@@ -7,16 +7,68 @@ function fieldTypeMeta(string $type): array {
         'image'           => ['icon' => 'fa-image',          'label' => 'Zdjęcie',        'color' => 'var(--success,#27ae60)'],
         'image-gallery'   => ['icon' => 'fa-images',         'label' => 'Galeria',        'color' => 'var(--success,#27ae60)'],
         'table'           => ['icon' => 'fa-table',          'label' => 'Tabela',         'color' => 'var(--secondary,#8e44ad)'],
+        'stats'           => ['icon' => 'fa-chart-simple',   'label' => 'Statystyki',     'color' => 'var(--secondary,#8e44ad)'],
         'date'            => ['icon' => 'fa-calendar-days',  'label' => 'Data',           'color' => 'var(--warning,#e67e22)'],
         'select'          => ['icon' => 'fa-chevron-down',   'label' => 'Wybór z listy',  'color' => 'var(--info,#2980b9)'],
         default           => ['icon' => 'fa-font',           'label' => 'Tekst',          'color' => ''],
     };
 }
+$templateDateSettingsRaw = isset($template) ? (string)($template['date_settings'] ?? '') : '';
+$templateDateSettings = json_decode($templateDateSettingsRaw, true);
+if (!is_array($templateDateSettings)) {
+    $templateDateSettings = [];
+}
+if (empty($templateDateSettings['months'] ?? []) && !empty($template['fields'] ?? [])) {
+    foreach ($template['fields'] as $legacyField) {
+        if (($legacyField['field_type'] ?? '') !== 'date') {
+            continue;
+        }
+        $legacyDate = json_decode((string)($legacyField['placeholder'] ?? ''), true);
+        if (is_array($legacyDate) && !empty($legacyDate['months'] ?? [])) {
+            $templateDateSettings = $legacyDate;
+            break;
+        }
+    }
+}
+if (empty($templateDateSettings['months'] ?? [])) {
+    $templateDateSettings['months'] = [
+        ['name' => 'Styczen', 'days' => 31],
+        ['name' => 'Luty', 'days' => 28],
+        ['name' => 'Marzec', 'days' => 31],
+        ['name' => 'Kwiecien', 'days' => 30],
+        ['name' => 'Maj', 'days' => 31],
+        ['name' => 'Czerwiec', 'days' => 30],
+        ['name' => 'Lipiec', 'days' => 31],
+        ['name' => 'Sierpien', 'days' => 31],
+        ['name' => 'Wrzesien', 'days' => 30],
+        ['name' => 'Pazdziernik', 'days' => 31],
+        ['name' => 'Listopad', 'days' => 30],
+        ['name' => 'Grudzien', 'days' => 31],
+    ];
+}
+if (trim((string)($templateDateSettings['defaultYear'] ?? '')) === '') {
+    $templateDateSettings['defaultYear'] = date('Y');
+}
+$templateDateSettings['currentDateMode'] = (string)($templateDateSettings['currentDateMode'] ?? 'fixed');
+if (!in_array($templateDateSettings['currentDateMode'], ['fixed', 'real_today', 'auto'], true)) {
+    $templateDateSettings['currentDateMode'] = 'fixed';
+}
+$currentWorldDateValue = (string)($template['current_world_date'] ?? date('Y-m-d'));
+$currentDateAnchorValue = (string)($templateDateSettings['currentDateAnchor'] ?? '');
+$templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 ?>
 <div class="template-container">
     <form id="template-form" action="/createTemplate" method="POST">
         <?php if(isset($template)): ?>
-        <input type="hidden" name="template_id" value="<?= $template['id'] ?>">
+        <input type="hidden" name="template_id" value="<?= htmlspecialchars((string)($template['public_id'] ?? $template['id']), ENT_QUOTES, 'UTF-8') ?>">
+        <?php endif; ?>
+
+        <?php if(isset($messages)): ?>
+            <?php foreach($messages as $message): ?>
+                <div class="messages">
+                    <i class="fa-solid fa-circle-exclamation"></i> <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
+                </div>
+            <?php endforeach; ?>
         <?php endif; ?>
 
     <header class="template-header">
@@ -36,12 +88,81 @@ function fieldTypeMeta(string $type): array {
                 <textarea name="template_description" rows="2"
                     placeholder="Do czego służy ten szablon postaci..."><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
             </div>
+            <div class="input-group">
+                <label>Filtry szablonu, minimum 5</label>
+                <?php
+                    $templateTagsValue = '';
+                    if (!empty($templateFilters ?? [])) {
+                        $templateTagsValue = implode(', ', array_map(fn($filter) => $filter->getName(), $templateFilters));
+                    }
+                ?>
+                <input class="tag-input" data-tag-input type="text" name="template_tags"
+                       value="<?= htmlspecialchars($templateTagsValue, ENT_QUOTES, 'UTF-8') ?>"
+                       placeholder="np. sfw, opis, formularz, postac, fantasy">
+            </div>
+            <div class="input-group">
+                <label>Typ dat w szablonie</label>
+                <?php $dateCalendarType = (string)($template['date_calendar_type'] ?? 'real'); ?>
+                <select name="date_calendar_type" id="template-date-calendar-type">
+                    <option value="real" <?= $dateCalendarType === 'real' ? 'selected' : '' ?>>Realny kalendarz</option>
+                    <option value="fictional" <?= $dateCalendarType === 'fictional' ? 'selected' : '' ?>>Fikcyjny rok</option>
+                    <option value="era" <?= $dateCalendarType === 'era' ? 'selected' : '' ?>>Ery / fantasy</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Data bazowa swiata</label>
+                <input type="text" name="current_world_date"
+                    value="<?= htmlspecialchars($currentWorldDateValue, ENT_QUOTES, 'UTF-8') ?>"
+                    placeholder="np. 2026-06-21, 2077 albo 113 l.s.">
+            </div>
+            <input type="hidden" name="date_settings" id="template-date-settings"
+                   value="<?= htmlspecialchars($templateDateSettingsJson ?: '{}', ENT_QUOTES, 'UTF-8') ?>">
         </div>
         <div class="header-actions">
             <button type="button" class="btn-secondary" onclick="window.location.href='/templates'">Anuluj</button>
             <button type="submit" form="template-form" class="btn-primary">Zapisz szablon postaci</button>
         </div>
     </header>
+
+        <section class="template-date-settings-panel">
+            <div>
+                <h3><i class="fa-solid fa-calendar-days"></i> Schemat daty szablonu</h3>
+                <p>Wszystkie pola typu Data w tym szablonie korzystaja z tych samych miesiecy, er i domyslnego roku.</p>
+            </div>
+            <div class="template-date-settings-grid">
+                <div>
+                    <span class="template-date-settings-label">Miesiace</span>
+                    <div id="global-months-container" class="months-container">
+                        <div class="add-month-btn-wrap">
+                            <button type="button" onclick="addGlobalMonthRow(this)" class="btn-secondary">
+                                <i class="fa-solid fa-plus"></i> Dodaj miesiac
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <span class="template-date-settings-label">Ery</span>
+                    <div id="global-eras-container" class="eras-container">
+                        <div class="add-era-btn-wrap">
+                            <button type="button" onclick="addGlobalEraRow(this)" class="btn-secondary">
+                                <i class="fa-solid fa-plus"></i> Dodaj ere
+                            </button>
+                        </div>
+                    </div>
+                    <label class="template-date-settings-label" for="global-default-year">Domyslny rok</label>
+                    <input type="text" id="global-default-year" placeholder="np. 1200">
+                    <label class="template-date-settings-label" for="template-current-date-mode">Aktualna data w timeline</label>
+                    <select id="template-current-date-mode">
+                        <option value="fixed" <?= $templateDateSettings['currentDateMode'] === 'fixed' ? 'selected' : '' ?>>Stala data bazowa</option>
+                        <option value="real_today" <?= $templateDateSettings['currentDateMode'] === 'real_today' ? 'selected' : '' ?>>Dzisiejsza data realna</option>
+                        <option value="auto" <?= $templateDateSettings['currentDateMode'] === 'auto' ? 'selected' : '' ?>>Naliczaj od daty bazowej</option>
+                    </select>
+                    <label class="template-date-settings-label" for="template-current-date-anchor">Start naliczania</label>
+                    <input type="date" id="template-current-date-anchor"
+                           value="<?= htmlspecialchars($currentDateAnchorValue, ENT_QUOTES, 'UTF-8') ?>">
+                </div>
+            </div>
+        </section>
 
         <div class="template-grid">
             <?php foreach(['left' => ['id'=>'left-fields',  'title'=>'<i class="fa-solid fa-align-left"></i> Treść główna (lewa)'],
@@ -66,8 +187,9 @@ function fieldTypeMeta(string $type): array {
                             <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
                         </div>
                         <div class="field-content">
-                            <input type="text" name="field_labels[]"
-                                value="<?= htmlspecialchars($field['label']) ?>" required>
+                            <input type="text" name="field_labels[]" class="field-label"
+                                value="<?= htmlspecialchars($field['label']) ?>"
+                                placeholder="<?= $side === 'right' ? 'Naglowek/etykieta w infoboxie (opcjonalnie)' : 'Naglowek sekcji (opcjonalnie)' ?>">
                             <input type="hidden" name="field_ids[]" value="<?= (int)$field['id'] ?>" class="field-id">
                             <input type="hidden" name="field_locations[]"    value="<?= $side ?>"  class="field-location">
                             <input type="hidden" name="field_types[]"        value="<?= $ftype ?>" class="field-type">
@@ -76,7 +198,23 @@ function fieldTypeMeta(string $type): array {
                                 <small><i class="fa-solid <?= $meta['icon'] ?>"></i> Typ: <?= $meta['label'] ?></small>
                             </div>
 
-                            <?php if($field['field_type'] === 'table'): ?>
+                            <?php if($field['field_type'] === 'image'): ?>
+                            <?php
+                                $imageCfg = json_decode((string)$phRaw, true);
+                                $imageSize = is_array($imageCfg) && in_array(($imageCfg['size'] ?? ''), ['small', 'medium', 'large', 'full'], true)
+                                    ? $imageCfg['size']
+                                    : 'medium';
+                            ?>
+                            <div class="image-size-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Rozmiar zdjęcia w podglądzie:</span>
+                                <select class="image-size-input" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:var(--input-bg,#fff);color:var(--text,#333);font-size:0.9rem;">
+                                    <option value="small" <?= $imageSize === 'small' ? 'selected' : '' ?>>Małe</option>
+                                    <option value="medium" <?= $imageSize === 'medium' ? 'selected' : '' ?>>Średnie</option>
+                                    <option value="large" <?= $imageSize === 'large' ? 'selected' : '' ?>>Duże</option>
+                                    <option value="full" <?= $imageSize === 'full' ? 'selected' : '' ?>>Pełna szerokość</option>
+                                </select>
+                            </div>
+                            <?php elseif($field['field_type'] === 'table'): ?>
                             <div class="table-rows-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
                                 <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-table"></i> Wiersze tabeli:</span>
                                 <div class="table-rows-container">
@@ -93,6 +231,18 @@ function fieldTypeMeta(string $type): array {
                                     <div class="add-opt-btn-wrap">
                                         <button type="button" onclick="addSelectOption(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
                                             <i class="fa-solid fa-plus"></i> Dodaj opcję</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php elseif($field['field_type'] === 'stats'): ?>
+                            <div class="stats-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-chart-simple"></i> Pula punktow:</span>
+                                <input type="number" min="0" step="1" class="stats-max-input" value="33" style="width:140px;padding:6px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:var(--input-bg,#fff);color:var(--text,#333);font-size:0.9rem;display:block;margin-bottom:10px;">
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-list"></i> Statystyki:</span>
+                                <div class="stats-rows-container">
+                                    <div class="add-stat-btn-wrap">
+                                        <button type="button" onclick="addStatsRow(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
+                                            <i class="fa-solid fa-plus"></i> Dodaj statystyke</button>
                                     </div>
                                 </div>
                             </div>
@@ -118,15 +268,11 @@ function fieldTypeMeta(string $type): array {
                             </div>
                             <?php endif; ?>
                         </div>
-                        <button type="button" class="delete-field-btn" onclick="this.parentElement.remove()">
+                        <button type="button" class="delete-field-btn" onclick="removeTemplateField(this)">
                             <i class="fa-solid fa-xmark"></i></button>
                     </div>
                     <?php endforeach; ?>
                     <?php endif; ?>
-                </div>
-                <div class="add-field-container">
-                    <button type="button" class="add-circle-btn" onclick="openFieldModal('<?= $side ?>')">
-                        <i class="fa-solid fa-plus"></i></button>
                 </div>
             </div>
             <?php endforeach; ?>
@@ -153,6 +299,8 @@ function fieldTypeMeta(string $type): array {
                 <i class="fa-solid fa-images"></i><span>Galeria zdjęć</span></button>
             <button type="button" class="type-option" id="opt-table">
                 <i class="fa-solid fa-table"></i><span>Tabela</span></button>
+            <button type="button" class="type-option" id="opt-stats">
+                <i class="fa-solid fa-chart-simple"></i><span>Statystyki</span></button>
             <button type="button" class="type-option" id="opt-date">
                 <i class="fa-solid fa-calendar-days"></i><span>Data</span></button>
         </div>
@@ -170,7 +318,7 @@ function fieldTypeMeta(string $type): array {
             <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
         </div>
         <div class="field-content">
-            <input type="text" name="field_labels[]" placeholder="Nazwa pola..." required>
+            <input type="text" name="field_labels[]" class="field-label" placeholder="Naglowek/etykieta pola (opcjonalnie)">
             <input type="hidden" name="field_ids[]" value="" class="field-id">
             <input type="hidden" name="field_locations[]"    value="" class="field-location">
             <input type="hidden" name="field_types[]"        value="" class="field-type">
@@ -178,9 +326,9 @@ function fieldTypeMeta(string $type): array {
             <div class="type-preview-tag"><small></small></div>
             <!-- Edytory zostaną wstrzyknięte przez createField() -->
         </div>
-        <button type="button" class="delete-field-btn" onclick="this.parentElement.remove()">
+        <button type="button" class="delete-field-btn" onclick="removeTemplateField(this)">
             <i class="fa-solid fa-xmark"></i></button>
     </div>
 </template>
 
-<script src="public/scripts/template_creator.js"></script>
+<script src="/public/scripts/template_creator.js"></script>

@@ -24,7 +24,70 @@ class TemplateRepository extends Repository
             $template['description'],
             $template['id_user'],
             $template['id'],
-            $this->getTemplateFields($id)
+            $this->getTemplateFields($id),
+            $template['is_hidden'] ?? false,
+            $template['public_id'] ?? null,
+            $template['date_calendar_type'] ?? 'real',
+            $template['date_settings'] ?? '',
+            $template['current_world_date'] ?? ''
+        );
+    }
+
+    public function getTemplateByIdAndUserId(int $id, int $userId): ?Template
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT * FROM templates WHERE id = :id AND id_user = :userId
+        ');
+        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+        $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $template = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$template) {
+            return null;
+        }
+
+        return new Template(
+            $template['name'],
+            $template['description'],
+            $template['id_user'],
+            $template['id'],
+            $this->getTemplateFields($id),
+            $template['is_hidden'] ?? false,
+            $template['public_id'] ?? null,
+            $template['date_calendar_type'] ?? 'real',
+            $template['date_settings'] ?? '',
+            $template['current_world_date'] ?? ''
+        );
+    }
+
+    public function getTemplateByPublicIdAndUserId(string $publicId, int $userId): ?Template
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT * FROM templates WHERE public_id::text = :publicId AND id_user = :userId
+        ');
+        $stmt->bindValue(':publicId', $publicId);
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $template = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$template) {
+            return null;
+        }
+
+        return new Template(
+            $template['name'],
+            $template['description'],
+            $template['id_user'],
+            $template['id'],
+            $this->getTemplateFields((int)$template['id']),
+            $template['is_hidden'] ?? false,
+            $template['public_id'] ?? null,
+            $template['date_calendar_type'] ?? 'real',
+            $template['date_settings'] ?? '',
+            $template['current_world_date'] ?? ''
         );
     }
 
@@ -41,11 +104,25 @@ class TemplateRepository extends Repository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function getTemplatesByUserId(int $userId): array
+    public function getTemplatesByUserId(int $userId, array $blockedFilterIds = [], bool $includeHidden = false): array
     {
         $result = [];
+        $blockedFilterIds = array_values(array_unique(array_filter(array_map('intval', $blockedFilterIds))));
+        $blockedClause = '';
+        if (!empty($blockedFilterIds)) {
+            $ids = implode(',', $blockedFilterIds);
+            $blockedClause = " AND NOT EXISTS (
+                SELECT 1 FROM content_filters cf
+                WHERE cf.object_type = 'template'
+                  AND cf.object_id = t.id
+                  AND cf.id_filter IN ({$ids})
+            )";
+        }
+
         $stmt = $this->database->connect()->prepare('
-            SELECT * FROM templates WHERE id_user = :userId
+            SELECT t.* FROM templates t
+            WHERE t.id_user = :userId ' . $blockedClause . ($includeHidden ? '' : ' AND COALESCE(t.is_hidden, FALSE) = FALSE') . '
+            ORDER BY t.name ASC
         ');
         $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
         $stmt->execute();
@@ -55,14 +132,88 @@ class TemplateRepository extends Repository
                 $template['name'],
                 $template['description'],
                 $template['id_user'],
-                $template['id']
+                $template['id'],
+                [],
+                $template['is_hidden'] ?? false,
+                $template['public_id'] ?? null,
+                $template['date_calendar_type'] ?? 'real',
+                $template['date_settings'] ?? '',
+                $template['current_world_date'] ?? ''
             );
         }
 
         return $result;
     }
 
-    public function addTemplate(string $name, string $description, int $userId, array $fields): void
+    public function searchGlobalTemplates(int $userId, string $query, array $blockedFilterIds = [], bool $includeHidden = false, bool $includeAdult = false, int $limit = 6): array
+    {
+        $blockedFilterIds = array_values(array_unique(array_filter(array_map('intval', $blockedFilterIds))));
+        $blockedClause = '';
+        if (!empty($blockedFilterIds)) {
+            $ids = implode(',', $blockedFilterIds);
+            $blockedClause = " AND NOT EXISTS (
+                SELECT 1 FROM content_filters blocked_cf
+                WHERE blocked_cf.object_type = 'template'
+                  AND blocked_cf.object_id = t.id
+                  AND blocked_cf.id_filter IN ({$ids})
+            )";
+        }
+        $adultClause = $includeAdult ? '' : " AND NOT EXISTS (
+            SELECT 1
+            FROM content_filters adult_cf
+            JOIN filters adult_f ON adult_f.id = adult_cf.id_filter
+            WHERE adult_cf.object_type = 'template'
+              AND adult_cf.object_id = t.id
+              AND (
+                LOWER(COALESCE(adult_f.slug, '')) IN ('adult', 'nsfw', '+18', '18+')
+                OR LOWER(COALESCE(adult_f.name, '')) IN ('adult', 'nsfw', '+18', '18+')
+                OR LOWER(COALESCE(adult_f.label, '')) IN ('adult', 'nsfw', '+18', '18+')
+              )
+        )";
+
+        $stmt = $this->database->connect()->prepare("
+            SELECT DISTINCT t.*
+            FROM templates t
+            LEFT JOIN template_fields tf ON tf.id_template = t.id
+            LEFT JOIN content_filters cf ON cf.object_type = 'template' AND cf.object_id = t.id
+            LEFT JOIN filters f ON f.id = cf.id_filter
+            WHERE t.id_user = :userId
+              " . ($includeHidden ? '' : ' AND COALESCE(t.is_hidden, FALSE) = FALSE') . "
+              {$blockedClause}
+              {$adultClause}
+              AND (
+                LOWER(t.name) LIKE :q
+                OR LOWER(COALESCE(t.description, '')) LIKE :q
+                OR LOWER(COALESCE(tf.label, '')) LIKE :q
+                OR LOWER(COALESCE(tf.field_type, '')) LIKE :q
+                OR LOWER(COALESCE(tf.placeholder, '')) LIKE :q
+                OR LOWER(COALESCE(f.name, '')) LIKE :q
+                OR LOWER(COALESCE(f.slug, '')) LIKE :q
+                OR LOWER(COALESCE(f.label, '')) LIKE :q
+              )
+            ORDER BY t.name ASC, t.id ASC
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':userId', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':q', '%' . mb_strtolower(trim($query)) . '%');
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map(fn($template) => new Template(
+            $template['name'],
+            $template['description'],
+            $template['id_user'],
+            $template['id'],
+            [],
+            $template['is_hidden'] ?? false,
+            $template['public_id'] ?? null,
+            $template['date_calendar_type'] ?? 'real',
+            $template['date_settings'] ?? '',
+            $template['current_world_date'] ?? ''
+        ), $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    public function addTemplate(string $name, string $description, int $userId, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = ''): int
     {
         $db = $this->database->connect();
 
@@ -70,10 +221,10 @@ class TemplateRepository extends Repository
             $db->beginTransaction();
 
             $stmt = $db->prepare('
-                INSERT INTO templates (name, description, id_user)
-                VALUES (?, ?, ?) RETURNING id
+                INSERT INTO templates (name, description, id_user, date_calendar_type, date_settings, current_world_date)
+                VALUES (?, ?, ?, ?, ?, ?) RETURNING id
             ');
-            $stmt->execute([$name, $description, $userId]);
+            $stmt->execute([$name, $description, $userId, $dateCalendarType, $dateSettings, $currentWorldDate]);
             $templateId = $stmt->fetchColumn();
 
             $stmtField = $db->prepare('
@@ -93,6 +244,7 @@ class TemplateRepository extends Repository
             }
 
             $db->commit();
+            return (int)$templateId;
         } catch (Exception $e) {
             $db->rollBack();
             throw $e;
@@ -108,6 +260,18 @@ class TemplateRepository extends Repository
         $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
 
         return $stmt->execute();
+    }
+
+    public function setHidden(int $templateId, int $userId, bool $hidden): void
+    {
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE templates SET is_hidden = :hidden WHERE id = :id AND id_user = :userId'
+        );
+        $stmt->execute([
+            ':hidden' => $hidden ? 1 : 0,
+            ':id' => $templateId,
+            ':userId' => $userId,
+        ]);
     }
 
     public function getTemplateWithFields(int $id): ?array
@@ -131,15 +295,61 @@ class TemplateRepository extends Repository
         return $template;
     }
 
-    public function updateTemplate(int $id, string $name, string $description, array $fields): void
+    public function getTemplateWithFieldsByUserId(int $id, int $userId): ?array
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT * FROM templates WHERE id = :id AND id_user = :userId
+        ');
+        $stmt->execute(['id' => $id, 'userId' => $userId]);
+        $template = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$template) {
+            return null;
+        }
+
+        $stmtFields = $this->database->connect()->prepare('
+            SELECT * FROM template_fields WHERE id_template = :id ORDER BY order_number ASC
+        ');
+        $stmtFields->execute(['id' => $id]);
+        $template['fields'] = $stmtFields->fetchAll(PDO::FETCH_ASSOC);
+
+        return $template;
+    }
+
+    public function getTemplateWithFieldsByPublicIdAndUserId(string $publicId, int $userId): ?array
+    {
+        $stmt = $this->database->connect()->prepare('
+            SELECT * FROM templates WHERE public_id::text = :publicId AND id_user = :userId
+        ');
+        $stmt->execute(['publicId' => $publicId, 'userId' => $userId]);
+        $template = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$template) {
+            return null;
+        }
+
+        $stmtFields = $this->database->connect()->prepare('
+            SELECT * FROM template_fields WHERE id_template = :id ORDER BY order_number ASC
+        ');
+        $stmtFields->execute(['id' => $template['id']]);
+        $template['fields'] = $stmtFields->fetchAll(PDO::FETCH_ASSOC);
+
+        return $template;
+    }
+
+    public function updateTemplate(int $id, string $name, string $description, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = ''): void
     {
         $db = $this->database->connect();
 
         try {
             $db->beginTransaction();
 
-            $stmt = $db->prepare('UPDATE templates SET name = ?, description = ? WHERE id = ?');
-            $stmt->execute([$name, $description, $id]);
+            $stmt = $db->prepare('
+                UPDATE templates
+                SET name = ?, description = ?, date_calendar_type = ?, date_settings = ?, current_world_date = ?
+                WHERE id = ?
+            ');
+            $stmt->execute([$name, $description, $dateCalendarType, $dateSettings, $currentWorldDate, $id]);
 
             $existingFieldIds = $this->getTemplateFieldIdsForUpdate($db, $id);
             $keptFieldIds = [];

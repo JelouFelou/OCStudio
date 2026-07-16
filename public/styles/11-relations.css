@@ -17,7 +17,7 @@
     --relation-label-text: var(--text-main, #333);
     --relation-line-shadow: rgba(255, 255, 255, 0.72);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     gap: 0;
     height: 100%;
     min-height: 0;
@@ -253,7 +253,7 @@
     padding: 10px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 10px;
     align-content: start;
     transition: background-color .15s ease, box-shadow .15s ease;
 }
@@ -266,9 +266,9 @@
 .relations-character {
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 8px;
     align-items: stretch;
-    padding: 7px;
+    padding: 8px;
     border: 1px solid var(--border, #e5e1ed);
     border-radius: 8px;
     background: var(--bg, #fff);
@@ -285,22 +285,43 @@
     display: none;
 }
 
-.relations-character img {
+.relations-character-image {
     width: 100%;
     aspect-ratio: 1;
-    height: auto;
     border-radius: 8px;
-    object-fit: cover;
     border: 2px solid var(--relation-node-image-border);
     background: var(--surface-soft, #f7f7f7);
+    overflow: hidden;
+}
+
+.relations-character-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: var(--image-focus-x, 50%) var(--image-focus-y, 50%);
+    transform: scale(var(--image-zoom, 1));
+    transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 50%);
+    display: block;
+}
+
+.relation-node-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--surface-soft, #f7f7f7);
+    border: 2px solid var(--relation-node-image-border);
 }
 
 .relation-node img {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
     object-fit: cover;
-    border: 2px solid var(--relation-node-image-border);
+    object-position: var(--image-focus-x, 50%) var(--image-focus-y, 50%);
+    transform: scale(var(--image-zoom, 1));
+    transform-origin: var(--image-focus-x, 50%) var(--image-focus-y, 50%);
+    display: block;
 }
 
 .relations-character strong,
@@ -503,8 +524,8 @@
 
 .relation-node {
     position: absolute;
-    width: 132px;
-    min-height: 106px;
+    width: 168px;
+    min-height: 188px;
     padding: 10px;
     border: 2px solid var(--relation-node-border);
     border-radius: 8px;
@@ -549,22 +570,67 @@
 
 .relation-label-text {
     fill: var(--relation-label-text);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     pointer-events: all;
     cursor: pointer;
 }
 
-.relation-node strong {
-    margin-top: 6px;
-    font-size: 0.83rem;
+.relations-custom-options {
+    display: none;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 10px;
 }
 
-.relation-node small {
-    display: block;
-    margin-top: 3px;
+.relations-custom-options.is-visible {
+    display: grid;
+}
+
+.relations-form-field input[type="color"] {
+    min-height: 42px;
+    padding: 5px;
+}
+
+.relations-custom-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.relations-custom-presets[hidden] {
+    display: none;
+}
+
+.relations-custom-presets-label {
+    flex-basis: 100%;
+    font-size: 0.78rem;
     color: var(--text-muted, #777);
-    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.relations-custom-presets button {
+    border: 1px solid var(--relation-color, var(--primary, #6c3fd4));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--relation-color, var(--primary, #6c3fd4)) 12%, var(--card-bg, #fff));
+    color: var(--text, #222);
+    padding: 7px 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.relation-node strong {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    line-height: 1.15;
+    min-height: 2.3em;
+    display: block;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .relation-empty-state {

@@ -4,8 +4,8 @@
 
     const boardId = parseInt(app.dataset.boardId, 10);
     const focusCharacterId = app.dataset.focusCharacterId ? parseInt(app.dataset.focusCharacterId, 10) : null;
+    const returnUrl = app.dataset.returnUrl || '/relations';
     const uploadBase = '/public/uploads/';
-    const defaultImage = document.body.dataset.theme === 'dark' ? 'default_dark.png' : 'default.png';
 
     const els = {
         workspace: document.getElementById('relations-workspace'),
@@ -27,6 +27,9 @@
         modalTitle: document.getElementById('relations-modal-title'),
         typeGrid: document.getElementById('relations-type-grid'),
         customName: document.getElementById('relations-custom-name'),
+        customIcon: document.getElementById('relations-custom-icon'),
+        customColor: document.getElementById('relations-custom-color'),
+        customPresets: document.getElementById('relations-custom-presets'),
         note: document.getElementById('relations-note'),
         deleteRelation: document.getElementById('relations-delete-relation'),
         cancelModal: document.getElementById('relations-cancel-modal'),
@@ -38,6 +41,7 @@
         nodes: [],
         relations: [],
         availableCharacters: [],
+        customRelationPresets: [],
         ruleCharacters: [],
         worlds: [],
         rules: { excludedWorldIds: [], exceptionCharacterIds: [] },
@@ -64,7 +68,59 @@
     }
 
     function imageSrc(image) {
-        return uploadBase + (image || defaultImage);
+        if (window.OCDefaults?.characterImageSrc) {
+            return window.OCDefaults.characterImageSrc(image);
+        }
+
+        const defaultImage = document.body.dataset.defaultCharacterImage || 'default.png';
+        const filename = String(image || '').split('/').pop();
+        return uploadBase + (filename && !['default.png', 'default.jpg', 'default_dark.png'].includes(filename) ? filename : defaultImage);
+    }
+
+    function imageCropStyle(character) {
+        const fit = ['cover', 'contain'].includes(character?.image_fit) ? character.image_fit : 'cover';
+        const focusX = Number.isFinite(parseFloat(character?.image_focus_x)) ? parseFloat(character.image_focus_x) : 50;
+        const focusY = Number.isFinite(parseFloat(character?.image_focus_y)) ? parseFloat(character.image_focus_y) : 50;
+        const zoom = Number.isFinite(parseFloat(character?.image_zoom)) ? parseFloat(character.image_zoom) : 1;
+
+        return `--image-focus-x:${Math.max(0, Math.min(100, focusX))}%;--image-focus-y:${Math.max(0, Math.min(100, focusY))}%;--image-zoom:${Math.max(1, zoom)};object-fit:${fit};`;
+    }
+
+    function entityKey(characterId, variantId = 0) {
+        return `${parseInt(characterId, 10)}:${parseInt(variantId || 0, 10) || 0}`;
+    }
+
+    function entityKeyOf(item) {
+        return item?.entity_key || entityKey(item?.character_id || item?.id, item?.variant_id);
+    }
+
+    function parseEntityKey(key) {
+        const [characterId, variantId] = String(key || '0:0').split(':').map(value => parseInt(value, 10) || 0);
+        return { characterId, variantId };
+    }
+
+    function relationAKey(relation) {
+        return relation.character_a_key || entityKey(relation.character_a_id, relation.character_a_variant_id);
+    }
+
+    function relationBKey(relation) {
+        return relation.character_b_key || entityKey(relation.character_b_id, relation.character_b_variant_id);
+    }
+
+    function normalizeRelationEntity(relation, side) {
+        const key = side === 'a' ? relationAKey(relation) : relationBKey(relation);
+        const entity = parseEntityKey(key);
+        return {
+            key: entityKey(entity.characterId, entity.variantId),
+            characterId: entity.characterId,
+            variantId: entity.variantId || 0
+        };
+    }
+
+    function entityName(key) {
+        const node = state.nodes.find(item => entityKeyOf(item) === key);
+        const available = state.availableCharacters.find(item => entityKeyOf(item) === key);
+        return node?.name || available?.name || 'Postac';
     }
 
     function applyTransform() {
@@ -101,12 +157,17 @@
         state.availableCharacters
             .filter(c => !term || c.name.toLowerCase().includes(term))
             .forEach(character => {
+                const key = entityKeyOf(character);
                 const row = document.createElement('div');
                 row.className = 'relations-character' + (character.on_tree ? ' is-on-tree' : '');
                 row.draggable = true;
-                row.dataset.characterId = character.id;
+                row.dataset.characterId = character.character_id || character.id;
+                row.dataset.variantId = character.variant_id || '';
+                row.dataset.entityKey = key;
                 row.innerHTML = `
-                    <img src="${imageSrc(character.image)}" alt="">
+                    <div class="relations-character-image">
+                        <img src="${imageSrc(character.image)}" alt="" style="${imageCropStyle(character)}">
+                    </div>
                     <div>
                         <strong>${escapeHtml(character.name)}</strong>
                         <span>${escapeHtml(character.world_name || 'Folder glowny')}</span>
@@ -114,9 +175,11 @@
                 `;
                 const image = row.querySelector('img');
                 image.draggable = false;
-                image.onerror = event => { event.currentTarget.src = uploadBase + defaultImage; };
+                image.onerror = event => { event.currentTarget.src = imageSrc(); };
                 row.addEventListener('dragstart', event => {
-                    event.dataTransfer.setData('application/x-character-id', String(character.id));
+                    event.dataTransfer.setData('application/x-character-entity', key);
+                    event.dataTransfer.setData('application/x-character-id', String(character.character_id || character.id));
+                    event.dataTransfer.setData('application/x-character-variant-id', String(character.variant_id || 0));
                     event.dataTransfer.effectAllowed = 'copyMove';
                     row.classList.add('is-dragging');
                     els.workspace.classList.add('is-character-dragging');
@@ -132,17 +195,21 @@
     function renderNodes() {
         els.nodes.innerHTML = '';
         state.nodes.forEach(node => {
+            const key = entityKeyOf(node);
             const el = document.createElement('div');
             el.className = 'relation-node' + (focusCharacterId === parseInt(node.character_id, 10) ? ' is-focus' : '');
             el.dataset.characterId = node.character_id;
+            el.dataset.variantId = node.variant_id || '';
+            el.dataset.entityKey = key;
             el.style.left = `${parseFloat(node.position_x)}px`;
             el.style.top = `${parseFloat(node.position_y)}px`;
             el.innerHTML = `
-                <img src="${imageSrc(node.image)}" alt="">
+                <div class="relation-node-image">
+                    <img src="${imageSrc(node.image)}" alt="" style="${imageCropStyle(node)}">
+                </div>
                 <strong>${escapeHtml(node.name)}</strong>
-                <small>Przeciagnij na postac albo do panelu</small>
             `;
-            el.querySelector('img').onerror = event => { event.currentTarget.src = uploadBase + defaultImage; };
+            el.querySelector('img').onerror = event => { event.currentTarget.src = imageSrc(); };
             installNodeDrag(el, node);
             els.nodes.appendChild(el);
         });
@@ -150,29 +217,35 @@
 
     function renderRelations() {
         els.lines.innerHTML = '';
-        const nodeMap = new Map(state.nodes.map(node => [parseInt(node.character_id, 10), node]));
+        const nodeMap = new Map(state.nodes.map(node => [entityKeyOf(node), node]));
         state.visibleRelations = [];
         state.relations.forEach(relation => {
-            const a = nodeMap.get(parseInt(relation.character_a_id, 10));
-            const b = nodeMap.get(parseInt(relation.character_b_id, 10));
+            const a = nodeMap.get(relationAKey(relation));
+            const b = nodeMap.get(relationBKey(relation));
             if (!a || !b) return;
             state.visibleRelations.push(relation);
 
-            const ax = parseFloat(a.position_x) + 66;
-            const ay = parseFloat(a.position_y) + 53;
-            const bx = parseFloat(b.position_x) + 66;
-            const by = parseFloat(b.position_y) + 53;
+            const nodeWidth = 168;
+            const nodeHeight = 188;
+            const ax = parseFloat(a.position_x) + nodeWidth / 2;
+            const ay = parseFloat(a.position_y) + nodeHeight / 2;
+            const bx = parseFloat(b.position_x) + nodeWidth / 2;
+            const by = parseFloat(b.position_y) + nodeHeight / 2;
             const mx = (ax + bx) / 2;
             const my = (ay + by) / 2;
-            const label = relation.is_custom && relation.custom_name ? relation.custom_name : relation.type_name;
+            const customRelation = boolFlag(relation.is_custom);
+            const label = customRelation && relation.custom_name ? relation.custom_name : relation.type_name;
+            const icon = customRelation && relation.custom_icon ? relation.custom_icon : emojiForRelation(relation.code);
+            const visibleLabel = icon ? `${icon} ${label}` : label;
+            const labelWidth = relationLabelWidth(visibleLabel);
 
             const group = svgEl('g', { class: 'relation-link' });
-            group.style.setProperty('--relation-color', relation.color_hex);
+            group.style.setProperty('--relation-color', customRelation && relation.custom_color_hex ? relation.custom_color_hex : relation.color_hex);
             const hit = svgEl('line', { x1: ax, y1: ay, x2: bx, y2: by, stroke: 'transparent', 'stroke-width': 22, class: 'relation-line-hit' });
             const line = svgEl('line', { x1: ax, y1: ay, x2: bx, y2: by, class: 'relation-line' });
-            const pill = svgEl('rect', { x: mx - 54, y: my - 15, width: 108, height: 30, rx: 8, class: 'relation-label-bg' });
+            const pill = svgEl('rect', { x: mx - labelWidth / 2, y: my - 16, width: labelWidth, height: 32, rx: 8, class: 'relation-label-bg' });
             const text = svgEl('text', { x: mx, y: my + 5, 'text-anchor': 'middle', class: 'relation-label-text' });
-            text.textContent = label.length > 13 ? label.slice(0, 12) + '...' : label;
+            text.textContent = visibleLabel;
             group.append(hit, line, pill, text);
 
             const handleRelationClick = event => {
@@ -250,18 +323,28 @@
         el.addEventListener('drop', async event => {
             event.preventDefault();
             event.stopPropagation();
-            const sourceId = parseInt(event.dataTransfer.getData('application/x-character-id'), 10);
-            const targetId = parseInt(node.character_id, 10);
-            if (!sourceId || sourceId === targetId) return;
-            const sourceOnTree = state.nodes.some(n => parseInt(n.character_id, 10) === sourceId);
+            const sourceKey = event.dataTransfer.getData('application/x-character-entity')
+                || entityKey(event.dataTransfer.getData('application/x-character-id'), event.dataTransfer.getData('application/x-character-variant-id'));
+            const targetKey = entityKeyOf(node);
+            const sourceEntity = parseEntityKey(sourceKey);
+            const targetEntity = parseEntityKey(targetKey);
+            if (!sourceEntity.characterId || sourceKey === targetKey) return;
+            const sourceOnTree = state.nodes.some(n => entityKeyOf(n) === sourceKey);
             if (!sourceOnTree) {
                 const pos = {
                     x: parseFloat(node.position_x) + 170,
                     y: parseFloat(node.position_y)
                 };
-                await addNode(sourceId, pos.x, pos.y);
+                await addNode(sourceEntity.characterId, sourceEntity.variantId, pos.x, pos.y);
             }
-            openRelationModal(findExistingRelation(sourceId, targetId) || { character_a_id: sourceId, character_b_id: targetId });
+            openRelationModal(findExistingRelation(sourceKey, targetKey) || {
+                character_a_id: sourceEntity.characterId,
+                character_a_variant_id: sourceEntity.variantId || null,
+                character_a_key: sourceKey,
+                character_b_id: targetEntity.characterId,
+                character_b_variant_id: targetEntity.variantId || null,
+                character_b_key: targetKey
+            });
         });
 
         el.addEventListener('pointerdown', event => {
@@ -314,11 +397,17 @@
                 el.style.left = `${node.position_x}px`;
                 el.style.top = `${node.position_y}px`;
                 renderRelations();
-                const sourceId = parseInt(node.character_id, 10);
-                const targetId = parseInt(targetEl.dataset.characterId, 10);
-                openRelationModal(findExistingRelation(sourceId, targetId) || {
-                    character_a_id: parseInt(node.character_id, 10),
-                    character_b_id: parseInt(targetEl.dataset.characterId, 10)
+                const sourceKey = entityKeyOf(node);
+                const targetKey = targetEl.dataset.entityKey || entityKey(targetEl.dataset.characterId, targetEl.dataset.variantId);
+                const sourceEntity = parseEntityKey(sourceKey);
+                const targetEntity = parseEntityKey(targetKey);
+                openRelationModal(findExistingRelation(sourceKey, targetKey) || {
+                    character_a_id: sourceEntity.characterId,
+                    character_a_variant_id: sourceEntity.variantId || null,
+                    character_a_key: sourceKey,
+                    character_b_id: targetEntity.characterId,
+                    character_b_variant_id: targetEntity.variantId || null,
+                    character_b_key: targetKey
                 });
                 return;
             }
@@ -329,13 +418,14 @@
                 el.style.left = `${node.position_x}px`;
                 el.style.top = `${node.position_y}px`;
                 renderRelations();
-                await removeNode(parseInt(node.character_id, 10)).catch(alertError);
+                await removeNode(parseInt(node.character_id, 10), parseInt(node.variant_id || 0, 10)).catch(alertError);
                 return;
             }
 
             await jsonPost('/api/relations/node/position', {
                 boardId,
                 characterId: parseInt(node.character_id, 10),
+                variantId: parseInt(node.variant_id || 0, 10),
                 x: parseFloat(node.position_x),
                 y: parseFloat(node.position_y)
             }).catch(alertError);
@@ -368,32 +458,42 @@
         return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
     }
 
-    function findExistingRelation(characterAId, characterBId) {
-        const a = Math.min(parseInt(characterAId, 10), parseInt(characterBId, 10));
-        const b = Math.max(parseInt(characterAId, 10), parseInt(characterBId, 10));
+    function findExistingRelation(entityAKey, entityBKey) {
+        const [a, b] = [String(entityAKey), String(entityBKey)].sort();
         return state.relations.find(relation => {
-            const relA = Math.min(parseInt(relation.character_a_id, 10), parseInt(relation.character_b_id, 10));
-            const relB = Math.max(parseInt(relation.character_a_id, 10), parseInt(relation.character_b_id, 10));
+            const [relA, relB] = [relationAKey(relation), relationBKey(relation)].sort();
             return relA === a && relB === b;
         }) || null;
     }
 
-    async function addNode(characterId, x, y) {
-        await jsonPost('/api/relations/node', { boardId, characterId, x, y });
+    async function addNode(characterId, variantId, x, y) {
+        await jsonPost('/api/relations/node', { boardId, characterId, variantId: variantId || 0, x, y });
         await loadTree();
     }
 
-    async function removeNode(characterId) {
-        await jsonPost('/api/relations/node/remove', { boardId, characterId });
+    async function removeNode(characterId, variantId = 0) {
+        await jsonPost('/api/relations/node/remove', { boardId, characterId, variantId: variantId || 0 });
         await loadTree();
     }
 
     function openRelationModal(relation) {
-        state.modal = relation;
+        const a = normalizeRelationEntity(relation, 'a');
+        const b = normalizeRelationEntity(relation, 'b');
+        state.modal = {
+            ...relation,
+            character_a_id: a.characterId,
+            character_a_variant_id: a.variantId || null,
+            character_a_key: a.key,
+            character_b_id: b.characterId,
+            character_b_variant_id: b.variantId || null,
+            character_b_key: b.key
+        };
         hideNotePopover();
         const existing = Boolean(relation.id);
-        els.modalTitle.textContent = existing ? 'Edytuj relacje' : 'Dodaj relacje';
+        els.modalTitle.textContent = `${existing ? 'Edytuj relacje' : 'Dodaj relacje'}: ${entityName(a.key)} <-> ${entityName(b.key)}`;
         els.customName.value = relation.custom_name || '';
+        els.customIcon.value = relation.custom_icon || '';
+        els.customColor.value = relation.custom_color_hex || '#8E44AD';
         els.note.value = relation.note || '';
         els.deleteRelation.style.display = existing ? 'inline-block' : 'none';
         renderRelationTypes(relation.relation_type_id || (state.types[0] && state.types[0].id));
@@ -429,13 +529,52 @@
         if (field) {
             field.style.display = isCustom ? 'grid' : 'none';
         }
+        document.querySelector('.relations-custom-options')?.classList.toggle('is-visible', Boolean(isCustom));
+        renderCustomPresets(isCustom);
         if (!isCustom) {
             els.customName.value = '';
+            els.customIcon.value = '';
+            els.customColor.value = '#8E44AD';
         }
     }
 
+    function renderCustomPresets(isCustom) {
+        if (!els.customPresets) return;
+        els.customPresets.innerHTML = '';
+        els.customPresets.hidden = !isCustom;
+        if (!isCustom || !state.modal) return;
+        const pairNsfw = relationPairIsNsfw(relationAKey(state.modal), relationBKey(state.modal));
+        const presets = (state.customRelationPresets || []).filter(preset => boolFlag(preset.is_nsfw) === pairNsfw);
+        if (!presets.length) return;
+        const label = document.createElement('span');
+        label.className = 'relations-custom-presets-label';
+        label.textContent = 'Poprzednie custom relacje';
+        els.customPresets.appendChild(label);
+        presets.forEach(preset => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.style.setProperty('--relation-color', preset.custom_color_hex || '#8E44AD');
+            btn.innerHTML = `<span>${escapeHtml(preset.custom_icon || '')}</span>${escapeHtml(preset.custom_name)}`;
+            btn.addEventListener('click', () => {
+                els.customName.value = preset.custom_name || '';
+                els.customIcon.value = preset.custom_icon || '';
+                els.customColor.value = preset.custom_color_hex || '#8E44AD';
+            });
+            els.customPresets.appendChild(btn);
+        });
+    }
+
+    function relationPairIsNsfw(aKey, bKey) {
+        const keys = [aKey, bKey];
+        return keys.every(key => {
+            const node = state.nodes.find(item => entityKeyOf(item) === key);
+            const available = state.availableCharacters.find(item => entityKeyOf(item) === key);
+            return boolFlag(node?.is_nsfw || available?.is_nsfw);
+        });
+    }
+
     function isCustomType(type) {
-        return Boolean(type && (type.is_custom === true || type.is_custom === 't' || type.is_custom === 1 || type.is_custom === '1' || type.code === 'custom'));
+        return Boolean(type && (boolFlag(type.is_custom) || type.code === 'custom'));
     }
 
     function closeModal() {
@@ -446,12 +585,18 @@
     async function saveModalRelation() {
         const selected = els.typeGrid.querySelector('.is-selected');
         if (!state.modal || !selected) return;
+        const a = normalizeRelationEntity(state.modal, 'a');
+        const b = normalizeRelationEntity(state.modal, 'b');
         try {
             await jsonPost('/api/relations', {
-                characterAId: parseInt(state.modal.character_a_id, 10),
-                characterBId: parseInt(state.modal.character_b_id, 10),
+                characterAId: a.characterId,
+                characterAVariantId: a.variantId,
+                characterBId: b.characterId,
+                characterBVariantId: b.variantId,
                 relationTypeId: parseInt(selected.dataset.typeId, 10),
                 customName: els.customName.value,
+                customIcon: els.customIcon.value,
+                customColorHex: els.customColor.value,
                 note: els.note.value
             });
         } catch (error) {
@@ -501,7 +646,8 @@
     function installWorkspaceEvents() {
         els.workspace.addEventListener('dragover', event => event.preventDefault());
         els.workspace.addEventListener('dragenter', event => {
-            if (!Array.from(event.dataTransfer.types).includes('application/x-character-id')) return;
+            const types = Array.from(event.dataTransfer.types);
+            if (!types.includes('application/x-character-entity') && !types.includes('application/x-character-id')) return;
             els.workspace.classList.add('is-character-drag-over');
         });
         els.workspace.addEventListener('dragleave', event => {
@@ -512,12 +658,14 @@
             event.preventDefault();
             hideNotePopover();
             els.workspace.classList.remove('is-character-dragging', 'is-character-drag-over');
-            const characterId = parseInt(event.dataTransfer.getData('application/x-character-id'), 10);
-            if (!characterId) return;
+            const droppedKey = event.dataTransfer.getData('application/x-character-entity')
+                || entityKey(event.dataTransfer.getData('application/x-character-id'), event.dataTransfer.getData('application/x-character-variant-id'));
+            const droppedEntity = parseEntityKey(droppedKey);
+            if (!droppedEntity.characterId) return;
             const overNode = event.target.closest('.relation-node');
             if (overNode) return;
             const pos = screenToWorld(event.clientX, event.clientY);
-            await addNode(characterId, pos.x - 66, pos.y - 53).catch(alertError);
+            await addNode(droppedEntity.characterId, droppedEntity.variantId, pos.x - 66, pos.y - 53).catch(alertError);
         });
 
         let panning = null;
@@ -577,7 +725,7 @@
         els.deleteRelation.addEventListener('click', deleteModalRelation);
 
         els.saveAndExit.addEventListener('click', () => {
-            window.location.href = '/relations';
+            window.location.href = returnUrl;
         });
 
         document.addEventListener('click', event => {
@@ -593,6 +741,30 @@
         const el = document.createElementNS('http://www.w3.org/2000/svg', name);
         Object.entries(attrs || {}).forEach(([key, value]) => el.setAttribute(key, value));
         return el;
+    }
+
+    function relationLabelWidth(label) {
+        const text = String(label || '');
+        let weight = 0;
+        for (const char of text) {
+            weight += char.charCodeAt(0) > 255 ? 15 : 7.4;
+        }
+        return Math.max(72, Math.min(520, Math.ceil(weight + 30)));
+    }
+
+    function emojiForRelation(code) {
+        return ({
+            family: '🏠',
+            partners: '💕',
+            friends: '🤝',
+            allies: '🛡️',
+            rivals: '⚡',
+            enemies: '💀'
+        })[String(code || '')] || '';
+    }
+
+    function boolFlag(value) {
+        return value === true || value === 1 || value === '1' || value === 't' || value === 'true';
     }
 
     function escapeHtml(value) {
