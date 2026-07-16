@@ -7,7 +7,9 @@ require_once __DIR__ . '/../repositories/WorldRepository.php';
 require_once __DIR__ . '/../repositories/CharacterStatusRepository.php';
 require_once __DIR__ . '/../repositories/FilterRepository.php';
 require_once __DIR__ . '/../repositories/RelationRepository.php';
-require_once __DIR__ . '/../services/ImageUploadService.php';
+require_once __DIR__ . '/../repositories/ImageRepository.php';
+require_once __DIR__ . '/../repositories/StoryRepository.php';
+require_once __DIR__ . '/../services/CharacterFieldUploadService.php';
 
 class CharacterController extends AppController
 {
@@ -17,6 +19,9 @@ class CharacterController extends AppController
     private $statusRepository;
     private $filterRepository;
     private $relationRepository;
+    private $imageRepository;
+    private $storyRepository;
+    private CharacterFieldUploadService $characterFieldUploadService;
 
     public function __construct()
     {
@@ -26,6 +31,9 @@ class CharacterController extends AppController
         $this->statusRepository    = new CharacterStatusRepository();
         $this->filterRepository    = new FilterRepository();
         $this->relationRepository  = new RelationRepository();
+        $this->imageRepository     = new ImageRepository();
+        $this->storyRepository     = new StoryRepository();
+        $this->characterFieldUploadService = new CharacterFieldUploadService($this->imageRepository, $this->filterRepository);
     }
 
     /**
@@ -40,6 +48,247 @@ class CharacterController extends AppController
         return $int > 0 ? $int : null;
     }
 
+    private function visibleTemplatesForUser(int $userId): array
+    {
+        return $this->templateRepository->getTemplatesByUserId(
+            $userId,
+            $this->filterRepository->blockedFilterIds($userId),
+            !empty($this->getUserInterfaceSettings()['revealHidden'])
+        );
+    }
+
+    private function imageDisplayFromCharacter(Character $character): array
+    {
+        return [
+            'mode' => $character->getImageDisplayMode(),
+            'fit' => $character->getImageFit(),
+            'focusX' => $character->getImageFocusX(),
+            'focusY' => $character->getImageFocusY(),
+            'zoom' => $character->getImageZoom(),
+        ];
+    }
+
+    private function imageDisplayFromPost(): array
+    {
+        return [
+            'mode' => $_POST['image_display_mode'] ?? 'square',
+            'fit' => $_POST['image_fit'] ?? 'cover',
+            'focusX' => $_POST['image_focus_x'] ?? 50,
+            'focusY' => $_POST['image_focus_y'] ?? 50,
+            'zoom' => $_POST['image_zoom'] ?? 1,
+        ];
+    }
+
+    private function variantFilterIdsFromPost(array $postedVariants): array
+    {
+        $mapped = [];
+        foreach ($postedVariants as $key => $variant) {
+            if (!is_array($variant) || trim((string)($variant['name'] ?? '')) === '') {
+                continue;
+            }
+            $rawTags = trim((string)($variant['content_tags'] ?? ''));
+            if ($rawTags === '') {
+                $mapped[(string)$key] = [];
+                continue;
+            }
+
+            $resolved = $this->filterRepository->validateMinimumTags($rawTags);
+            $mapped[(string)$key] = array_map(fn($tag) => (int)$tag['id'], $resolved);
+        }
+        return $mapped;
+    }
+
+    private function resolvedTagsContainNsfw(array $tags): bool
+    {
+        foreach ($tags as $tag) {
+            foreach (['slug', 'name', 'label'] as $key) {
+                $value = mb_strtolower(trim((string)($tag[$key] ?? '')));
+                if (in_array($value, ['adult', 'nsfw', '+18', '18+'], true)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private function filtersHaveBlocked(array $filters, array $blockedFilterIds): bool
+    {
+        $blockedFilterIds = array_values(array_unique(array_filter(array_map('intval', $blockedFilterIds))));
+        if (empty($blockedFilterIds)) {
+            return false;
+        }
+
+        foreach ($filters as $filter) {
+            if (is_array($filter)) {
+                $id = (int)($filter['id'] ?? 0);
+            } elseif (is_object($filter) && method_exists($filter, 'getId')) {
+                $id = (int)$filter->getId();
+            } else {
+                $id = 0;
+            }
+            if ($id > 0 && in_array($id, $blockedFilterIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function safeReturnUrl(?string $url, string $fallback = '/dashboard'): string
+    {
+        $url = trim((string)$url);
+        if ($url === '') {
+            return $fallback;
+        }
+
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return $fallback;
+        }
+
+        if (isset($parts['host']) && strcasecmp($parts['host'], $_SERVER['HTTP_HOST'] ?? '') !== 0) {
+            return $fallback;
+        }
+
+        $path = $parts['path'] ?? '';
+        if ($path === '' || $path[0] !== '/') {
+            return $fallback;
+        }
+
+        if (strpos($path, '/createCharacter') === 0 || strpos($path, '/editCharacter') === 0) {
+            return $fallback;
+        }
+
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+        return $path . $query;
+    }
+
+    private function characterReturnUrl(string $fallback = '/dashboard'): string
+    {
+        return $this->safeReturnUrl(
+            $_POST['return_url'] ?? $_GET['return_url'] ?? $_SERVER['HTTP_REFERER'] ?? '',
+            $fallback
+        );
+    }
+
+    private function ownedWorldIdOrNull(mixed $raw, int $userId): ?int
+    {
+        if ($raw === null || $raw === '' || $raw === '0') {
+            return null;
+        }
+
+        $world = ctype_digit((string)$raw)
+            ? $this->worldRepository->getWorldByIdAndUserId((int)$raw, $userId)
+            : $this->worldRepository->getWorldByPublicIdAndUserId((string)$raw, $userId);
+
+        if (!$world) {
+            throw new InvalidArgumentException('Nieprawidlowy folder.');
+        }
+
+        return $world->getId();
+    }
+
+    private function splitTagInput(array|string $tags): array
+    {
+        $tokens = is_array($tags) ? $tags : explode(',', (string)$tags);
+        return array_values(array_filter(array_map(
+            fn($tag) => trim((string)$tag),
+            $tokens
+        )));
+    }
+
+    private function filtersContainNsfw(array $filters): bool
+    {
+        foreach ($filters as $filter) {
+            $values = is_array($filter)
+                ? [$filter['slug'] ?? '', $filter['name'] ?? '', $filter['label'] ?? '']
+                : [
+                    is_object($filter) && method_exists($filter, 'getSlug') ? $filter->getSlug() : '',
+                    is_object($filter) && method_exists($filter, 'getName') ? $filter->getName() : '',
+                    is_object($filter) && method_exists($filter, 'getLabel') ? $filter->getLabel() : '',
+                ];
+            foreach ($values as $value) {
+                if (in_array(mb_strtolower(trim((string)$value)), ['adult', 'nsfw', '+18', '18+'], true)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private function characterFromPublicOrLegacyId(mixed $raw, int $userId): ?Character
+    {
+        $raw = trim((string)$raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        return ctype_digit($raw)
+            ? $this->characterRepository->getCharacterByIdAndUserId((int)$raw, $userId)
+            : $this->characterRepository->getCharacterByPublicIdAndUserId($raw, $userId);
+    }
+
+    private function ownedTemplateIdOrNull(mixed $raw, int $userId): ?int
+    {
+        $templateId = $this->parseTemplateId($raw);
+        if ($templateId === null) {
+            return null;
+        }
+
+        if (!$this->templateRepository->getTemplateByIdAndUserId($templateId, $userId)) {
+            throw new InvalidArgumentException('Nieprawidlowy szablon postaci.');
+        }
+
+        return $templateId;
+    }
+
+    private function validateStatsFieldValues(?int $templateId, array $fieldValues): void
+    {
+        if (!$templateId) {
+            return;
+        }
+
+        foreach ($this->templateRepository->getTemplateFields($templateId) as $field) {
+            if (($field['field_type'] ?? '') !== 'stats') {
+                continue;
+            }
+
+            $cfg = json_decode((string)($field['placeholder'] ?? '{}'), true);
+            $maxPoints = max(0, (int)($cfg['maxPoints'] ?? 0));
+            $rows = [];
+            foreach (($cfg['rows'] ?? []) as $row) {
+                if (is_array($row)) {
+                    $label = (string)($row['label'] ?? $row['name'] ?? '');
+                    if ($label !== '') {
+                        $rows[] = ['key' => (string)($row['key'] ?? $label), 'label' => $label];
+                    }
+                } else {
+                    $label = (string)$row;
+                    if ($label !== '') {
+                        $rows[] = ['key' => $label, 'label' => $label];
+                    }
+                }
+            }
+            $values = json_decode((string)($fieldValues[$field['id']] ?? '{}'), true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            $sum = 0;
+            foreach ($rows as $row) {
+                $value = (int)($values[$row['key']] ?? $values[$row['label']] ?? 0);
+                if ($value < 0) {
+                    throw new InvalidArgumentException('Statystyki nie mogą mieć wartości poniżej 0.');
+                }
+                $sum += $value;
+            }
+
+            if ($sum !== $maxPoints) {
+                throw new InvalidArgumentException("Statystyki muszą wykorzystywać dokładnie {$maxPoints} pkt.");
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     //  Widok "Postacie" – nawigacja jak Dysk Google
     // -----------------------------------------------------------------------
@@ -48,15 +297,20 @@ class CharacterController extends AppController
     {
         $this->requireLogin();
         $userId = $_SESSION['user_id'];
+        $includeHidden = !empty($this->getUserInterfaceSettings()['revealHidden']);
 
         // Aktualny folder; null = folder główny
-        $worldId = isset($_GET['world']) ? (int)$_GET['world'] : null;
+        $worldParam = $_GET['world'] ?? null;
+        $worldId = null;
 
         // Sprawdź czy folder należy do użytkownika (tylko gdy nie-root)
         $currentWorld = null;
-        if ($worldId !== null) {
-            $currentWorld = $this->worldRepository->getWorldByIdAndUserId($worldId, $userId);
-            if (!$currentWorld) {
+        if ($worldParam !== null && $worldParam !== '') {
+            $currentWorld = ctype_digit((string)$worldParam)
+                ? $this->worldRepository->getWorldByIdAndUserId((int)$worldParam, $userId)
+                : $this->worldRepository->getWorldByPublicIdAndUserId((string)$worldParam, $userId);
+            $worldId = $currentWorld ? $currentWorld->getId() : null;
+            if (!$currentWorld || (!$includeHidden && $this->worldRepository->isHiddenInPath($worldId, (int)$userId))) {
                 // Folder nie istnieje lub nie należy do usera – wróć do root
                 header('Location: /characters');
                 exit();
@@ -64,10 +318,27 @@ class CharacterController extends AppController
         }
 
         // Podfoldery aktualnego folderu
-        $subfolders = $this->worldRepository->getChildWorlds($userId, $worldId);
+        $subfolders = $this->worldRepository->getChildWorlds($userId, $worldId, $includeHidden);
 
         // Postacie w aktualnym folderze
-        $characters = $this->characterRepository->getCharactersByWorld($userId, $worldId);
+        $blockedFilterIds = $this->filterRepository->blockedFilterIds((int)$userId);
+        $includeAdult = !empty($this->getUserInterfaceSettings()['revealAdultImages']);
+        $characters = $this->characterRepository->getCharactersByWorld($userId, $worldId, $blockedFilterIds, $includeHidden, $includeAdult);
+        $variantsByCharacterId = $this->characterRepository->getCharacterVariantsByCharacterIds(
+            array_map(fn($character) => $character->getId(), $characters),
+            $includeHidden,
+            $includeAdult
+        );
+        foreach ($variantsByCharacterId as $characterId => $variants) {
+            $variantsByCharacterId[$characterId] = array_values(array_filter(
+                $variants,
+                fn($variant) => !$this->filtersHaveBlocked($variant['content_filters'] ?? [], $blockedFilterIds)
+            ));
+        }
+        $characterFiltersById = [];
+        foreach ($characters as $character) {
+            $characterFiltersById[$character->getId()] = $this->filterRepository->getAllCharacterFilters($character->getId());
+        }
 
         // Breadcrumb (pusta tablica gdy jesteśmy w root)
         $breadcrumb = $worldId !== null
@@ -79,15 +350,39 @@ class CharacterController extends AppController
             (int)$userId,
             array_map(fn($character) => $character->getId(), $characters)
         );
+        $currentWorldFilters = $worldId !== null
+            ? $this->filterRepository->getWorldAndAncestorFilters($worldId, (int)$userId)
+            : [];
+        $currentWorldDirectFilters = $worldId !== null
+            ? $this->filterRepository->getWorldFilters($worldId)
+            : [];
+        $worldFiltersById = [];
+        $worldDirectFiltersById = [];
+        foreach ($subfolders as $folder) {
+            $worldFiltersById[$folder->getId()] = $this->filterRepository->getWorldAndAncestorFilters($folder->getId(), (int)$userId);
+            $worldDirectFiltersById[$folder->getId()] = $this->filterRepository->getWorldFilters($folder->getId());
+        }
+        $currentWorldRelationBoards = $worldId !== null
+            ? $this->relationRepository->getBoardsForWorld((int)$userId, $worldId, $includeHidden)
+            : [];
 
         return $this->render('characters', [
             'title'        => 'Postacie - OCStudio',
             'characters'   => $characters,
+            'variantsByCharacterId' => $variantsByCharacterId,
+            'characterFiltersById' => $characterFiltersById,
+            'blockedFilterIds' => $blockedFilterIds,
             'subfolders'   => $subfolders,
             'currentWorld' => $currentWorld,
             'breadcrumb'   => $breadcrumb,
             'statuses'     => $allStatuses,
             'relationCounts' => $relationCounts,
+            'currentWorldFilters' => $currentWorldFilters,
+            'currentWorldDirectFilters' => $currentWorldDirectFilters,
+            'worldFiltersById' => $worldFiltersById,
+            'worldDirectFiltersById' => $worldDirectFiltersById,
+            'currentWorldHasNsfw' => $this->filtersContainNsfw($currentWorldFilters),
+            'currentWorldRelationBoards' => $currentWorldRelationBoards,
         ]);
     }
 
@@ -98,22 +393,22 @@ class CharacterController extends AppController
     public function createWorld()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['name']) || trim($input['name']) === '') {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak nazwy folderu']);
-            exit();
+            $this->jsonError('Brak nazwy folderu');
         }
 
         $name     = trim($input['name']);
+        $description = trim((string)($input['description'] ?? ''));
+        $image = 'default.jpg';
+        $imageId = (int)($input['imageId'] ?? 0);
+        if ($imageId > 0) {
+            $asset = $this->imageRepository->getAsset((int)$_SESSION['user_id'], $imageId);
+            if ($asset) {
+                $image = $asset['filename'];
+            }
+        }
         $parentId = isset($input['parentId']) ? (int)$input['parentId'] : null;
         if ($parentId === 0) {
             $parentId = null;
@@ -123,63 +418,81 @@ class CharacterController extends AppController
         if ($parentId !== null) {
             $parent = $this->worldRepository->getWorldByIdAndUserId($parentId, $_SESSION['user_id']);
             if (!$parent) {
-                http_response_code(403);
-                echo json_encode(['error' => 'Nieprawidłowy folder nadrzędny']);
-                exit();
+                $this->jsonError('Nieprawidłowy folder nadrzędny', 403);
             }
         }
 
-        $worldId = $this->worldRepository->addWorld($name, '', $_SESSION['user_id'], $parentId);
+        $worldId = $this->worldRepository->addWorld($name, $description, $_SESSION['user_id'], $parentId, $image);
+        $this->worldRepository->updateWorldEffect(
+            $worldId,
+            (int)$_SESSION['user_id'],
+            (string)($input['backgroundEffect'] ?? 'none'),
+            (string)($input['effectSymbols'] ?? ''),
+            (string)($input['effectIntensity'] ?? 'medium'),
+            (string)($input['effectSize'] ?? 'medium'),
+            (string)($input['effectLayer'] ?? 'under')
+        );
+        $folderTags = $this->filterRepository->resolveTags($input['filterTags'] ?? []);
+        $this->filterRepository->replaceObjectFilters('world', $worldId, array_map(fn($tag) => (int)$tag['id'], $folderTags));
 
-        echo json_encode(['success' => true, 'id' => $worldId, 'name' => $name]);
-        exit();
+        $this->jsonResponse(['success' => true, 'id' => $worldId, 'name' => $name]);
     }
 
     public function renameWorld()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         $worldId = (int)($input['worldId'] ?? 0);
         $name = trim($input['name'] ?? '');
+        $description = trim((string)($input['description'] ?? ''));
 
         if ($worldId <= 0 || $name === '') {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $world = $this->worldRepository->getWorldByIdAndUserId($worldId, $_SESSION['user_id']);
         if (!$world) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Folder nie znaleziony']);
-            exit();
+            $this->jsonError('Folder nie znaleziony', 404);
         }
 
-        $this->worldRepository->updateWorldName($worldId, $_SESSION['user_id'], $name);
-        echo json_encode(['success' => true]);
-        exit();
+        $image = $world->getImage();
+        if (array_key_exists('imageId', $input)) {
+            $imageId = (int)($input['imageId'] ?? 0);
+            if ($imageId > 0) {
+                $asset = $this->imageRepository->getAsset((int)$_SESSION['user_id'], $imageId);
+                if ($asset) {
+                    $image = $asset['filename'];
+                }
+            } else {
+                $image = 'default.jpg';
+            }
+        }
+
+        $this->worldRepository->updateWorldDetails($worldId, $_SESSION['user_id'], $name, $description, $image);
+        if (array_key_exists('backgroundEffect', $input) || array_key_exists('effectSymbols', $input) || array_key_exists('effectIntensity', $input) || array_key_exists('effectSize', $input) || array_key_exists('effectLayer', $input)) {
+            $this->worldRepository->updateWorldEffect(
+                $worldId,
+                (int)$_SESSION['user_id'],
+                (string)($input['backgroundEffect'] ?? $world->getBackgroundEffect()),
+                (string)($input['effectSymbols'] ?? $world->getEffectSymbols()),
+                (string)($input['effectIntensity'] ?? $world->getEffectIntensity()),
+                (string)($input['effectSize'] ?? $world->getEffectSize()),
+                (string)($input['effectLayer'] ?? $world->getEffectLayer())
+            );
+        }
+        if (array_key_exists('filterTags', $input)) {
+            $folderTags = $this->filterRepository->resolveTags($input['filterTags'] ?? []);
+            $this->filterRepository->replaceObjectFilters('world', $worldId, array_map(fn($tag) => (int)$tag['id'], $folderTags));
+        }
+        $this->jsonResponse(['success' => true]);
     }
 
     public function deleteWorld()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         $worldId = (int)($input['worldId'] ?? 0);
         $confirmation = trim($input['confirmation'] ?? '');
 
@@ -188,23 +501,18 @@ class CharacterController extends AppController
             : null;
 
         if (!$world) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Folder nie znaleziony']);
-            exit();
+            $this->jsonError('Folder nie znaleziony', 404);
         }
 
         if ($confirmation !== $world->getName()) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Wpisana nazwa folderu nie zgadza się']);
-            exit();
+            $this->jsonError('Wpisana nazwa folderu nie zgadza się');
         }
 
         $worldIds = $this->worldRepository->getDescendantWorldIds($worldId, $_SESSION['user_id']);
         $this->worldRepository->moveCharactersFromWorldsToRoot($_SESSION['user_id'], $worldIds);
         $this->worldRepository->deleteWorld($worldId, $_SESSION['user_id']);
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -214,29 +522,22 @@ class CharacterController extends AppController
     public function assignCharacterToWorld()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !array_key_exists('characterId', $input) || !array_key_exists('worldId', $input)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $characterId = (int) $input['characterId'];
-        $worldId     = $input['worldId'] === null ? null : (int) $input['worldId'];
+        try {
+            $worldId = $this->ownedWorldIdOrNull($input['worldId'], (int)$_SESSION['user_id']);
+        } catch (InvalidArgumentException $e) {
+            $this->jsonError($e->getMessage(), 403);
+        }
 
         $character = $this->characterRepository->getCharacterByIdAndUserId($characterId, $_SESSION['user_id']);
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         $this->characterRepository->updateCharacter(
@@ -245,11 +546,12 @@ class CharacterController extends AppController
             $character->getDescription(),
             $character->getImage(),
             $character->getIdTemplate(),
-            $worldId
+            $worldId,
+            $this->imageDisplayFromCharacter($character),
+            $character->getIntro()
         );
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -259,45 +561,93 @@ class CharacterController extends AppController
     public function createCharacter()
     {
         $this->requireLogin();
+        $returnUrl = $this->characterReturnUrl('/characters');
 
         if ($this->isPost()) {
             $name        = $_POST['character_name']        ?? '';
+            $intro       = $_POST['character_intro']       ?? '';
             $description = $_POST['character_description'] ?? '';
-            $templateId  = $this->parseTemplateId($_POST['template_id'] ?? null);
             $userId      = $_SESSION['user_id'];
+            $worldId     = null;
+            $inheritedWorldFilters = [];
 
             try {
-                $image = $this->uploadCharacterImage('default.png');
+                $templateId = $this->ownedTemplateIdOrNull($_POST['template_id'] ?? null, (int)$userId);
+                $worldId = $this->ownedWorldIdOrNull($_POST['world_id'] ?? null, (int)$userId);
+                $inheritedWorldFilters = $worldId !== null
+                    ? $this->filterRepository->getWorldAndAncestorFilters($worldId, (int)$userId)
+                    : [];
+                $contentTags = $this->filterRepository->validateMinimumTags(
+                    array_merge(
+                        $this->splitTagInput($_POST['content_tags'] ?? ''),
+                        array_map(fn($filter) => $filter->getName(), $inheritedWorldFilters)
+                    )
+                );
+                $this->validateStatsFieldValues($templateId, $_POST['field_values'] ?? []);
             } catch (Throwable $e) {
-                http_response_code(($e->getCode() >= 400 && $e->getCode() <= 599) ? $e->getCode() : 400);
                 return $this->render('create_character', [
-                    'title'     => 'Stworz postac - OCStudio',
-                    'templates' => $this->templateRepository->getTemplatesByUserId($_SESSION['user_id']),
-                    'messages'  => [$e->getMessage()]
+                    'title'                => 'Stworz postac - OCStudio',
+                    'templates'            => $this->visibleTemplatesForUser((int)$_SESSION['user_id']),
+                    'fields'               => isset($templateId) && $templateId ? $this->templateRepository->getTemplateFields($templateId) : [],
+                    'characterFieldValues' => is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : [],
+                    'oldInput'             => $_POST,
+                    'returnUrl'            => $returnUrl,
+                    'inheritedWorldFilters' => $inheritedWorldFilters,
+                    'messages'             => [$e->getMessage()]
                 ]);
             }
 
-            $worldId     = isset($_POST['world_id']) ? (int) $_POST['world_id'] : null;
-            $characterId = $this->characterRepository->addCharacter($name, $description, $image, $userId, $templateId, $worldId);
-
-            if (isset($_POST['field_values']) && is_array($_POST['field_values'])) {
-                $this->characterRepository->saveCharacterFieldValues($characterId, $_POST['field_values']);
+            try {
+                $image = $this->characterFieldUploadService->uploadCharacterImage((int)$userId, 'default.png', $_POST, $_FILES);
+            } catch (Throwable $e) {
+                http_response_code(($e->getCode() >= 400 && $e->getCode() <= 599) ? $e->getCode() : 400);
+                return $this->render('create_character', [
+                    'title'                => 'Stworz postac - OCStudio',
+                    'templates'            => $this->visibleTemplatesForUser((int)$_SESSION['user_id']),
+                    'fields'               => $templateId ? $this->templateRepository->getTemplateFields($templateId) : [],
+                    'characterFieldValues' => is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : [],
+                    'oldInput'             => $_POST,
+                    'returnUrl'            => $returnUrl,
+                    'inheritedWorldFilters' => $inheritedWorldFilters,
+                    'messages'             => [$e->getMessage()]
+                ]);
             }
 
-            header('Location: /viewCharacter?id=' . $characterId);
+            $fieldValues = $this->characterFieldUploadService->processCharacterFieldUploads(
+                (int)$userId,
+                is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : [],
+                $_POST,
+                $_FILES
+            );
+            $characterId = $this->characterRepository->addCharacter($name, $description, $image, $userId, $templateId, $worldId, $this->imageDisplayFromPost(), $intro);
+            $this->characterRepository->setMainCharacter($characterId, (int)$userId, !empty($_POST['is_main_character']));
+            $this->filterRepository->replaceObjectFilters('character', $characterId, array_map(fn($tag) => (int)$tag['id'], $contentTags));
+
+            if (!empty($fieldValues)) {
+                $this->characterRepository->saveCharacterFieldValues($characterId, $fieldValues);
+            }
+
+            header('Location: ' . $returnUrl);
             exit();
         }
 
-        $templates = $this->templateRepository->getTemplatesByUserId($_SESSION['user_id']);
+        $templates = $this->visibleTemplatesForUser((int)$_SESSION['user_id']);
+        $worldId = $this->ownedWorldIdOrNull($_GET['world'] ?? null, (int)$_SESSION['user_id']);
+        $inheritedWorldFilters = $worldId !== null
+            ? $this->filterRepository->getWorldAndAncestorFilters($worldId, (int)$_SESSION['user_id'])
+            : [];
 
         return $this->render('create_character', [
             'title'     => 'Stwórz postać - OCStudio',
-            'templates' => $templates
+            'templates' => $templates,
+            'returnUrl' => $returnUrl,
+            'inheritedWorldFilters' => $inheritedWorldFilters,
         ]);
     }
 
     public function getTemplateData()
     {
+        $this->requireLogin();
         header('Content-Type: application/json');
 
         if (!isset($_GET['id'])) {
@@ -306,9 +656,10 @@ class CharacterController extends AppController
         }
 
         $id       = (int) $_GET['id'];
-        $template = $this->templateRepository->getTemplate($id);
+        $template = $this->templateRepository->getTemplateByIdAndUserId($id, (int)$_SESSION['user_id']);
 
         if (!$template) {
+            http_response_code(404);
             echo json_encode(['error' => 'Nie znaleziono szablonu postaci']);
             exit();
         }
@@ -319,44 +670,86 @@ class CharacterController extends AppController
             'id'          => $template->getId(),
             'name'        => $template->getName(),
             'description' => $template->getDescription(),
+            'dateSettings' => [
+                'calendarType' => $template->getDateCalendarType(),
+                'settings' => json_decode($template->getDateSettings(), true) ?: [],
+                'currentWorldDate' => $template->getCurrentWorldDate(),
+            ],
             'fields'      => $fields
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
 
     public function viewCharacter()
     {
         $this->requireLogin();
+        $returnUrl = $this->safeReturnUrl($_GET['return_url'] ?? ($_SERVER['HTTP_REFERER'] ?? ''), '/dashboard');
+        $returnLabel = 'Wroc do dashboarda';
+        if (strpos($returnUrl, '/characters/') === 0) {
+            $returnLabel = 'Wroc do folderu';
+        } elseif ($returnUrl === '/characters') {
+            $returnLabel = 'Wroc do postaci';
+        }
 
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : null;
-        if (!$id) {
-            header('Location: /dashboard');
+        $character = $this->characterFromPublicOrLegacyId($_GET['id'] ?? '', (int)$_SESSION['user_id']);
+        if (!$character) {
+            header('Location: ' . $returnUrl);
             exit();
         }
 
-        $character = $this->characterRepository->getCharacterByIdAndUserId($id, $_SESSION['user_id']);
-        if (!$character) {
+        if (!$this->getUserInterfaceSettings()['revealHidden'] && $this->characterRepository->isHiddenInPath($character->getId(), (int)$_SESSION['user_id'])) {
             http_response_code(404);
-            header('Location: /dashboard');
+            header('Location: ' . $returnUrl);
             exit();
         }
 
         $template = $character->getIdTemplate()
-            ? $this->templateRepository->getTemplate($character->getIdTemplate())
+            ? $this->templateRepository->getTemplateByIdAndUserId($character->getIdTemplate(), (int)$_SESSION['user_id'])
             : null;
         $fields = $character->getIdTemplate()
             ? $this->templateRepository->getTemplateFields($character->getIdTemplate())
             : [];
         $values   = $this->characterRepository->getCharacterFieldValues($character->getId());
-        $variants = $this->characterRepository->getCharacterVariants($character->getId());
+        $settings = $this->getUserInterfaceSettings();
+        $blockedFilterIds = $this->filterRepository->blockedFilterIds((int)$_SESSION['user_id']);
+        $baseCharacterFilters = $this->filterRepository->getAllCharacterFilters($character->getId());
+        $baseBlockedByFilters = $this->filtersHaveBlocked($baseCharacterFilters, $blockedFilterIds);
+        $variants = array_values(array_filter(
+            $this->characterRepository->getCharacterVariants($character->getId()),
+            fn($variant) => (!empty($settings['revealHidden']) || empty($variant['is_hidden']))
+                && (!empty($settings['revealAdultImages']) || empty($variant['is_adult']))
+                && (!empty($settings['revealAdultImages']) || !$this->filtersContainNsfw($variant['content_filters'] ?? []))
+                && !$this->filtersHaveBlocked($variant['content_filters'] ?? [], $blockedFilterIds)
+        ));
+        if ($baseBlockedByFilters && empty($variants)) {
+            http_response_code(404);
+            header('Location: ' . $returnUrl);
+            exit();
+        }
+        $characterStories = $this->storyRepository->getStoriesForCharacter(
+            $character->getId(),
+            (int)$_SESSION['user_id'],
+            !empty($this->getUserInterfaceSettings()['revealHidden'])
+        );
 
         $selectedVariant = null;
         $variantId = isset($_GET['variant']) ? (int)$_GET['variant'] : null;
         if ($variantId) {
             $selectedVariant = $this->characterRepository->getCharacterVariant($variantId, $character->getId());
+            if ($selectedVariant && (
+                (empty($settings['revealHidden']) && !empty($selectedVariant['is_hidden']))
+                || (empty($settings['revealAdultImages']) && !empty($selectedVariant['is_adult']))
+                || (empty($settings['revealAdultImages']) && $this->filtersContainNsfw($selectedVariant['content_filters'] ?? []))
+                || $this->filtersHaveBlocked($selectedVariant['content_filters'] ?? [], $blockedFilterIds)
+            )) {
+                $selectedVariant = null;
+            }
             if ($selectedVariant) {
                 $values = array_replace($values, $selectedVariant['values']);
             }
+        } elseif ($baseBlockedByFilters && !empty($variants)) {
+            $selectedVariant = $variants[0];
+            $values = array_replace($values, $selectedVariant['values']);
         }
 
         return $this->render('view_character', [
@@ -366,46 +759,90 @@ class CharacterController extends AppController
             'fields'              => $fields,
             'characterFieldValues' => $values,
             'variants'            => $variants,
-            'selectedVariant'     => $selectedVariant
+            'selectedVariant'     => $selectedVariant,
+            'baseBlockedByFilters' => $baseBlockedByFilters,
+            'blockedFilterIds'    => $blockedFilterIds,
+            'imageAssets'         => $this->imageRepository->listAssets((int)$_SESSION['user_id']),
+            'returnUrl'           => $returnUrl,
+            'returnLabel'         => $returnLabel,
+            'characterStories'     => $characterStories,
         ]);
     }
 
     public function editCharacter()
     {
         $this->requireLogin();
+        $returnUrl = $this->characterReturnUrl('/dashboard');
+        $selectedVariantId = ((int)($_GET['variant'] ?? 0)) ?: null;
 
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : null;
-        if (!$id) {
+        $character = $this->characterFromPublicOrLegacyId($_GET['id'] ?? '', (int)$_SESSION['user_id']);
+        if (!$character) {
             header('Location: /dashboard');
             exit();
         }
 
-        $character = $this->characterRepository->getCharacterByIdAndUserId($id, $_SESSION['user_id']);
-        if (!$character) {
+        $id = $character->getId();
+        if (!$this->getUserInterfaceSettings()['revealHidden'] && $this->characterRepository->isHiddenInPath($id, (int)$_SESSION['user_id'])) {
             header('Location: /dashboard');
             exit();
         }
 
         if ($this->isPost()) {
             $name        = $_POST['character_name']        ?? '';
+            $intro       = $_POST['character_intro']       ?? '';
             $description = $_POST['character_description'] ?? '';
-            $templateId  = $this->parseTemplateId($_POST['template_id'] ?? null);
+            $templateId = null;
 
             // Jeśli user kliknął "Usuń zdjęcie" – przywracamy default.png
+            try {
+                $templateId = $this->ownedTemplateIdOrNull($_POST['template_id'] ?? null, (int)$_SESSION['user_id']);
+                if (!empty($_POST['character_is_adult'])) {
+                    $postedTags = $this->splitTagInput($_POST['content_tags'] ?? '');
+                    $tagRows = array_map(fn($tag) => ['slug' => $tag, 'name' => $tag, 'label' => $tag], $postedTags);
+                    if (!$this->resolvedTagsContainNsfw($tagRows)) {
+                        $postedTags[] = 'adult';
+                        $_POST['content_tags'] = implode(', ', $postedTags);
+                    }
+                }
+                $contentTags = $this->filterRepository->validateMinimumTags($_POST['content_tags'] ?? '');
+                $variantFilterIdsByKey = array_key_exists('variants_present', $_POST)
+                    ? $this->variantFilterIdsFromPost(is_array($_POST['variants'] ?? null) ? $_POST['variants'] : [])
+                    : [];
+                $this->validateStatsFieldValues($templateId, $_POST['field_values'] ?? []);
+            } catch (Throwable $e) {
+                return $this->render('create_character', [
+                    'title'               => 'Edytuj postac - OCStudio',
+                    'character'           => $character,
+                    'templates'           => $this->visibleTemplatesForUser((int)$_SESSION['user_id']),
+                    'characterFieldValues' => is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : $this->characterRepository->getCharacterFieldValues($character->getId()),
+                    'fields'              => $templateId ? $this->templateRepository->getTemplateFields($templateId) : [],
+                    'variants'            => $this->characterRepository->getCharacterVariants($character->getId()),
+                    'contentFilters'      => $this->filterRepository->getObjectFilters('character', $character->getId()),
+                    'selectedVariantId'   => $selectedVariantId,
+                    'oldInput'            => $_POST,
+                    'messages'            => [$e->getMessage()]
+                ]);
+            }
+
             if (!empty($_POST['remove_image'])) {
                 $image = 'default.png';
             } else {
                 try {
                     // Fallback: zachowaj aktualne zdjęcie (lub default.png jeśli puste)
                     $currentImage = $character->getImage() ?: 'default.png';
-                    $image = $this->uploadCharacterImage($currentImage);
+                    $image = $this->characterFieldUploadService->uploadCharacterImage((int)$_SESSION['user_id'], $currentImage, $_POST, $_FILES);
                 } catch (Throwable $e) {
                     http_response_code(($e->getCode() >= 400 && $e->getCode() <= 599) ? $e->getCode() : 400);
                     return $this->render('create_character', [
                         'title'               => 'Edytuj postac - OCStudio',
                         'character'           => $character,
-                        'templates'           => $this->templateRepository->getTemplatesByUserId($_SESSION['user_id']),
-                        'characterFieldValues' => $this->characterRepository->getCharacterFieldValues($character->getId()),
+                        'templates'           => $this->visibleTemplatesForUser((int)$_SESSION['user_id']),
+                        'characterFieldValues' => is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : $this->characterRepository->getCharacterFieldValues($character->getId()),
+                        'fields'              => $templateId ? $this->templateRepository->getTemplateFields($templateId) : [],
+                        'variants'            => $this->characterRepository->getCharacterVariants($character->getId()),
+                        'contentFilters'      => $this->filterRepository->getObjectFilters('character', $character->getId()),
+                        'selectedVariantId'   => $selectedVariantId,
+                        'oldInput'            => $_POST,
                         'messages'            => [$e->getMessage()]
                     ]);
                 }
@@ -416,19 +853,42 @@ class CharacterController extends AppController
                 $image = 'default.png';
             }
 
-            $this->characterRepository->updateCharacter($id, $name, $description, $image, $templateId, $character->getIdWorld());
-
-            if (isset($_POST['field_values']) && is_array($_POST['field_values'])) {
-                $this->characterRepository->saveCharacterFieldValues($id, $_POST['field_values']);
+            $fieldValues = $this->characterFieldUploadService->processCharacterFieldUploads(
+                (int)$_SESSION['user_id'],
+                is_array($_POST['field_values'] ?? null) ? $_POST['field_values'] : [],
+                $_POST,
+                $_FILES
+            );
+                $variants = array_key_exists('variants_present', $_POST)
+                    ? $this->characterFieldUploadService->prepareVariantsFromPost((int)$_SESSION['user_id'], $_POST, $_FILES)
+                    : $this->characterRepository->getCharacterVariants($id);
+            $baseHasNsfw = $this->resolvedTagsContainNsfw($contentTags);
+            foreach ($variants as &$variant) {
+                $key = (string)($variant['key'] ?? '');
+                $filterIds = $variantFilterIdsByKey[$key] ?? [];
+                $variant['filter_ids'] = $filterIds;
+                $variantHasOwnTags = !empty($filterIds);
+                $variant['is_adult'] = !empty($variant['is_adult'])
+                    || ($variantHasOwnTags
+                        ? $this->filtersContainNsfw($this->filterRepository->getFiltersByIds($filterIds))
+                        : $baseHasNsfw);
             }
+            unset($variant);
 
-            $this->characterRepository->replaceCharacterVariants($id, $this->prepareVariantsFromPost());
+            $this->characterRepository->updateCharacter($id, $name, $description, $image, $templateId, $character->getIdWorld(), $this->imageDisplayFromPost(), $intro);
+            $this->characterRepository->setMainCharacter($id, (int)$_SESSION['user_id'], !empty($_POST['is_main_character']));
+            if (array_key_exists('character_hidden', $_POST)) {
+                $this->characterRepository->setHidden($id, (int)$_SESSION['user_id'], !empty($_POST['character_hidden']));
+            }
+            $this->filterRepository->replaceObjectFilters('character', $id, array_map(fn($tag) => (int)$tag['id'], $contentTags));
+            $this->characterRepository->saveCharacterFieldValues($id, $fieldValues);
+            $this->characterRepository->replaceCharacterVariants($id, $variants);
 
-            header('Location: /dashboard');
+            header('Location: ' . $returnUrl);
             exit();
         }
 
-        $templates       = $this->templateRepository->getTemplatesByUserId($_SESSION['user_id']);
+        $templates       = $this->visibleTemplatesForUser((int)$_SESSION['user_id']);
         $characterValues = $this->characterRepository->getCharacterFieldValues($character->getId());
         $fields = $character->getIdTemplate()
             ? $this->templateRepository->getTemplateFields($character->getIdTemplate())
@@ -441,7 +901,10 @@ class CharacterController extends AppController
             'templates'           => $templates,
             'characterFieldValues' => $characterValues,
             'fields'               => $fields,
-            'variants'             => $variants
+            'variants'             => $variants,
+            'returnUrl'            => $returnUrl,
+            'contentFilters'       => $this->filterRepository->getObjectFilters('character', $character->getId()),
+            'selectedVariantId'    => $selectedVariantId,
         ]);
     }
 
@@ -452,19 +915,10 @@ class CharacterController extends AppController
     public function updateCharacterStatus()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $characterId = (int) $input['characterId'];
@@ -472,15 +926,12 @@ class CharacterController extends AppController
 
         $character = $this->characterRepository->getCharacterByIdAndUserId($characterId, $_SESSION['user_id']);
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         $this->characterRepository->updateCharacterStatus($characterId, $statusId);
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -490,19 +941,10 @@ class CharacterController extends AppController
     public function addCharacterFilter()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId']) || !isset($input['filterName'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $characterId = (int) $input['characterId'];
@@ -510,34 +952,22 @@ class CharacterController extends AppController
 
         $character = $this->characterRepository->getCharacterByIdAndUserId($characterId, $_SESSION['user_id']);
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         $filterId = $this->filterRepository->getOrCreateFilter($filterName, $_SESSION['user_id']);
         $this->filterRepository->addCharacterFilter($characterId, $filterId, false);
 
-        echo json_encode(['success' => true, 'filterId' => $filterId]);
-        exit();
+        $this->jsonResponse(['success' => true, 'filterId' => $filterId]);
     }
 
     public function removeCharacterFilter()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId']) || !isset($input['filterId'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $characterId = (int) $input['characterId'];
@@ -545,15 +975,12 @@ class CharacterController extends AppController
 
         $character = $this->characterRepository->getCharacterByIdAndUserId($characterId, $_SESSION['user_id']);
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         $this->filterRepository->removeCharacterFilter($characterId, $filterId);
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -571,13 +998,28 @@ class CharacterController extends AppController
             exit();
         }
 
-        $filters = $this->filterRepository->searchFilters($query, $_SESSION['user_id']);
+        $allowedBlockedFilterIds = [];
+        $worldId = null;
+        try {
+            $worldId = $this->ownedWorldIdOrNull($_GET['worldId'] ?? null, (int)$_SESSION['user_id']);
+        } catch (Throwable $e) {
+            $worldId = null;
+        }
+        if ($worldId !== null) {
+            $allowedBlockedFilterIds = array_map(
+                fn($filter) => (int)$filter->getId(),
+                $this->filterRepository->getWorldAndAncestorFilters($worldId, (int)$_SESSION['user_id'])
+            );
+        }
+
+        $filters = $this->filterRepository->searchFilters($query, $_SESSION['user_id'], $allowedBlockedFilterIds);
 
         $result = [];
         foreach ($filters as $filter) {
             $result[] = [
                 'id' => $filter->getId(),
-                'name' => $filter->getName()
+                'name' => $filter->getName(),
+                'slug' => $filter->getSlug()
             ];
         }
 
@@ -624,12 +1066,13 @@ class CharacterController extends AppController
 
         $nameTerm = count($nameParts) ? implode(' ', $nameParts) : null;
 
-        $characters = $this->characterRepository->searchCharactersByNameAndFilters($userId, $nameTerm, $filterNames);
+        $characters = $this->characterRepository->searchCharactersByNameAndFilters($userId, $nameTerm, $filterNames, $this->filterRepository->blockedFilterIds((int)$userId));
 
         $out = [];
         foreach ($characters as $c) {
             $out[] = [
                 'id' => $c->getId(),
+                'publicId' => $c->getPublicId(),
                 'name' => $c->getName(),
                 'description' => $c->getDescription(),
                 'image' => $c->getImage()
@@ -647,19 +1090,10 @@ class CharacterController extends AppController
     public function toggleBlockFilter()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['filterId']) || !isset($input['block'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $filterId = (int) $input['filterId'];
@@ -671,8 +1105,7 @@ class CharacterController extends AppController
             $this->filterRepository->unblockFilter($_SESSION['user_id'], $filterId);
         }
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -685,12 +1118,15 @@ class CharacterController extends AppController
  
         $q = isset($_GET['q']) ? trim($_GET['q']) : '';
         if (mb_strlen($q) < 2) {
-            echo json_encode(['characters' => [], 'worlds' => []]);
+            echo json_encode(['characters' => [], 'worlds' => [], 'stories' => [], 'templates' => [], 'filters' => []]);
             exit();
         }
  
         $userId   = $_SESSION['user_id'];
         $statuses = $this->statusRepository->getAllStatuses();
+        $settings = $this->getUserInterfaceSettings();
+        $includeHidden = !empty($settings['revealHidden']);
+        $includeAdult = !empty($settings['revealAdultImages']);
  
         /**
          * Pomocnicza zamiana obiektu Character na tablicę dla JSON.
@@ -709,21 +1145,33 @@ class CharacterController extends AppController
  
             return [
                 'id'          => $c->getId(),
+                'publicId'    => $c->getPublicId(),
                 'name'        => $c->getName(),
                 'image'       => $c->getImage() ?: 'default.png',
+                'imageDisplayMode' => $c->getImageDisplayMode(),
+                'image_display_mode' => $c->getImageDisplayMode(),
+                'imageFit'    => $c->getImageFit(),
+                'imageFocusX' => $c->getImageFocusX(),
+                'imageFocusY' => $c->getImageFocusY(),
+                'imageZoom'   => $c->getImageZoom(),
+                'image_fit' => $c->getImageFit(),
+                'image_focus_x' => $c->getImageFocusX(),
+                'image_focus_y' => $c->getImageFocusY(),
+                'image_zoom' => $c->getImageZoom(),
                 'statusName'  => $statusName,
                 'statusColor' => $statusColor,
             ];
         };
  
         // 1. Postacie pasujące bezpośrednio po nazwie
-        $chars    = $this->characterRepository->searchCharactersByNameAndFilters($userId, $q, []);
+        $blockedFilterIds = $this->filterRepository->blockedFilterIds((int)$userId);
+        $chars    = $this->characterRepository->searchGlobalCharacters((int)$userId, $q, $blockedFilterIds, $includeHidden, $includeAdult);
         $charsOut = array_map($charToArray, $chars);
  
         // 2. Foldery pasujące po nazwie + postacie z całego poddrzewa (rekursywnie)
         $worldsOut = [];
         try {
-            $matchingWorlds = $this->worldRepository->searchWorldsByName($userId, $q);
+            $matchingWorlds = $this->worldRepository->searchWorldsByName($userId, $q, $includeHidden);
  
             foreach ($matchingWorlds as $world) {
                 // Pobierz ID wszystkich podfolderów (włącznie z samym folderem)
@@ -733,8 +1181,11 @@ class CharacterController extends AppController
                 $wCharsOut = [];
                 $seen      = [];
                 foreach ($subtreeIds as $wid) {
-                    $wChars = $this->characterRepository->getCharactersByWorld($userId, $wid);
+                    $wChars = $this->characterRepository->getCharactersByWorld($userId, $wid, $blockedFilterIds, $includeHidden, $includeAdult);
                     foreach ($wChars as $c) {
+                        if (!$includeAdult && $this->filtersContainNsfw($this->filterRepository->getAllCharacterFilters($c->getId()))) {
+                            continue;
+                        }
                         if (!isset($seen[$c->getId()])) {
                             $seen[$c->getId()] = true;
                             $wCharsOut[]       = $charToArray($c);
@@ -744,7 +1195,10 @@ class CharacterController extends AppController
  
                 $worldsOut[] = [
                     'id'         => $world->getId(),
+                    'publicId'   => $world->getPublicId(),
                     'name'       => $world->getName(),
+                    'image'      => $world->getImage() ?: 'default.jpg',
+                    'iconColor'  => method_exists($world, 'getIconColor') ? $world->getIconColor() : '#7B61FF',
                     'characters' => $wCharsOut,
                 ];
             }
@@ -752,8 +1206,98 @@ class CharacterController extends AppController
             // getDescendantWorldIds może nie istnieć na starszych wersjach – ignorujemy
         }
  
-        echo json_encode(['characters' => $charsOut, 'worlds' => $worldsOut]);
+        $storiesOut = array_map(fn($story) => [
+            'id' => $story->getId(),
+            'publicId' => $story->getPublicId(),
+            'title' => $story->getTitle(),
+            'description' => $story->getDescription(),
+            'date' => $story->getStoryDate(),
+            'image' => $story->getImage() ?: 'default_story.png',
+            'status' => $story->getStatus(),
+        ], $this->storyRepository->searchGlobalStories((int)$userId, $q, $blockedFilterIds, $includeHidden, $includeAdult));
+
+        $templatesOut = array_map(fn($template) => [
+            'id' => $template->getId(),
+            'publicId' => $template->getPublicId(),
+            'name' => $template->getName(),
+            'description' => $template->getDescription(),
+        ], $this->templateRepository->searchGlobalTemplates((int)$userId, $q, $blockedFilterIds, $includeHidden, $includeAdult));
+
+        $searchFilters = $this->filterRepository->searchFilters($q, (int)$userId);
+        if (!$includeAdult) {
+            $searchFilters = array_values(array_filter($searchFilters, fn($filter) => !$this->filtersContainNsfw([$filter])));
+        }
+        $filtersOut = array_map(fn($filter) => [
+            'id' => $filter->getId(),
+            'name' => $filter->getName(),
+            'slug' => $filter->getSlug(),
+        ], $searchFilters);
+
+        echo json_encode([
+            'characters' => $charsOut,
+            'worlds' => $worldsOut,
+            'stories' => $storiesOut,
+            'templates' => $templatesOut,
+            'filters' => $filtersOut,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
+    }
+
+    public function toggleCharacterHidden(): void
+    {
+        $this->requireLogin();
+
+        $input = $this->requireJsonPost();
+        $characterId = (int)($input['characterId'] ?? 0);
+        if ($characterId <= 0) {
+            $this->jsonError('Brak postaci.');
+        }
+
+        $this->characterRepository->setHidden(
+            $characterId,
+            (int)$_SESSION['user_id'],
+            !empty($input['hidden'])
+        );
+
+        $this->jsonResponse(['success' => true]);
+    }
+
+    public function toggleCharacterPinned(): void
+    {
+        $this->requireLogin();
+
+        $input = $this->requireJsonPost();
+        $characterId = (int)($input['characterId'] ?? 0);
+        if ($characterId <= 0) {
+            $this->jsonError('Brak postaci.');
+        }
+
+        $this->characterRepository->setPinned(
+            $characterId,
+            (int)$_SESSION['user_id'],
+            !empty($input['pinned'])
+        );
+
+        $this->jsonResponse(['success' => true]);
+    }
+
+    public function toggleWorldHidden(): void
+    {
+        $this->requireLogin();
+
+        $input = $this->requireJsonPost();
+        $worldId = (int)($input['worldId'] ?? 0);
+        if ($worldId <= 0) {
+            $this->jsonError('Brak folderu.');
+        }
+
+        $this->worldRepository->setHidden(
+            $worldId,
+            (int)$_SESSION['user_id'],
+            !empty($input['hidden'])
+        );
+
+        $this->jsonResponse(['success' => true]);
     }
 
     // -----------------------------------------------------------------------
@@ -763,28 +1307,17 @@ class CharacterController extends AppController
     public function restoreDefaultImage()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak wymaganych parametrów']);
-            exit();
+            $this->jsonError('Brak wymaganych parametrów');
         }
 
         $characterId = (int) $input['characterId'];
         $character   = $this->characterRepository->getCharacterByIdAndUserId($characterId, $_SESSION['user_id']);
 
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         $this->characterRepository->updateCharacter(
@@ -793,56 +1326,38 @@ class CharacterController extends AppController
             $character->getDescription(),
             'default.png',
             $character->getIdTemplate(),
-            $character->getIdWorld()
+            $character->getIdWorld(),
+            $this->imageDisplayFromCharacter($character),
+            $character->getIntro()
         );
 
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     public function duplicateCharacter()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);
 
         if ($characterId <= 0) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Brak ID postaci']);
-            exit();
+            $this->jsonError('Brak ID postaci');
         }
 
         $newId = $this->characterRepository->duplicateCharacter($characterId, $_SESSION['user_id']);
         if (!$newId) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
-        echo json_encode(['success' => true, 'id' => $newId]);
-        exit();
+        $this->jsonResponse(['success' => true, 'id' => $newId]);
     }
 
     public function deleteCharacter()
     {
         $this->requireLogin();
-        header('Content-Type: application/json');
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
-            exit();
-        }
-
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);
         $confirmation = trim($input['confirmation'] ?? '');
 
@@ -851,15 +1366,11 @@ class CharacterController extends AppController
             : null;
 
         if (!$character) {
-            http_response_code(404);
-            echo json_encode(['error' => 'Postać nie znaleziona']);
-            exit();
+            $this->jsonError('Postać nie znaleziona', 404);
         }
 
         if ($confirmation !== $character->getName()) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Wpisana nazwa postaci nie zgadza się']);
-            exit();
+            $this->jsonError('Wpisana nazwa postaci nie zgadza się');
         }
 
         $images = $this->getCharacterImageFilenames($character);
@@ -869,8 +1380,7 @@ class CharacterController extends AppController
 
         $this->characterRepository->deleteCharacter($characterId, $_SESSION['user_id']);
         $this->deleteUnusedUploadFiles($images);
-        echo json_encode(['success' => true]);
-        exit();
+        $this->jsonResponse(['success' => true]);
     }
 
     private function getCharacterImageFilenames(Character $character): array
@@ -908,68 +1418,4 @@ class CharacterController extends AppController
         }
     }
 
-    private function uploadCharacterImage(string $fallback): string
-    {
-        if (empty($fallback)) {
-            $fallback = 'default.png';
-        }
-
-        $file = $_FILES['character_image'] ?? null;
-        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-            return $fallback;
-        }
-
-        $uploaded = (new ImageUploadService())->upload($file);
-        return $uploaded['filename'] ?: $fallback;
-    }
-
-    private function prepareVariantsFromPost(): array
-    {
-        $postedVariants = $_POST['variants'] ?? [];
-        if (!is_array($postedVariants)) {
-            return [];
-        }
-
-        $variants = [];
-        foreach ($postedVariants as $key => $variant) {
-            if (!is_array($variant)) {
-                continue;
-            }
-
-            $name = trim($variant['name'] ?? '');
-            if ($name === '') {
-                continue;
-            }
-
-            $image = $variant['existing_image'] ?? null;
-            $file  = $this->getVariantUploadFile((string)$key);
-            if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-                $uploaded = (new ImageUploadService())->upload($file);
-                $image    = $uploaded['filename'];
-            }
-
-            $variants[] = [
-                'name'   => $name,
-                'image'  => $image ?: null,
-                'values' => is_array($variant['values'] ?? null) ? $variant['values'] : []
-            ];
-        }
-
-        return $variants;
-    }
-
-    private function getVariantUploadFile(string $key): ?array
-    {
-        if (!isset($_FILES['variant_images']['name'][$key])) {
-            return null;
-        }
-
-        return [
-            'name'     => $_FILES['variant_images']['name'][$key],
-            'type'     => $_FILES['variant_images']['type'][$key],
-            'tmp_name' => $_FILES['variant_images']['tmp_name'][$key],
-            'error'    => $_FILES['variant_images']['error'][$key],
-            'size'     => $_FILES['variant_images']['size'][$key],
-        ];
-    }
 }

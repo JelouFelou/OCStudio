@@ -1,13 +1,15 @@
-<?php
-// Helper – renderuje prawidłowy widget dla pola wariantu
-function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
+﻿<?php
+// Helper â€“ renderuje prawidĹ‚owy widget dla pola wariantu
+function renderVariantFieldWidget($field, $variantIndex, $variantValue = '', $baseValue = '') {
     $fieldId = (int)$field['id'];
     $ftype = $field['field_type'];
     $fieldLabel = htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8');
     $variantValueEscaped = htmlspecialchars($variantValue, ENT_QUOTES, 'UTF-8');
     
     echo '<div class="input-group">';
-    echo "<label>$fieldLabel</label>";
+    if (trim((string)($field['label'] ?? '')) !== '') {
+        echo "<label>$fieldLabel</label>";
+    }
     
     $placeholder = $field['placeholder'] ?? '{}';
     
@@ -15,13 +17,237 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
                data-variant-field 
                data-field-id="'.$fieldId.'" 
                data-field-type="'.$ftype.'"
-               data-field-config=\''.htmlspecialchars($placeholder, ENT_QUOTES, 'UTF-8').'\'>';
+               data-field-config=\''.htmlspecialchars($placeholder, ENT_QUOTES, 'UTF-8').'\'
+               data-field-label="'.$fieldLabel.'"
+               data-base-value="'.htmlspecialchars((string)$baseValue, ENT_QUOTES, 'UTF-8').'">';
     echo '<input type="hidden" class="variant-field-input" 
                name="variants['.$variantIndex.'][values]['.$fieldId.']" 
                value="'.$variantValueEscaped.'">';
     echo '<div class="variant-field-renderer"></div>';
     echo '</div>';
     
+    echo '</div>';
+}
+
+$oldInput = $oldInput ?? [];
+$oldFieldValues = $characterFieldValues ?? [];
+$returnUrl = $oldInput['return_url'] ?? ($returnUrl ?? ($_SERVER['HTTP_REFERER'] ?? '/dashboard'));
+$isMainCharacter = !empty($oldInput)
+    ? !empty($oldInput['is_main_character'])
+    : (isset($character) && method_exists($character, 'isMainCharacter') && $character->isMainCharacter());
+function old_character_value(array $oldInput, ?object $character, string $key, string $getter = '', string $default = ''): string {
+    if (array_key_exists($key, $oldInput)) {
+        return (string)$oldInput[$key];
+    }
+    if ($character && $getter && method_exists($character, $getter)) {
+        return (string)$character->$getter();
+    }
+    return $default;
+}
+
+function cc_decode_json($value) {
+    if ($value === null || $value === '') {
+        return null;
+    }
+    $decoded = json_decode((string)$value, true);
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : null;
+}
+
+function cc_format_date_value($date): string {
+    if (!is_array($date)) {
+        return (string)$date;
+    }
+    return implode(' ', array_filter([
+        $date['day'] ?? null,
+        $date['monthName'] ?? null,
+        $date['year'] ?? null,
+        $date['era'] ?? null,
+    ], fn($part) => $part !== null && $part !== ''));
+}
+
+function cc_table_rows_config(array $field): array {
+    $cfg = cc_decode_json($field['placeholder'] ?? '');
+    $rows = is_array($cfg['rows'] ?? null) ? $cfg['rows'] : (is_array($cfg) ? $cfg : []);
+    $normalized = [];
+    foreach ($rows as $row) {
+        if (is_string($row)) {
+            $normalized[] = ['key' => $row, 'label' => $row, 'type' => 'text'];
+            continue;
+        }
+        if (is_array($row)) {
+            $label = trim((string)($row['label'] ?? $row['name'] ?? ''));
+            if ($label !== '') {
+                $type = in_array(($row['type'] ?? 'text'), ['text', 'date', 'image', 'list', 'age', 'select'], true) ? $row['type'] : 'text';
+                $normalized[] = ['key' => (string)($row['key'] ?? $label), 'label' => $label, 'type' => $type];
+            }
+        }
+    }
+    return $normalized;
+}
+
+function cc_is_assoc_array(array $value): bool {
+    if ($value === []) {
+        return false;
+    }
+    return array_keys($value) !== range(0, count($value) - 1);
+}
+
+function cc_table_cell_value($cell) {
+    return is_array($cell) && array_key_exists('value', $cell) ? $cell['value'] : $cell;
+}
+
+function cc_readable_value($value): string {
+    $value = cc_table_cell_value($value);
+    if ($value === null) return '';
+    if (is_scalar($value)) return trim((string)$value);
+    if (is_array($value)) {
+        if (array_key_exists('day', $value) || array_key_exists('monthName', $value) || array_key_exists('year', $value)) {
+            return cc_format_date_value($value);
+        }
+        if (!empty($value['filename'])) return (string)$value['filename'];
+        if (!empty($value['url'])) return (string)$value['url'];
+        return trim(implode(', ', array_filter(array_map('cc_readable_value', $value), fn($item) => $item !== '')));
+    }
+    return '';
+}
+
+function cc_list_items_from_value($value): array {
+    $value = cc_table_cell_value($value);
+    if (is_string($value)) {
+        $candidate = trim($value);
+        for ($i = 0; $i < 2 && $candidate !== ''; $i++) {
+            $decoded = cc_decode_json($candidate);
+            if ($decoded === null) break;
+            $value = $decoded;
+            if (!is_string($decoded)) break;
+            $candidate = trim($decoded);
+        }
+    }
+    if (is_array($value) && array_key_exists('value', $value)) {
+        $value = $value['value'];
+    }
+    if (is_array($value)) {
+        $items = cc_is_assoc_array($value) ? array_values($value) : $value;
+        return array_values(array_filter(array_map('cc_readable_value', $items), fn($item) => $item !== ''));
+    }
+    return array_values(array_filter(
+        array_map('trim', preg_split('/\r\n|\r|\n/', (string)$value) ?: []),
+        fn($item) => $item !== ''
+    ));
+}
+
+function cc_value_is_serialized_list($value): bool {
+    $value = cc_table_cell_value($value);
+    if (is_array($value) && array_key_exists('value', $value)) {
+        $value = $value['value'];
+    }
+    if (is_array($value)) {
+        return !cc_is_assoc_array($value);
+    }
+    if (!is_string($value) || trim($value) === '') {
+        return false;
+    }
+    $decoded = cc_decode_json(trim($value));
+    if (is_string($decoded)) {
+        $decoded = cc_decode_json(trim($decoded));
+    }
+    if (is_array($decoded) && array_key_exists('value', $decoded)) {
+        $decoded = $decoded['value'];
+    }
+    return is_array($decoded) && !cc_is_assoc_array($decoded);
+}
+
+function cc_render_list_items(array $items): void {
+    echo '<ul class="wiki-list">';
+    foreach ($items as $item) {
+        if ((string)$item === '') continue;
+        echo '<li>' . htmlspecialchars((string)$item, ENT_QUOTES, 'UTF-8') . '</li>';
+    }
+    echo '</ul>';
+}
+
+function render_character_field_fallback(array $field, array $values): void {
+    $fieldId = (int)($field['id'] ?? 0);
+    $fieldType = (string)($field['field_type'] ?? 'text');
+    $label = (string)($field['label'] ?? '');
+    $value = (string)($values[$fieldId] ?? '');
+    $escapedValue = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+
+    echo '<div class="input-group field-type-' . htmlspecialchars($fieldType, ENT_QUOTES, 'UTF-8') . '" data-php-field-fallback>';
+    if (trim($label) !== '') {
+        echo '<label>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</label>';
+    }
+
+    if ($fieldType === 'text') {
+        echo '<input type="text" name="field_values[' . $fieldId . ']" value="' . $escapedValue . '" placeholder="Wpisz wartość...">';
+        echo '</div>';
+        return;
+    }
+
+    if ($fieldType === 'textarea') {
+        echo '<textarea name="field_values[' . $fieldId . ']" rows="5" placeholder="Wpisz wartość...">' . $escapedValue . '</textarea>';
+        echo '</div>';
+        return;
+    }
+
+    if ($fieldType === 'select') {
+        $cfg = cc_decode_json($field['placeholder'] ?? '');
+        $options = is_array($cfg['options'] ?? null) ? $cfg['options'] : [];
+        echo '<select name="field_values[' . $fieldId . ']"><option value="">-- Wybierz --</option>';
+        foreach ($options as $option) {
+            $option = (string)$option;
+            echo '<option value="' . htmlspecialchars($option, ENT_QUOTES, 'UTF-8') . '"' . ($value === $option ? ' selected' : '') . '>' . htmlspecialchars($option, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        echo '</select></div>';
+        return;
+    }
+
+    echo '<input type="hidden" name="field_values[' . $fieldId . ']" value="' . $escapedValue . '">';
+
+    if ($fieldType === 'list') {
+        cc_render_list_items(cc_list_items_from_value($value));
+    } elseif ($fieldType === 'date') {
+        echo '<p>' . htmlspecialchars(cc_format_date_value(cc_decode_json($value) ?? $value), ENT_QUOTES, 'UTF-8') . '</p>';
+    } elseif ($fieldType === 'image') {
+        $image = cc_decode_json($value);
+        if (is_array($image) && !empty($image['url'])) {
+            echo '<img src="' . htmlspecialchars($image['url'], ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars($label ?: 'Zdjęcie', ENT_QUOTES, 'UTF-8') . '" style="max-width:100%;height:auto;border-radius:8px;">';
+        } else {
+            echo '<p class="wiki-empty">Brak zdjęcia</p>';
+        }
+    } elseif ($fieldType === 'image-gallery') {
+        $images = cc_decode_json($value);
+        echo '<div class="wiki-gallery">';
+        if (is_array($images)) {
+            foreach ($images as $image) {
+                if (!is_array($image) || empty($image['url'])) continue;
+                echo '<img src="' . htmlspecialchars($image['url'], ENT_QUOTES, 'UTF-8') . '" alt="Galeria">';
+            }
+        }
+        echo '</div>';
+    } elseif ($fieldType === 'table' || $fieldType === 'stats') {
+        $rows = cc_decode_json($value);
+        $rowDefs = cc_table_rows_config($field);
+        if (is_array($rows) && !empty($rows)) {
+            echo '<table class="wiki-data-table"><tbody>';
+            foreach (($rowDefs ?: array_map(fn($key) => ['key' => $key, 'label' => $key], array_keys($rows))) as $row) {
+                $cell = $rows[$row['key']] ?? $rows[$row['label']] ?? null;
+                $cellType = is_array($cell) ? (string)($cell['type'] ?? '') : '';
+                $rowType = (string)($row['type'] ?? 'text');
+                echo '<tr><th>' . htmlspecialchars((string)$row['label'], ENT_QUOTES, 'UTF-8') . '</th><td>';
+                if ($cellType === 'list' || $rowType === 'list' || cc_value_is_serialized_list($cell)) {
+                    cc_render_list_items(cc_list_items_from_value($cell));
+                } else {
+                    echo nl2br(htmlspecialchars(cc_readable_value($cell), ENT_QUOTES, 'UTF-8'));
+                }
+                echo '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
+    } else {
+        echo '<p>' . nl2br($escapedValue) . '</p>';
+    }
+
     echo '</div>';
 }
 ?>
@@ -40,9 +266,9 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
             <div class="input-group" style="margin-bottom: 0;">
                 <label style="font-size: 0.75rem; margin-bottom: 4px;">Wybierz szablon postaci</label>
                 <!--
-                    Ten select jest POZA formularzem – służy tylko do wyświetlania i ładowania pól.
-                    Rzeczywista wartość template_id wysyłana do serwera pochodzi z hidden inputa
-                    WEWNĄTRZ formularza (#form-template-id) – aktualizowanego przez updateTemplateId().
+                    Ten select jest POZA formularzem â€“ sĹ‚uĹĽy tylko do wyĹ›wietlania i Ĺ‚adowania pĂłl.
+                    Rzeczywista wartoĹ›Ä‡ template_id wysyĹ‚ana do serwera pochodzi z hidden inputa
+                    WEWNÄ„TRZ formularza (#form-template-id) â€“ aktualizowanego przez updateTemplateId().
                 -->
                 <select id="template-select" onchange="updateTemplateId(this.value)"
                         style="height: 42px; padding: 6px 12px;">
@@ -57,10 +283,37 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
                     <?php endif; ?>
                 </select>
             </div>
+            <div class="input-group character-header-tags" style="margin: 10px 0 0;">
+                <label style="font-size: 0.75rem; margin-bottom: 4px;">Filtry postaci, minimum 5</label>
+                <?php
+                    $contentTagsValue = '';
+                    if (array_key_exists('content_tags', $oldInput)) {
+                        $contentTagsValue = (string)$oldInput['content_tags'];
+                    } elseif (!empty($contentFilters ?? [])) {
+                        $contentTagsValue = implode(', ', array_map(fn($filter) => $filter->getName(), $contentFilters));
+                    } elseif (!empty($inheritedWorldFilters ?? [])) {
+                        $contentTagsValue = implode(', ', array_map(fn($filter) => $filter->getName(), $inheritedWorldFilters));
+                    }
+                    $tagContextWorldId = (string)($oldInput['world_id'] ?? ($_GET['world'] ?? ''));
+                ?>
+                <input class="tag-input" data-tag-input type="text" name="content_tags"
+                       form="character-form"
+                       data-context-world-id="<?= htmlspecialchars($tagContextWorldId, ENT_QUOTES, 'UTF-8') ?>"
+                       value="<?= htmlspecialchars($contentTagsValue, ENT_QUOTES, 'UTF-8') ?>"
+                       placeholder="np. sfw, facet, mlody, magia, wojownik">
+            </div>
         </div>
 
         <div class="header-actions" style="display: flex; gap: 10px;">
-            <button type="button" class="btn-secondary" onclick="window.location.href='/dashboard'">Anuluj</button>
+            <label class="main-character-toggle">
+                <input type="checkbox"
+                       name="is_main_character"
+                       value="1"
+                       form="character-form"
+                       <?= $isMainCharacter ? 'checked' : '' ?>>
+                <span>Główna postać</span>
+            </label>
+            <button type="button" class="btn-secondary" onclick="window.location.href='<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>'">Anuluj</button>
             <button type="submit" form="character-form" class="btn-primary">Zapisz postać</button>
         </div>
     </header>
@@ -74,196 +327,311 @@ function renderVariantFieldWidget($field, $variantIndex, $variantValue = '') {
     <?php endif; ?>
 
     <form id="character-form"
-          action="<?= isset($character) ? '/editCharacter?id='.$character->getId() : '/createCharacter' ?>"
+          action="<?= isset($character) ? '/editCharacter/'.htmlspecialchars($character->getPublicId(), ENT_QUOTES, 'UTF-8') . '?return_url=' . rawurlencode((string)$returnUrl) : '/createCharacter' ?>"
           method="POST"
           enctype="multipart/form-data">
 
         <!--
-            JEDYNY input z name="template_id" wysyłany do serwera.
-            Wartość ustawiana przez updateTemplateId() przy zmianie selecta
-            oraz przez JS przy ładowaniu strony (tryb edycji).
+            JEDYNY input z name="template_id" wysyĹ‚any do serwera.
+            WartoĹ›Ä‡ ustawiana przez updateTemplateId() przy zmianie selecta
+            oraz przez JS przy Ĺ‚adowaniu strony (tryb edycji).
         -->
         <input type="hidden"
                name="template_id"
                id="form-template-id"
-               value="<?= isset($character) ? (int)$character->getIdTemplate() : '' ?>">
-
-        <div class="template-sections" style="margin-top: 24px;">
-            <div>
-                <div id="left-fields-container" style="display: flex; flex-direction: column; gap: 15px;"></div>
-            </div>
-
-            <div>
-                <div class="character-profile-wrapper">
-                    <div class="input-group full-width">
-                        <input type="text" name="character_name"
-                            value="<?= isset($character) ? htmlspecialchars($character->getName()) : '' ?>"
-                            placeholder="Imię i nazwisko" required>
-                    </div>
-
-                    <div class="template-meta-right">
-                        <img id="profile-img-preview"
-                             src="public/uploads/<?php
-                                $defaultCharacterImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_dark.png' : 'default.png';
-                                $characterImage = isset($character) ? ($character->getImage() ?: 'default.png') : 'default.png';
-                                echo htmlspecialchars(in_array($characterImage, ['default.png', 'default.jpg', ''], true) ? $defaultCharacterImage : $characterImage, ENT_QUOTES, 'UTF-8');
-                             ?>"
-                             alt="Zdjęcie postaci">
-                        <input type="hidden" name="remove_image" id="remove-image-flag" value="">
-                        <label for="profile-image-upload" class="upload-label">Wgraj zdjęcie</label>
-                        <input type="file" id="profile-image-upload" name="character_image" accept="image/*">
-                        <?php
-                            $hasCustomImage = isset($character) && $character->getImage() && $character->getImage() !== 'default.png';
-                        ?>
-                        <button type="button"
-                                id="remove-image-btn"
-                                class="btn-secondary"
-                                style="font-size:0.8rem;padding:5px 10px;<?= $hasCustomImage ? '' : 'display:none;' ?>"
-                                onclick="removeCharacterImage()">
-                            <i class="fa-solid fa-trash"></i> Usuń zdjęcie
-                        </button>
-                    </div>
-
-                    <div class="input-group full-width">
-                        <textarea name="character_description" rows="3"
-                            placeholder="Opis / Krótka biografia"><?= isset($character) ? htmlspecialchars($character->getDescription()) : '' ?></textarea>
-                    </div>
-                </div>
-
-                <div id="right-fields-container" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px; width: 100%;"></div>
-            </div>
-        </div>
+               value="<?= htmlspecialchars((string)($oldInput['template_id'] ?? (isset($character) ? (int)$character->getIdTemplate() : '')), ENT_QUOTES, 'UTF-8') ?>">
+        <?php if (!isset($character)): ?>
+            <input type="hidden" name="world_id" value="<?= htmlspecialchars((string)($oldInput['world_id'] ?? ($_GET['world'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+        <?php endif; ?>
+        <input type="hidden" name="return_url" value="<?= htmlspecialchars((string)$returnUrl, ENT_QUOTES, 'UTF-8') ?>">
 
         <?php if(isset($character)): ?>
-            <section class="variant-editor">
+            <section class="variant-editor variant-editor-top" id="variant-editor-panel">
                 <div class="variant-editor-header">
                     <div>
-                        <h2>Warianty postaci</h2>
-                        <p>Dodaj alternatywne formy, np. przemiane, inne ubranie albo wersje z nadpisanymi polami.</p>
+                        <h2>Wariant edycji</h2>
+                        <p>Wybierasz wariant, a niżej zostaje ten sam układ pól. Zmieniają się tylko dane aktywnego wariantu.</p>
                     </div>
                     <button type="button" class="btn-secondary" id="add-variant-btn">
                         <i class="fa-solid fa-plus"></i> Dodaj wariant
                     </button>
                 </div>
 
-                <div id="variants-container">
-                    <?php foreach(($variants ?? []) as $variantIndex => $variant): ?>
-                        <div class="variant-card" data-variant-card>
-                            <div class="variant-card-header">
-                                <div class="input-group">
-                                    <label>Nazwa wariantu</label>
-                                    <input type="text"
-                                           name="variants[<?= $variantIndex ?>][name]"
-                                           value="<?= htmlspecialchars($variant['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
-                                           placeholder="np. Forma wilkolaka">
-                                </div>
-                                <button type="button" class="variant-remove-btn" data-remove-variant title="Usun wariant">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
-                            </div>
-
-                            <div class="variant-image-row">
-                                <?php if(!empty($variant['image'])): ?>
-                                    <img src="public/uploads/<?= htmlspecialchars($variant['image'], ENT_QUOTES, 'UTF-8') ?>" alt="Wariant">
-                                <?php else: ?>
-                                    <div class="variant-image-placeholder"><i class="fa-solid fa-image"></i></div>
-                                <?php endif; ?>
-                                <div class="input-group">
-                                    <label>Zdjecie wariantu</label>
-                                    <input type="hidden"
-                                           name="variants[<?= $variantIndex ?>][existing_image]"
-                                           value="<?= htmlspecialchars($variant['image'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                    <input type="file" name="variant_images[<?= $variantIndex ?>]" accept="image/*">
-                                </div>
-                            </div>
-
-                            <div class="variant-fields-grid">
-                                <?php foreach(($fields ?? []) as $field): ?>
-                                    <?php 
-                                        $fieldId = (int)$field['id'];
-                                        $variantValue = $variant['values'][$fieldId] ?? '';
-                                        renderVariantFieldWidget($field, $variantIndex, $variantValue);
-                                    ?>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </section>
-        <?php endif; ?>
-    </form>
-
-    <?php if(isset($character)): ?>
-        <template id="variant-card-template">
-            <div class="variant-card" data-variant-card>
-                <div class="variant-card-header">
-                    <div class="input-group">
-                        <label>Nazwa wariantu</label>
-                        <input type="text" data-name-template="variants[__KEY__][name]" placeholder="np. Forma wilkolaka">
+                <div class="variant-toolbar variant-toolbar-inline">
+                    <div class="input-group variant-toolbar-select">
+                        <label>Aktywny wariant</label>
+                        <select id="character-variant-edit-select">
+                            <option value="default">Domyślna postać</option>
+                            <?php foreach (($variants ?? []) as $variantIndex => $variant): ?>
+                                <option value="<?= htmlspecialchars((string)($variant['id'] ?? $variantIndex), ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars((string)($variant['name'] ?? ('Wariant ' . ((int)$variantIndex + 1))), ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
-                    <button type="button" class="variant-remove-btn" data-remove-variant title="Usun wariant">
+                    <label class="main-character-toggle variant-toolbar-toggle">
+                        <input type="checkbox" id="variant-is-adult" value="1">
+                        <span>+18</span>
+                    </label>
+                    <label class="main-character-toggle variant-toolbar-toggle">
+                        <input type="checkbox" id="variant-is-hidden" value="1">
+                        <span>Ukryty</span>
+                    </label>
+                    <button type="button" class="variant-remove-btn" id="delete-variant-btn" title="Usuń wariant">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
 
-                <div class="variant-image-row">
-                    <div class="variant-image-placeholder"><i class="fa-solid fa-image"></i></div>
-                    <div class="input-group">
-                        <label>Zdjecie wariantu</label>
-                        <input type="hidden" data-name-template="variants[__KEY__][existing_image]" value="">
-                        <input type="file" data-name-template="variant_images[__KEY__]" accept="image/*">
-                    </div>
-                </div>
+                <div id="variant-hidden-store" hidden></div>
+            </section>
+        <?php endif; ?>
 
-                <div class="variant-fields-grid">
-                    <?php foreach(($fields ?? []) as $field): ?>
-                        <?php $fieldId = (int)$field['id']; ?>
-                        <?php $ftype = $field['field_type']; ?>
-                        <div class="input-group">
-                            <label><?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?></label>
-                            <div class="variant-field-container" 
-                                 data-variant-field 
-                                 data-field-id="<?= $fieldId ?>" 
-                                 data-field-type="<?= htmlspecialchars($ftype, ENT_QUOTES, 'UTF-8') ?>"
-                                 data-field-config="<?= htmlspecialchars($field['placeholder'] ?? '{}', ENT_QUOTES, 'UTF-8') ?>"
-                                 data-field-label="<?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" class="variant-field-input" 
-                                       data-name-template="variants[__KEY__][values][<?= $fieldId ?>]">
-                                <div class="variant-field-renderer"></div>
-                            </div>
-                        </div>
+        <section class="wiki-intro-editor" style="margin-top:24px;">
+            <h2 data-character-intro-title><?= isset($character) ? htmlspecialchars($character->getName(), ENT_QUOTES, 'UTF-8') : 'Nazwa postaci' ?></h2>
+            <textarea name="character_intro" rows="4"
+                placeholder="Wstęp widoczny nad treścią postaci..."><?= htmlspecialchars(old_character_value($oldInput, $character ?? null, 'character_intro', 'getIntro'), ENT_QUOTES, 'UTF-8') ?></textarea>
+        </section>
+
+        <div class="template-sections character-editor-layout" style="margin-top: 24px;">
+            <div class="character-editor-main">
+                <div id="left-fields-container" style="display: flex; flex-direction: column; gap: 15px;">
+                    <?php foreach (($fields ?? []) as $field): ?>
+                        <?php if (($field['location'] ?? 'left') !== 'right') render_character_field_fallback($field, $characterFieldValues ?? []); ?>
                     <?php endforeach; ?>
                 </div>
             </div>
-        </template>
-    <?php endif; ?>
+
+            <div class="character-editor-infobox">
+                <div class="character-profile-wrapper">
+                    <div class="input-group full-width">
+                        <input type="text" name="character_name"
+                            value="<?= htmlspecialchars(old_character_value($oldInput, $character ?? null, 'character_name', 'getName'), ENT_QUOTES, 'UTF-8') ?>"
+                            placeholder="Imię i nazwisko" required>
+                    </div>
+
+                    <div class="template-meta-right" id="character-image-editor-panel">
+                        <?php
+                            $imageDisplayMode = $oldInput['image_display_mode'] ?? (isset($character) ? $character->getImageDisplayMode() : 'square');
+                            $imageFit = $oldInput['image_fit'] ?? (isset($character) ? $character->getImageFit() : 'cover');
+                            $imageFocusX = $oldInput['image_focus_x'] ?? (isset($character) ? $character->getImageFocusX() : 50);
+                            $imageFocusY = $oldInput['image_focus_y'] ?? (isset($character) ? $character->getImageFocusY() : 50);
+                            $imageZoom = $oldInput['image_zoom'] ?? (isset($character) ? $character->getImageZoom() : 1);
+                        ?>
+                        <div id="character-image-editor-body" class="character-image-editor-body">
+                            <?php
+                                $defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+                                $characterImage = isset($character) ? ($character->getImage() ?: 'default.png') : 'default.png';
+                                $profileImage = in_array($characterImage, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $characterImage;
+                                oc_render_media_frame([
+                                    'variant' => 'portrait',
+                                    'mode' => $imageDisplayMode,
+                                    'id' => 'profile-img-frame',
+                                    'imgId' => 'profile-img-preview',
+                                    'src' => '/public/uploads/' . $profileImage,
+                                    'alt' => 'Zdjęcie postaci',
+                                    'fit' => $imageFit,
+                                    'focusX' => $imageFocusX,
+                                    'focusY' => $imageFocusY,
+                                    'zoom' => $imageZoom,
+                                    'panX' => 0,
+                                    'panY' => 0,
+                                    'imgStyle' => 'object-fit: ' . htmlspecialchars($imageFit, ENT_QUOTES, 'UTF-8') . ';',
+                                ]);
+                            ?>
+                        </div>
+                        <input type="hidden" name="remove_image" id="remove-image-flag" value="">
+                        <input type="hidden" name="character_image_id" id="character-image-id" value="">
+                        <input type="hidden" name="image_focus_x" id="image-focus-x" value="<?= (int)$imageFocusX ?>">
+                        <input type="hidden" name="image_focus_y" id="image-focus-y" value="<?= (int)$imageFocusY ?>">
+                        <input type="hidden" name="image_zoom" id="image-zoom" value="<?= htmlspecialchars((string)$imageZoom, ENT_QUOTES, 'UTF-8') ?>">
+                        <textarea class="character-infobox-description" name="character_description" rows="3" placeholder="Krótki opis pod zdjęciem"><?= htmlspecialchars(old_character_value($oldInput, $character ?? null, 'character_description', 'getDescription'), ENT_QUOTES, 'UTF-8') ?></textarea>
+                        <?php
+                            $hasCustomImage = isset($character) && $character->getImage() && !in_array($character->getImage(), ['default.png', 'default.jpg', 'default_dark.png'], true);
+                            oc_render_image_upload_controls([
+                                'class' => 'profile-image-actions-row',
+                                'previewSelector' => '#profile-img-preview',
+                                'imageIdSelector' => '#character-image-id',
+                                'after' => function () use ($hasCustomImage) {
+                        ?>
+                            <button type="button"
+                                    id="remove-image-btn"
+                                    class="btn-secondary image-remove-btn"
+                                    style="<?= $hasCustomImage ? '' : 'display:none;' ?>"
+                                    onclick="removeCharacterImage()">
+                                <i class="fa-solid fa-trash"></i> Usuń zdjęcie
+                            </button>
+                        <?php
+                                },
+                            ]);
+                        ?>
+                        <div id="image-controls-panel" class="image-controls-panel">
+                            <div class="image-frame-controls">
+                            <label>
+                                Ramka zdjęcia
+                                <select name="image_display_mode" id="image-display-mode">
+                                    <option value="square" <?= $imageDisplayMode === 'square' ? 'selected' : '' ?>>Kwadrat</option>
+                                    <option value="natural" <?= $imageDisplayMode === 'natural' ? 'selected' : '' ?>>Pełna wysokość zdjęcia</option>
+                                </select>
+                            </label>
+                            <label>
+                                Dopasowanie
+                                <select name="image_fit" id="image-fit">
+                                    <option value="cover" <?= $imageFit === 'cover' ? 'selected' : '' ?>>Wypełnij ramkę</option>
+                                    <option value="contain" <?= $imageFit === 'contain' ? 'selected' : '' ?>>Pokaż całe zdjęcie</option>
+                                </select>
+                            </label>
+                            <label>
+                                Przybliżenie
+                                <input type="range" id="image-zoom-range" min="1" max="6" step="0.05" value="<?= htmlspecialchars((string)$imageZoom, ENT_QUOTES, 'UTF-8') ?>">
+                            </label>
+                            <label>
+                                Pozycja pozioma
+                                <input type="range" id="image-focus-x-range" min="0" max="100" value="<?= (int)$imageFocusX ?>">
+                            </label>
+                            <label>
+                                Pozycja pionowa
+                                <input type="range" id="image-focus-y-range" min="0" max="100" value="<?= (int)$imageFocusY ?>">
+                            </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="character_image_tags" id="character-image-tags" value="<?= htmlspecialchars((string)($oldInput['character_image_tags'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                </div>
+
+                <div id="right-fields-container" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px; width: 100%;">
+                    <?php foreach (($fields ?? []) as $field): ?>
+                        <?php if (($field['location'] ?? 'left') === 'right') render_character_field_fallback($field, $characterFieldValues ?? []); ?>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+
+    </form>
+
 </div>
 
-<script src="public/scripts/character_creator.js"></script>
+<script src="/public/scripts/character_creator.js"></script>
 
-<?php if(isset($characterFieldValues)): ?>
 <script>
-    window.characterFieldValues = <?= json_encode($characterFieldValues); ?>;
+    window.characterIsNew = <?= isset($character) ? 'false' : 'true' ?>;
+    window.characterBaseName = <?= json_encode((string)old_character_value($oldInput, $character ?? null, 'character_name', 'getName'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterPublicId = <?= json_encode(isset($character) ? (string)$character->getPublicId() : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterBaseContentTags = <?= json_encode((string)($contentTagsValue ?? ''), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterBaseImage = <?= json_encode((string)($profileImage ?? 'default.png'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterBaseIsHidden = <?= (!empty($oldInput) ? !empty($oldInput['character_hidden']) : (isset($character) && $character->isHidden())) ? 'true' : 'false' ?>;
+    window.characterInitialVariantKey = <?= json_encode(!empty($selectedVariantId) ? (string)(int)$selectedVariantId : 'default', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.baseCharacterFieldValues = <?= json_encode($characterFieldValues ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterFieldValues = { ...(window.baseCharacterFieldValues || {}) };
+    window.characterVariantStates = <?= json_encode(array_values(array_map(function ($variant, $index) {
+        $variantFilters = $variant['content_filters'] ?? [];
+        $variantTags = implode(', ', array_map(
+            fn($filter) => is_array($filter) ? (string)($filter['name'] ?? $filter['label'] ?? '') : (method_exists($filter, 'getName') ? $filter->getName() : ''),
+            $variantFilters
+        ));
+        return [
+            'key' => (string)($variant['id'] ?? $index),
+            'name' => (string)($variant['name'] ?? ('Wariant ' . ($index + 1))),
+            'description' => (string)($variant['description'] ?? ''),
+            'is_adult' => !empty($variant['is_adult']),
+            'is_hidden' => !empty($variant['is_hidden']),
+            'content_tags' => $variantTags,
+            'image' => (string)($variant['image'] ?? ''),
+            'existing_image_id' => (int)($variant['existing_image_id'] ?? 0),
+            'image_fit' => (string)($variant['image_fit'] ?? 'cover'),
+            'image_focus_x' => (int)($variant['image_focus_x'] ?? 50),
+            'image_focus_y' => (int)($variant['image_focus_y'] ?? 50),
+            'image_zoom' => (float)($variant['image_zoom'] ?? 1),
+            'values' => $variant['values'] ?? [],
+        ];
+    }, $variants ?? [], array_keys($variants ?? []))), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    window.characterActiveVariantKey = 'default';
 </script>
-<?php endif; ?>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-    // --- Podgląd zdjęcia profilowego ---
+    // --- PodglÄ…d zdjÄ™cia profilowego ---
     const imageInput   = document.getElementById('profile-image-upload');
     const imagePreview = document.getElementById('profile-img-preview');
+    const imageFrame   = document.getElementById('profile-img-frame');
     const removeBtn    = document.getElementById('remove-image-btn');
     const removeFlag   = document.getElementById('remove-image-flag');
+    const imageTagsInput = document.getElementById('character-image-tags');
+    const characterForm = document.getElementById('character-form');
+
+    function splitTagText(value) {
+        if (window.OCImageTools?.splitTags) return window.OCImageTools.splitTags(value);
+        return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
+    }
+
+    const adultTagValues = new Set(['adult', 'nsfw', '+18', '18+']);
+    function tagsContainAdult(value) {
+        return splitTagText(value).some(tag => adultTagValues.has(tag.toLowerCase()));
+    }
+
+    function getLastImageTags() {
+        if (window.OCImageTools?.getLastUploadTags) return window.OCImageTools.getLastUploadTags();
+        return decodeURIComponent(document.cookie.split('; ').find(row => row.startsWith('oc_last_image_tags='))?.split('=').slice(1).join('=') || '');
+    }
+
+    function setLastImageTags(tags) {
+        const normalized = splitTagText(tags).join(', ');
+        if (window.OCImageTools?.setLastUploadTags) return window.OCImageTools.setLastUploadTags(normalized);
+        if (normalized) document.cookie = `oc_last_image_tags=${encodeURIComponent(normalized)}; expires=${new Date(Date.now() + 180 * 864e5).toUTCString()}; path=/; SameSite=Lax`;
+        return normalized;
+    }
+
+    function askImageTags() {
+        let tags = imageTagsInput?.value || getLastImageTags();
+        while (splitTagText(tags).length < 5) {
+            tags = prompt('Podaj minimum 5 filtrów zdjęcia po przecinku:', tags || 'sfw, postać, portret, galeria, opis') || '';
+            if (!tags) return null;
+        }
+        const normalized = setLastImageTags(tags);
+        if (imageTagsInput) imageTagsInput.value = normalized;
+        return normalized;
+    }
+
+    characterForm?.addEventListener('submit', event => {
+        const contentTagsInput = document.querySelector('input[name="content_tags"]');
+        if (contentTagsInput && splitTagText(contentTagsInput.value).length < 5) {
+            event.preventDefault();
+            alert('Podaj minimum 5 filtrów postaci. Formularz nie został wysłany, więc wpisane dane zostają na miejscu.');
+            contentTagsInput.focus();
+            return;
+        }
+        if (imageInput?.files?.length && splitTagText(imageTagsInput?.value || '').length < 5) {
+            event.preventDefault();
+            if (askImageTags() === null) {
+                imageInput.focus();
+            } else {
+                characterForm.requestSubmit();
+            }
+        }
+    });
 
     if (imageInput && imagePreview) {
         imageInput.addEventListener('change', function (e) {
             const file = e.target.files[0];
             if (file) {
+                if (typeof activeVariantState === 'function' && activeVariantState()) {
+                    alert('Dla wariantu wybierz zdjęcie przez galerię. Zwykły upload w tym miejscu zmienia zdjęcie postaci bazowej.');
+                    imageInput.value = '';
+                    return;
+                }
+                if (askImageTags() === null) {
+                    imageInput.value = '';
+                    return;
+                }
                 const reader = new FileReader();
                 reader.onload = evt => {
                     imagePreview.src = evt.target.result;
-                    // Nowe zdjęcie wgrane – pokaż przycisk usuwania, wyczyść flagę remove
+                    if (typeof baseMeta === 'object') {
+                        baseMeta.imageSrc = evt.target.result;
+                        baseMeta.remove_image = '';
+                    }
+                    // Nowe zdjÄ™cie wgrane â€“ pokaĹĽ przycisk usuwania, wyczyĹ›Ä‡ flagÄ™ remove
                     if (removeBtn) removeBtn.style.display = '';
                     if (removeFlag) removeFlag.value = '';
                 };
@@ -272,76 +640,601 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    // --- Usuwanie / przywracanie domyślnego zdjęcia ---
+    const displayMode = document.getElementById('image-display-mode');
+    const imageFit = document.getElementById('image-fit');
+    const focusX = document.getElementById('image-focus-x');
+    const focusY = document.getElementById('image-focus-y');
+    const zoom = document.getElementById('image-zoom');
+    const focusXRange = document.getElementById('image-focus-x-range');
+    const focusYRange = document.getElementById('image-focus-y-range');
+    const zoomRange = document.getElementById('image-zoom-range');
+    const templateSelect = document.getElementById('template-select');
+    const formTemplateId = document.getElementById('form-template-id');
+    const nameInput = document.querySelector('input[name="character_name"]');
+    const descriptionInput = document.querySelector('textarea[name="character_description"]');
+    const contentTagsInput = document.querySelector('input[name="content_tags"]');
+    const contentTagsLabel = contentTagsInput?.closest('.input-group')?.querySelector('label');
+    const characterImageId = document.getElementById('character-image-id');
+    const introTitle = document.querySelector('[data-character-intro-title]');
+
+    nameInput?.addEventListener('input', () => {
+        if (introTitle) introTitle.textContent = nameInput.value.trim() || 'Nazwa postaci';
+        if (typeof syncVariantSelect === 'function') syncVariantSelect();
+    });
+
+    function syncImageFramePreview() {
+        if (!imagePreview) return;
+        const mode = displayMode?.value || 'square';
+        const zoomValue = parseFloat(zoomRange?.value || zoom?.value || 1);
+        const focusXValue = parseFloat(focusXRange?.value || focusX?.value || 50);
+        const focusYValue = parseFloat(focusYRange?.value || focusY?.value || 50);
+        const panLimit = Math.max(0, (zoomValue - 1) * 50);
+        const panX = ((50 - focusXValue) / 50) * panLimit;
+        const panY = ((50 - focusYValue) / 50) * panLimit;
+
+        imageFrame?.classList.toggle('image-mode-natural', mode === 'natural');
+        imageFrame?.classList.toggle('image-mode-square', mode !== 'natural');
+        imagePreview.style.objectFit = imageFit?.value || 'cover';
+        imageFrame?.style.setProperty('--image-fit', imageFit?.value || 'cover');
+        imageFrame?.style.setProperty('--image-focus-x', focusXValue + '%');
+        imageFrame?.style.setProperty('--image-focus-y', focusYValue + '%');
+        imageFrame?.style.setProperty('--image-pan-x', panX + '%');
+        imageFrame?.style.setProperty('--image-pan-y', panY + '%');
+        imageFrame?.style.setProperty('--image-zoom', zoomValue);
+        window.OCMediaFrame?.refresh(imageFrame || document);
+        if (focusX && focusXRange) focusX.value = focusXRange.value;
+        if (focusY && focusYRange) focusY.value = focusYRange.value;
+        if (zoom && zoomRange) zoom.value = zoomRange.value;
+    }
+
+    [displayMode, imageFit, focusXRange, focusYRange, zoomRange].forEach(input => {
+        input?.addEventListener('input', syncImageFramePreview);
+        input?.addEventListener('change', syncImageFramePreview);
+    });
+    syncImageFramePreview();
+
+    // --- Usuwanie / przywracanie domyĹ›lnego zdjÄ™cia ---
     window.removeCharacterImage = function() {
         const preview = document.getElementById('profile-img-preview');
         const flag    = document.getElementById('remove-image-flag');
         const input   = document.getElementById('profile-image-upload');
+        const imageId = document.getElementById('character-image-id');
+        const tags    = document.getElementById('character-image-tags');
         const btn     = document.getElementById('remove-image-btn');
+        const state = typeof activeVariantState === 'function' ? activeVariantState() : null;
 
-        const defaultImage = document.body.dataset.theme === 'dark' ? 'default_dark.png' : 'default.png';
-        if (preview) preview.src = 'public/uploads/' + defaultImage;
+        if (state) {
+            state.image = '';
+            state.imageSrc = '';
+            state.existing_image_id = 0;
+            if (preview) {
+                preview.src = imageSrcForFilename(baseMeta?.image || window.characterBaseImage || 'default.png');
+                preview.dataset.variantImage = '';
+                preview.classList.add('is-inherited');
+            }
+            if (input) input.value = '';
+            if (imageId) imageId.value = '';
+            if (flag) flag.value = '';
+            if (btn) btn.style.display = 'none';
+            renderVariantHiddenStore?.();
+            return;
+        }
+
+        if (preview) {
+            preview.src = window.OCDefaults?.characterImageSrc
+                ? window.OCDefaults.characterImageSrc()
+                : '/public/uploads/' + (document.body.dataset.defaultCharacterImage || 'default.png');
+        }
         if (flag)    flag.value  = '1';
-        if (input)   input.value = '';   // wyczyść wybrany plik
+        if (typeof baseMeta === 'object') {
+            baseMeta.image = document.body.dataset.defaultCharacterImage || 'default.png';
+            baseMeta.imageSrc = preview?.src || imageSrcForFilename(baseMeta.image);
+            baseMeta.existing_image_id = '';
+            baseMeta.remove_image = '1';
+        }
+        if (input)   input.value = '';   // wyczyĹ›Ä‡ wybrany plik
+        if (imageId) imageId.value = '';
+        if (tags)    tags.value = '';
         if (btn)     btn.style.display = 'none';
     };
 
-    // --- Auto-ładowanie pól przy edycji ---
-    // form-template-id jest już wypełniony przez PHP (wartość z bazy),
-    // więc wystarczy go odczytać i załadować pola.
-    const formTemplateId = document.getElementById('form-template-id');
+    // --- Auto-Ĺ‚adowanie pĂłl przy edycji ---
+    // form-template-id jest juĹĽ wypeĹ‚niony przez PHP (wartoĹ›Ä‡ z bazy),
+    // wiÄ™c wystarczy go odczytaÄ‡ i zaĹ‚adowaÄ‡ pola.
     const selectEl       = document.getElementById('template-select');
 
     if (formTemplateId && formTemplateId.value) {
-        // Upewnij się, że select też pokazuje właściwą opcję
+        // Upewnij siÄ™, ĹĽe select teĹĽ pokazuje wĹ‚aĹ›ciwÄ… opcjÄ™
         if (selectEl) selectEl.value = formTemplateId.value;
 
-        // Załaduj pola – characterFieldValues jest już ustawione przez PHP powyżej
+        // ZaĹ‚aduj pola â€“ characterFieldValues jest juĹĽ ustawione przez PHP powyĹĽej
         if (typeof loadTemplateFields === 'function') {
             loadTemplateFields(formTemplateId.value);
         }
     }
 
-    // --- Inicjalizacja wariantów ---
-    if (typeof initializeVariantFields === 'function') {
-        initializeVariantFields();
-    }
-
+    // --- Warianty bez osobnego bloku ---
+    const variantSelect = document.getElementById('character-variant-edit-select');
+    const variantIsAdult = document.getElementById('variant-is-adult');
+    const variantIsHidden = document.getElementById('variant-is-hidden');
+    const deleteVariantBtn = document.getElementById('delete-variant-btn');
     const addVariantBtn = document.getElementById('add-variant-btn');
-    const variantsContainer = document.getElementById('variants-container');
-    const variantTemplate = document.getElementById('variant-card-template');
+    const variantHiddenStore = document.getElementById('variant-hidden-store');
+    const variantToolbarParts = [
+        variantIsAdult?.closest('.variant-toolbar-toggle'),
+        variantIsHidden?.closest('.variant-toolbar-toggle'),
+        deleteVariantBtn
+    ].filter(Boolean);
+    const variantStates = new Map();
+    const variantOrder = [];
+    const fieldContainers = ['#left-fields-container', '#right-fields-container'];
+    const currentImageFilename = () => {
+        const src = imagePreview?.currentSrc || imagePreview?.src || '';
+        const marker = '/public/uploads/';
+        if (src.includes(marker)) return decodeURIComponent(src.split(marker).pop().split('?')[0] || '').trim();
+        return '';
+    };
+    const imageSrcForFilename = filename => `/public/uploads/${filename || document.body.dataset.defaultCharacterImage || 'default.png'}`;
+    const baseMeta = {
+        name: (window.characterBaseName || nameInput?.value || '').trim(),
+        description: descriptionInput?.value || '',
+        content_tags: (window.characterBaseContentTags || contentTagsInput?.value || '').trim(),
+        is_adult: tagsContainAdult(window.characterBaseContentTags || contentTagsInput?.value || ''),
+        is_hidden: !!window.characterBaseIsHidden,
+        image: window.characterBaseImage || currentImageFilename() || 'default.png',
+        imageSrc: imagePreview?.src || imageSrcForFilename(window.characterBaseImage || 'default.png'),
+        existing_image_id: characterImageId?.value || '',
+        remove_image: removeFlag?.value || '',
+        image_fit: imageFit?.value || 'cover',
+        image_focus_x: Number(focusXRange?.value || focusX?.value || 50),
+        image_focus_y: Number(focusYRange?.value || focusY?.value || 50),
+        image_zoom: Number(zoomRange?.value || zoom?.value || 1),
+    };
+    const baseVariantName = () => baseMeta.name || 'Domyślna postać';
+    const baseVariantTags = () => baseMeta.content_tags || '';
+    let activeVariantKey = 'default';
+    let variantSyncLock = false;
 
-    function bindVariantRemove(root) {
-        root.querySelectorAll('[data-remove-variant]').forEach(btn => {
-            btn.addEventListener('click', () => btn.closest('[data-variant-card]')?.remove());
+    function makeVariantState(raw = {}, fallbackKey = '') {
+        const key = String(raw.key || fallbackKey || `new_${Date.now()}`);
+        return {
+            key,
+            name: String(raw.name || baseVariantName() || `Wariant ${variantOrder.length + 1}`),
+            description: String(raw.description || ''),
+            is_adult: !!raw.is_adult,
+            is_hidden: !!raw.is_hidden,
+            content_tags: String(raw.content_tags || ''),
+            image: String(raw.image || ''),
+            imageSrc: raw.image ? imageSrcForFilename(raw.image) : '',
+            existing_image_id: Number(raw.existing_image_id || 0),
+            image_fit: ['cover', 'contain'].includes(raw.image_fit) ? raw.image_fit : 'cover',
+            image_focus_x: Math.max(0, Math.min(100, Number(raw.image_focus_x ?? 50) || 50)),
+            image_focus_y: Math.max(0, Math.min(100, Number(raw.image_focus_y ?? 50) || 50)),
+            image_zoom: Math.max(1, Math.min(6, Number(raw.image_zoom ?? 1) || 1)),
+            values: { ...(raw.values || {}) },
+        };
+    }
+
+    function activeVariantState() {
+        return activeVariantKey === 'default' ? null : variantStates.get(activeVariantKey) || null;
+    }
+
+    function readImageEditorState() {
+        return {
+            image: currentImageFilename(),
+            imageSrc: imagePreview?.src || '',
+            existing_image_id: characterImageId?.value || '',
+            remove_image: removeFlag?.value || '',
+            image_fit: imageFit?.value === 'contain' ? 'contain' : 'cover',
+            image_focus_x: Math.max(0, Math.min(100, Number(focusXRange?.value || focusX?.value || 50) || 50)),
+            image_focus_y: Math.max(0, Math.min(100, Number(focusYRange?.value || focusY?.value || 50) || 50)),
+            image_zoom: Math.max(1, Math.min(6, Number(zoomRange?.value || zoom?.value || 1) || 1)),
+        };
+    }
+
+    function syncVisibleMetaToState() {
+        if (variantSyncLock) return;
+        const imageState = readImageEditorState();
+        if (activeVariantKey === 'default') {
+            baseMeta.name = nameInput?.value.trim() || baseMeta.name;
+            baseMeta.description = descriptionInput?.value || '';
+            baseMeta.content_tags = contentTagsInput?.value.trim() || '';
+            baseMeta.is_hidden = !!variantIsHidden?.checked;
+            baseMeta.is_adult = !!variantIsAdult?.checked || tagsContainAdult(baseMeta.content_tags);
+            Object.assign(baseMeta, imageState);
+            syncToolbarFields();
+            return;
+        }
+
+        const state = activeVariantState();
+        if (!state) return;
+        state.name = nameInput?.value.trim() || baseVariantName();
+        state.description = descriptionInput?.value || '';
+        state.content_tags = contentTagsInput?.value.trim();
+        state.is_adult = !!variantIsAdult?.checked || tagsContainAdult(state.content_tags || baseVariantTags());
+        state.is_hidden = !!variantIsHidden?.checked;
+        state.image_fit = imageState.image_fit;
+        state.image_focus_x = imageState.image_focus_x;
+        state.image_focus_y = imageState.image_focus_y;
+        state.image_zoom = imageState.image_zoom;
+        syncToolbarFields();
+    }
+
+    function applyMetaToVisible(meta, isVariant = false) {
+        variantSyncLock = true;
+        if (nameInput) nameInput.value = meta.name || '';
+        if (descriptionInput) descriptionInput.value = meta.description || '';
+        if (contentTagsInput) contentTagsInput.value = meta.content_tags || '';
+        if (contentTagsInput) contentTagsInput.placeholder = isVariant ? `Dziedziczone: ${baseVariantTags()}` : 'np. sfw, facet, mlody, magia, wojownik';
+        if (contentTagsLabel) contentTagsLabel.textContent = isVariant ? 'Filtry wariantu, minimum 5' : 'Filtry postaci, minimum 5';
+        if (imageFit) imageFit.value = meta.image_fit === 'contain' ? 'contain' : 'cover';
+        if (focusXRange) focusXRange.value = String(meta.image_focus_x ?? 50);
+        if (focusYRange) focusYRange.value = String(meta.image_focus_y ?? 50);
+        if (zoomRange) zoomRange.value = String(meta.image_zoom ?? 1);
+        if (focusX) focusX.value = String(meta.image_focus_x ?? 50);
+        if (focusY) focusY.value = String(meta.image_focus_y ?? 50);
+        if (zoom) zoom.value = String(meta.image_zoom ?? 1);
+        if (characterImageId) characterImageId.value = isVariant ? '' : (meta.existing_image_id || '');
+        if (removeFlag) removeFlag.value = isVariant ? '' : (meta.remove_image || '');
+        if (imagePreview) {
+            const inherited = isVariant && !meta.image;
+            const filename = inherited ? baseMeta.image : meta.image;
+            imagePreview.src = meta.imageSrc || imageSrcForFilename(filename);
+            imagePreview.dataset.variantImage = isVariant ? (meta.image || '') : '';
+            imagePreview.classList.toggle('is-inherited', inherited);
+        }
+        if (removeBtn) removeBtn.style.display = (!isVariant || meta.image) ? '' : 'none';
+        if (introTitle) introTitle.textContent = meta.name || 'Nazwa postaci';
+        syncImageFramePreview();
+        variantSyncLock = false;
+        syncToolbarFields();
+    }
+
+    function currentVisibleMetaForActiveVariant() {
+        const state = activeVariantState();
+        if (!state) return baseMeta;
+        return {
+            ...state,
+            imageSrc: state.image ? (state.imageSrc || imageSrcForFilename(state.image)) : imageSrcForFilename(baseMeta.image),
+        };
+    }
+
+    function readVisibleFieldValues() {
+        const values = {};
+        fieldContainers.forEach(selector => {
+            document.querySelectorAll(`${selector} [name]`).forEach(control => {
+                if (!control.name || control.disabled || control.type === 'file') return;
+                const match = control.name.match(/^(?:field_values|variants\[[^\]]+\]\[values\])\[(.+)\]$/);
+                if (!match) return;
+                if (activeVariantKey !== 'default' && String(control.value ?? '').trim() === '') return;
+                values[match[1]] = control.value;
+            });
+        });
+        return values;
+    }
+
+    function syncVisibleFieldsToState() {
+        if (variantSyncLock) return;
+        const values = readVisibleFieldValues();
+        if (activeVariantKey === 'default') {
+            window.baseCharacterFieldValues = { ...values };
+            window.characterFieldValues = { ...values };
+            return;
+        }
+        const state = activeVariantState();
+        if (!state) return;
+        state.values = { ...values };
+        state.is_adult = !!variantIsAdult?.checked || tagsContainAdult(state.content_tags || baseVariantTags());
+        state.is_hidden = !!variantIsHidden?.checked;
+        syncVisibleMetaToState();
+        window.characterFieldValues = { ...state.values };
+    }
+
+    function syncVariantSelect() {
+        if (!variantSelect) return;
+        const current = variantSelect.value || activeVariantKey || 'default';
+        variantSelect.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = 'default';
+        defaultOption.textContent = baseVariantName() || 'Domyślna postać';
+        variantSelect.appendChild(defaultOption);
+        variantOrder.forEach((key, index) => {
+            const state = variantStates.get(key);
+            if (!state) return;
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = state.name?.trim() || `Wariant ${index + 1}`;
+            variantSelect.appendChild(option);
+        });
+        variantSelect.value = [...variantSelect.options].some(option => option.value === current) ? current : 'default';
+    }
+
+    function rememberActiveVariantChoice(key) {
+        if (document.body?.dataset.rememberCharacterVariant !== '1' || !window.characterPublicId) return;
+        try {
+            const storageKey = `ocstudio.characterVariant.${window.characterPublicId}`;
+            if (key && key !== 'default') {
+                localStorage.setItem(storageKey, String(key));
+            } else {
+                localStorage.removeItem(storageKey);
+            }
+        } catch (error) {
+            return;
+        }
+    }
+
+    function initialVariantKeyFromMemory() {
+        if (document.body?.dataset.rememberCharacterVariant !== '1' || !window.characterPublicId) {
+            return String(window.characterInitialVariantKey || 'default');
+        }
+        if (String(window.characterInitialVariantKey || 'default') !== 'default') {
+            return String(window.characterInitialVariantKey);
+        }
+        try {
+            return localStorage.getItem(`ocstudio.characterVariant.${window.characterPublicId}`) || 'default';
+        } catch (error) {
+            return 'default';
+        }
+    }
+
+    function syncToolbarVisibility() {
+        const state = activeVariantState();
+        variantToolbarParts.forEach(part => {
+            if (part) part.hidden = part === deleteVariantBtn ? !state : false;
         });
     }
 
-    bindVariantRemove(document);
+    function syncToolbarFields() {
+        const state = activeVariantState();
+        const meta = state || baseMeta;
+        const effectiveTags = state && !String(state.content_tags || '').trim()
+            ? baseVariantTags()
+            : (meta.content_tags || '');
+        const lockedByTags = tagsContainAdult(effectiveTags);
+        if (lockedByTags) {
+            meta.is_adult = true;
+        }
+        variantSyncLock = true;
+        if (variantIsAdult) {
+            variantIsAdult.checked = lockedByTags || !!meta.is_adult;
+            variantIsAdult.disabled = lockedByTags;
+            variantIsAdult.closest('label')?.classList.toggle('is-locked', lockedByTags);
+            variantIsAdult.title = lockedByTags ? 'Wymuszone przez tag +18/NSFW' : '';
+        }
+        if (variantIsHidden) {
+            variantIsHidden.checked = !!meta.is_hidden;
+            variantIsHidden.disabled = lockedByTags;
+            variantIsHidden.closest('label')?.classList.toggle('is-locked', lockedByTags);
+            variantIsHidden.title = lockedByTags ? 'Zablokowane przez tag +18/NSFW' : '';
+        }
+        variantSyncLock = false;
+        syncToolbarVisibility();
+    }
 
-    if (addVariantBtn && variantsContainer && variantTemplate) {
-        addVariantBtn.addEventListener('click', () => {
-            const key = `new_${Date.now()}`;
-            const fragment = variantTemplate.content.cloneNode(true);
-            
-            // Zamiana __KEY__ w name attributes
-            fragment.querySelectorAll('[data-name-template]').forEach(input => {
-                input.name = input.dataset.nameTemplate.replace('__KEY__', key);
-                delete input.dataset.nameTemplate;
+    function renderVariantHiddenStore() {
+        if (!variantHiddenStore) return;
+        variantHiddenStore.innerHTML = '';
+        const addHidden = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value == null ? '' : String(value);
+            variantHiddenStore.appendChild(input);
+        };
+
+        addHidden('variants_present', '1');
+        addHidden('character_hidden', baseMeta.is_hidden ? '1' : '0');
+        addHidden('character_is_adult', baseMeta.is_adult || tagsContainAdult(baseMeta.content_tags || '') ? '1' : '0');
+        if (activeVariantKey !== 'default') {
+            Object.entries(window.baseCharacterFieldValues || {}).forEach(([fieldId, value]) => {
+                addHidden(`field_values[${fieldId}]`, value);
             });
-            
-            const card = fragment.querySelector('[data-variant-card]');
-            variantsContainer.appendChild(fragment);
-            
-            // Inicjalizacja widgetów dla nowego wariantu
-            card.querySelectorAll('[data-variant-field]').forEach(fieldWrapper => {
-                if (typeof buildVariantFieldWidget === 'function') {
-                    buildVariantFieldWidget(fieldWrapper);
-                }
-            });
-            
-            bindVariantRemove(card);
+        }
+        variantOrder.forEach(key => {
+            const state = variantStates.get(key);
+            if (!state) return;
+            addHidden(`variants[${key}][name]`, state.name || '');
+            addHidden(`variants[${key}][description]`, state.description || '');
+            addHidden(`variants[${key}][is_adult]`, (state.is_adult || tagsContainAdult(state.content_tags || baseVariantTags())) ? '1' : '0');
+            addHidden(`variants[${key}][is_hidden]`, state.is_hidden ? '1' : '0');
+            addHidden(`variants[${key}][content_tags]`, state.content_tags || '');
+            addHidden(`variants[${key}][existing_image]`, state.image || '');
+            addHidden(`variants[${key}][existing_image_id]`, state.existing_image_id || 0);
+            addHidden(`variants[${key}][image_fit]`, state.image_fit || 'cover');
+            addHidden(`variants[${key}][image_focus_x]`, state.image_focus_x ?? 50);
+            addHidden(`variants[${key}][image_focus_y]`, state.image_focus_y ?? 50);
+            addHidden(`variants[${key}][image_zoom]`, state.image_zoom ?? 1);
+            if (key !== activeVariantKey) {
+                Object.entries(state.values || {}).forEach(([fieldId, value]) => {
+                    if (value == null || String(value).trim() === '') return;
+                    addHidden(`variants[${key}][values][${fieldId}]`, value);
+                });
+            }
         });
+    }
+
+    async function reloadTemplateFields() {
+        const templateId = formTemplateId?.value || '';
+        if (!templateId) return;
+        const scrollTop = window.scrollY;
+        window.characterActiveVariantKey = activeVariantKey;
+        window.characterFieldValues = activeVariantKey === 'default'
+            ? { ...(window.baseCharacterFieldValues || {}) }
+            : { ...(activeVariantState()?.values || {}) };
+        variantSyncLock = true;
+        try {
+            await loadTemplateFields(templateId);
+        } finally {
+            requestAnimationFrame(() => {
+                variantSyncLock = false;
+                window.scrollTo({ top: scrollTop, left: window.scrollX, behavior: 'auto' });
+            });
+        }
+    }
+
+    async function activateVariant(key) {
+        const nextKey = String(key || 'default');
+        if (nextKey === activeVariantKey) return;
+        const wasCleanBeforeSwitch = !window.OCChangeTracker?.hasChanges?.(characterForm);
+        syncVisibleFieldsToState();
+        activeVariantKey = nextKey;
+        window.characterActiveVariantKey = activeVariantKey;
+        window.characterFieldValues = activeVariantKey === 'default'
+            ? { ...(window.baseCharacterFieldValues || {}) }
+            : { ...(activeVariantState()?.values || {}) };
+        syncVariantSelect();
+        syncToolbarFields();
+        applyMetaToVisible(currentVisibleMetaForActiveVariant(), activeVariantKey !== 'default');
+        renderVariantHiddenStore();
+        await reloadTemplateFields();
+        if (wasCleanBeforeSwitch) {
+            requestAnimationFrame(() => window.OCChangeTracker?.resetToCurrent?.(characterForm));
+        }
+    }
+
+    function updateVariantStateFromToolbar() {
+        syncVisibleFieldsToState();
+        syncVariantSelect();
+        renderVariantHiddenStore();
+    }
+
+    function createVariant() {
+        syncVisibleFieldsToState();
+        const key = `new_${Date.now()}`;
+        const state = makeVariantState({ key, name: baseVariantName(), description: baseMeta.description, content_tags: '' }, key);
+        variantStates.set(key, state);
+        variantOrder.push(key);
+        syncVariantSelect();
+        return activateVariant(key);
+    }
+
+    function deleteVariant() {
+        const state = activeVariantState();
+        if (!state) return;
+        if (!confirm(`Usunąć wariant "${state.name || 'bez nazwy'}"?`)) return;
+        const index = variantOrder.indexOf(activeVariantKey);
+        if (index >= 0) variantOrder.splice(index, 1);
+        variantStates.delete(activeVariantKey);
+        activeVariantKey = 'default';
+        window.characterActiveVariantKey = 'default';
+        window.characterFieldValues = { ...(window.baseCharacterFieldValues || {}) };
+        syncVariantSelect();
+        syncToolbarFields();
+        applyMetaToVisible(baseMeta, false);
+        renderVariantHiddenStore();
+        reloadTemplateFields();
+    }
+
+    (window.characterVariantStates || []).forEach((raw, index) => {
+        const state = makeVariantState(raw, raw?.key || String(index));
+        variantStates.set(state.key, state);
+        variantOrder.push(state.key);
+    });
+
+    variantSelect?.addEventListener('change', () => {
+        const key = variantSelect.value || 'default';
+        rememberActiveVariantChoice(key);
+        activateVariant(key);
+    });
+    variantIsAdult?.addEventListener('change', () => {
+        const state = activeVariantState();
+        const meta = state || baseMeta;
+        if (tagsContainAdult(state && !String(state.content_tags || '').trim() ? baseVariantTags() : (meta.content_tags || ''))) {
+            syncToolbarFields();
+            return;
+        }
+        meta.is_adult = !!variantIsAdult.checked;
+        updateVariantStateFromToolbar();
+    });
+    variantIsHidden?.addEventListener('change', () => {
+        const state = activeVariantState();
+        const meta = state || baseMeta;
+        if (tagsContainAdult(state && !String(state.content_tags || '').trim() ? baseVariantTags() : (meta.content_tags || ''))) {
+            syncToolbarFields();
+            return;
+        }
+        meta.is_hidden = !!variantIsHidden.checked;
+        updateVariantStateFromToolbar();
+    });
+    [nameInput, descriptionInput, contentTagsInput, imageFit, focusXRange, focusYRange, zoomRange].forEach(control => {
+        control?.addEventListener('input', () => {
+            syncVisibleMetaToState();
+            syncVariantSelect();
+            renderVariantHiddenStore();
+        });
+        control?.addEventListener('change', () => {
+            syncVisibleMetaToState();
+            syncVariantSelect();
+            renderVariantHiddenStore();
+        });
+    });
+    document.getElementById('character-image-editor-panel')?.addEventListener('oc:image-selected', event => {
+        const state = activeVariantState();
+        if (!state) {
+            baseMeta.image = event.detail?.asset?.filename || baseMeta.image;
+            baseMeta.imageSrc = event.detail?.asset?.url || imageSrcForFilename(baseMeta.image);
+            baseMeta.existing_image_id = characterImageId?.value || '';
+            return;
+        }
+        const asset = event.detail?.asset || {};
+        state.image = asset.filename || '';
+        state.imageSrc = asset.url || imageSrcForFilename(state.image);
+        state.existing_image_id = Number(asset.id ?? asset.imageId ?? 0);
+        if (characterImageId) characterImageId.value = '';
+        if (removeFlag) removeFlag.value = '';
+        if (imagePreview) {
+            imagePreview.dataset.variantImage = state.image;
+            imagePreview.classList.remove('is-inherited');
+        }
+        renderVariantHiddenStore();
+    });
+    addVariantBtn?.addEventListener('click', createVariant);
+    deleteVariantBtn?.addEventListener('click', deleteVariant);
+
+    characterForm?.addEventListener('input', event => {
+        if (event.target.closest('#variant-editor-panel')) return;
+        if (event.target.closest('#left-fields-container, #right-fields-container')) {
+            syncVisibleFieldsToState();
+            renderVariantHiddenStore();
+        }
+    });
+    characterForm?.addEventListener('change', event => {
+        if (event.target.closest('#variant-editor-panel')) return;
+        if (event.target.closest('#left-fields-container, #right-fields-container')) {
+            syncVisibleFieldsToState();
+            renderVariantHiddenStore();
+        }
+    });
+    characterForm?.addEventListener('submit', event => {
+        syncVisibleFieldsToState();
+        renderVariantHiddenStore();
+        if (splitTagText(baseMeta.content_tags || '').length < 5) {
+            event.preventDefault();
+            alert('Podaj minimum 5 filtrów postaci bazowej.');
+            activateVariant('default').then(() => contentTagsInput?.focus());
+            return;
+        }
+        for (const state of variantStates.values()) {
+            const ownVariantTags = splitTagText(state.content_tags || '');
+            if (ownVariantTags.length > 0 && ownVariantTags.length < 5) {
+                event.preventDefault();
+                alert(`Podaj minimum 5 filtrów wariantu "${state.name || 'bez nazwy'}".`);
+                activateVariant(state.key).then(() => contentTagsInput?.focus());
+                return;
+            }
+        }
+        if (activeVariantKey !== 'default') {
+            applyMetaToVisible(baseMeta, false);
+        }
+    });
+
+    syncVariantSelect();
+    syncToolbarFields();
+    applyMetaToVisible(baseMeta, false);
+    renderVariantHiddenStore();
+    const initialVariantKey = initialVariantKeyFromMemory();
+    if (initialVariantKey && initialVariantKey !== 'default' && variantStates.has(String(initialVariantKey))) {
+        activateVariant(String(initialVariantKey));
     }
 });
 </script>
