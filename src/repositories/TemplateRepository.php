@@ -29,7 +29,9 @@ class TemplateRepository extends Repository
             $template['public_id'] ?? null,
             $template['date_calendar_type'] ?? 'real',
             $template['date_settings'] ?? '',
-            $template['current_world_date'] ?? ''
+            $template['current_world_date'] ?? '',
+            !empty($template['txt_export_enabled']),
+            $template['txt_export_template'] ?? ''
         );
     }
 
@@ -58,7 +60,9 @@ class TemplateRepository extends Repository
             $template['public_id'] ?? null,
             $template['date_calendar_type'] ?? 'real',
             $template['date_settings'] ?? '',
-            $template['current_world_date'] ?? ''
+            $template['current_world_date'] ?? '',
+            !empty($template['txt_export_enabled']),
+            $template['txt_export_template'] ?? ''
         );
     }
 
@@ -87,7 +91,9 @@ class TemplateRepository extends Repository
             $template['public_id'] ?? null,
             $template['date_calendar_type'] ?? 'real',
             $template['date_settings'] ?? '',
-            $template['current_world_date'] ?? ''
+            $template['current_world_date'] ?? '',
+            !empty($template['txt_export_enabled']),
+            $template['txt_export_template'] ?? ''
         );
     }
 
@@ -138,7 +144,9 @@ class TemplateRepository extends Repository
                 $template['public_id'] ?? null,
                 $template['date_calendar_type'] ?? 'real',
                 $template['date_settings'] ?? '',
-                $template['current_world_date'] ?? ''
+                $template['current_world_date'] ?? '',
+                !empty($template['txt_export_enabled']),
+                $template['txt_export_template'] ?? ''
             );
         }
 
@@ -209,11 +217,13 @@ class TemplateRepository extends Repository
             $template['public_id'] ?? null,
             $template['date_calendar_type'] ?? 'real',
             $template['date_settings'] ?? '',
-            $template['current_world_date'] ?? ''
+            $template['current_world_date'] ?? '',
+            !empty($template['txt_export_enabled']),
+            $template['txt_export_template'] ?? ''
         ), $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    public function addTemplate(string $name, string $description, int $userId, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = ''): int
+    public function addTemplate(string $name, string $description, int $userId, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = '', bool $txtExportEnabled = false, string $txtExportTemplate = ''): int
     {
         $db = $this->database->connect();
 
@@ -221,10 +231,10 @@ class TemplateRepository extends Repository
             $db->beginTransaction();
 
             $stmt = $db->prepare('
-                INSERT INTO templates (name, description, id_user, date_calendar_type, date_settings, current_world_date)
-                VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+                INSERT INTO templates (name, description, id_user, date_calendar_type, date_settings, current_world_date, txt_export_enabled, txt_export_template)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
             ');
-            $stmt->execute([$name, $description, $userId, $dateCalendarType, $dateSettings, $currentWorldDate]);
+            $stmt->execute([$name, $description, $userId, $dateCalendarType, $dateSettings, $currentWorldDate, $txtExportEnabled ? 1 : 0, $txtExportTemplate]);
             $templateId = $stmt->fetchColumn();
 
             $stmtField = $db->prepare('
@@ -337,7 +347,7 @@ class TemplateRepository extends Repository
         return $template;
     }
 
-    public function updateTemplate(int $id, string $name, string $description, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = ''): void
+    public function updateTemplate(int $id, string $name, string $description, array $fields, string $dateCalendarType = 'real', string $dateSettings = '', string $currentWorldDate = '', bool $txtExportEnabled = false, string $txtExportTemplate = ''): void
     {
         $db = $this->database->connect();
 
@@ -346,10 +356,10 @@ class TemplateRepository extends Repository
 
             $stmt = $db->prepare('
                 UPDATE templates
-                SET name = ?, description = ?, date_calendar_type = ?, date_settings = ?, current_world_date = ?
+                SET name = ?, description = ?, date_calendar_type = ?, date_settings = ?, current_world_date = ?, txt_export_enabled = ?, txt_export_template = ?
                 WHERE id = ?
             ');
-            $stmt->execute([$name, $description, $dateCalendarType, $dateSettings, $currentWorldDate, $id]);
+            $stmt->execute([$name, $description, $dateCalendarType, $dateSettings, $currentWorldDate, $txtExportEnabled ? 1 : 0, $txtExportTemplate, $id]);
 
             $existingFieldIds = $this->getTemplateFieldIdsForUpdate($db, $id);
             $keptFieldIds = [];

@@ -42,7 +42,9 @@ function vc_image_from_raw(?string $rawValue): ?array {
     $image = vc_decode_json($rawValue);
     if (is_array($image)) {
         if (empty($image['url']) && !empty($image['filename'])) {
-            $image['url'] = 'public/uploads/' . basename((string)$image['filename']);
+            $image['url'] = '/media/' . basename((string)$image['filename']);
+        } elseif (!empty($image['url'])) {
+            $image['url'] = vc_normalize_upload_url((string)$image['url']);
         }
         return $image;
     }
@@ -56,14 +58,31 @@ function vc_image_from_raw(?string $rawValue): ?array {
         return null;
     }
 
-    if (!preg_match('#^(https?:)?//#i', $url) && !str_starts_with($url, '/') && !str_starts_with($url, 'public/')) {
-        $url = 'public/uploads/' . basename($url);
-    }
+    $url = vc_normalize_upload_url($url);
 
     return [
         'url' => $url,
         'filename' => basename(parse_url($url, PHP_URL_PATH) ?: $url),
     ];
+}
+
+function vc_normalize_upload_url(string $url): string {
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+
+    $path = parse_url($url, PHP_URL_PATH) ?: $url;
+    $trimmedPath = ltrim($path, '/');
+    if (str_starts_with($trimmedPath, 'public/uploads/')) {
+        return '/media/' . basename($trimmedPath);
+    }
+
+    if (!preg_match('#^(https?:)?//#i', $url) && !str_starts_with($url, '/')) {
+        return '/media/' . basename($url);
+    }
+
+    return $url;
 }
 
 function vc_gallery_from_raw(?string $rawValue): array {
@@ -160,7 +179,7 @@ function vc_normalize_cell_for_type(string $type, $value) {
     $value = vc_table_cell_value($value);
     if ($type === 'image') {
         if (is_array($value) && empty($value['url']) && !empty($value['filename'])) {
-            $value['url'] = 'public/uploads/' . basename((string)$value['filename']);
+            $value['url'] = '/media/' . basename((string)$value['filename']);
         }
         return is_array($value) ? $value : vc_image_from_raw((string)$value);
     }
@@ -625,6 +644,20 @@ $returnUrl = $returnUrl ?? '/dashboard';
 $returnLabel = $returnLabel ?? 'Dashboard';
 $encodedReturnUrl = rawurlencode((string)$returnUrl);
 $characterStories = $characterStories ?? [];
+$publication = is_array($publication ?? null) ? $publication : null;
+$publicationVariantId = $publicationVariantId ?? (!empty($selectedVariant['id']) ? (int)$selectedVariant['id'] : null);
+$publicationStatus = (string)($publication['status'] ?? '');
+$publicationPublicId = (string)($publication['publicId'] ?? '');
+$publicationId = (int)($publication['id'] ?? 0);
+$publicationIsPublished = $publicationStatus === 'published' && $publicationPublicId !== '';
+$publicationIsOutdated = $publicationIsPublished && !empty($publication['isOutdated']);
+$publicationLabel = $publicationIsOutdated ? 'Zmieniona po publikacji' : ($publicationIsPublished ? 'Opublikowana' : ($publication ? 'Cofnieta' : 'Prywatna'));
+$publicationBadgeClass = $publicationIsOutdated ? 'is-outdated' : ($publicationIsPublished ? 'is-published' : ($publication ? 'is-unpublished' : 'is-private'));
+$publicationTargetLabel = $publicationVariantId ? 'ten wariant' : 'forme podstawowa';
+$siteFeatures = is_array($siteFeatures ?? null) ? $siteFeatures : [];
+$canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community']) && !empty($siteFeatures['publications']);
+$exportCharacterId = rawurlencode($character->getPublicId());
+$exportVariantParam = $publicationVariantId ? '&variant=' . (int)$publicationVariantId : '';
 $storyStatusLabels = [
     'draft' => 'Do zrobienia',
     'in_progress' => 'W trakcie',
@@ -861,9 +894,50 @@ foreach ($rightFields as $field) {
                 <p><?= vc_escape($template->getName()); ?></p>
             <?php endif; ?>
         </div>
-        <a href="/editCharacter/<?= vc_escape($character->getPublicId()); ?>?return_url=<?= vc_escape($encodedReturnUrl); ?><?= vc_escape($editVariantParam); ?>" class="btn-primary">
-            <i class="fa-solid fa-pen"></i> Edytuj
-        </a>
+        <div class="wiki-header-actions">
+            <?php if ($canPublishContent): ?>
+            <div class="publication-toolbar"
+                 data-character-id="<?= (int)$character->getId(); ?>"
+                 data-variant-id="<?= $publicationVariantId ? (int)$publicationVariantId : ''; ?>"
+                 data-publication-id="<?= $publicationId ?: ''; ?>">
+                <span class="publication-status-badge <?= vc_escape($publicationBadgeClass); ?>">
+                    <?= vc_escape($publicationLabel); ?>
+                </span>
+                <?php if ($publicationIsPublished): ?>
+                    <a class="btn-secondary" href="/p/<?= vc_escape($publicationPublicId); ?>" target="_blank" rel="noopener">
+                        <i class="fa-solid fa-eye"></i> Podglad publiczny
+                    </a>
+                    <button type="button" class="btn-secondary" data-publication-action="publish">
+                        <i class="fa-solid fa-rotate"></i> Aktualizuj
+                    </button>
+                    <button type="button" class="btn-secondary publication-danger" data-publication-action="unpublish">
+                        <i class="fa-solid fa-eye-slash"></i> Cofnij
+                    </button>
+                <?php else: ?>
+                    <button type="button" class="btn-secondary" data-publication-action="publish">
+                        <i class="fa-solid fa-share-nodes"></i> Opublikuj <?= vc_escape($publicationTargetLabel); ?>
+                    </button>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <details class="character-export-menu">
+                <summary class="btn-secondary"><i class="fa-solid fa-file-pdf"></i> PDF</summary>
+                <div class="character-export-options">
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=current<?= vc_escape($exportVariantParam); ?>">Ten wariant</a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=all">Cala postac</a>
+                </div>
+            </details>
+            <details class="character-export-menu">
+                <summary class="btn-secondary"><i class="fa-solid fa-file-lines"></i> TXT</summary>
+                <div class="character-export-options">
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=current<?= vc_escape($exportVariantParam); ?>">Ten wariant</a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=all">Cala postac</a>
+                </div>
+            </details>
+            <a href="/editCharacter/<?= vc_escape($character->getPublicId()); ?>?return_url=<?= vc_escape($encodedReturnUrl); ?><?= vc_escape($editVariantParam); ?>" class="btn-primary">
+                <i class="fa-solid fa-pen"></i> Edytuj
+            </a>
+        </div>
     </header>
 
     <section class="wiki-article wiki-intro-section">
@@ -911,7 +985,7 @@ foreach ($rightFields as $field) {
             <?php oc_render_media_frame([
                 'variant' => 'portrait',
                 'mode' => $imageDisplayMode,
-                'src' => '/public/uploads/' . $displayImage,
+                'src' => '/media/' . $displayImage,
                 'alt' => $displayName,
                 'fit' => $imageFit,
                 'focusX' => $imageFocusX,
@@ -922,7 +996,7 @@ foreach ($rightFields as $field) {
                 'imgClass' => $mainBlocked ? 'filtered-image js-lightbox-image' : 'js-lightbox-image',
                 'imgStyle' => 'object-fit: ' . vc_escape($imageFit) . ';',
                 'imgAttrs' => [
-                    'data-full-src' => '/public/uploads/' . $displayImage,
+                    'data-full-src' => '/media/' . $displayImage,
                     'data-tags' => vc_tag_text($mainAsset),
                 ],
             ]); ?>
@@ -991,7 +1065,7 @@ foreach ($rightFields as $field) {
                         <?php elseif(!empty($item['image'])): ?>
                             <span class="character-timeline-node-card">
                                 <span class="character-timeline-node-media">
-                                    <img src="/public/uploads/<?= vc_escape($item['image']); ?>" alt="<?= vc_escape($item['title']); ?>">
+                                    <img src="/media/<?= vc_escape($item['image']); ?>" alt="<?= vc_escape($item['title']); ?>">
                                 </span>
                                 <span class="character-timeline-node-body">
                                     <?php if(!empty($item['branchName'])): ?>
@@ -1074,6 +1148,67 @@ document.addEventListener('DOMContentLoaded', () => {
     params.set('variant', remembered);
     window.location.replace(`${window.location.pathname}?${params.toString()}`);
 });
+
+<?php if ($canPublishContent): ?>
+document.addEventListener('DOMContentLoaded', () => {
+    const toolbar = document.querySelector('.publication-toolbar');
+    if (!toolbar) return;
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error) {
+            throw new Error(data.error || data.message || 'Nie udalo sie wykonac operacji.');
+        }
+        return data;
+    }
+
+    toolbar.addEventListener('click', async event => {
+        const button = event.target.closest('[data-publication-action]');
+        if (!button) return;
+
+        const action = button.dataset.publicationAction;
+        const characterId = Number(toolbar.dataset.characterId || 0);
+        const variantId = Number(toolbar.dataset.variantId || 0) || null;
+        const publicationId = Number(toolbar.dataset.publicationId || 0);
+
+        if (!characterId) {
+            alert('Brak postaci do publikacji.');
+            return;
+        }
+
+        if (action === 'unpublish' && !publicationId) {
+            alert('Brak aktywnej publikacji.');
+            return;
+        }
+
+        if (action === 'unpublish' && !confirm('Cofnac publiczna publikacje? Publiczny link przestanie dzialac.')) {
+            return;
+        }
+
+        button.disabled = true;
+        try {
+            if (action === 'publish') {
+                await postJson('/api/publications/character/publish', {
+                    characterId,
+                    variantId,
+                    changeReason: variantId ? 'variant_switch' : 'refresh'
+                });
+            } else if (action === 'unpublish') {
+                await postJson('/api/publications/unpublish', { publicationId });
+            }
+            window.location.reload();
+        } catch (error) {
+            alert(error.message || 'Nie udalo sie wykonac operacji.');
+            button.disabled = false;
+        }
+    });
+});
+<?php endif; ?>
 </script>
 
 <div class="image-lightbox" id="image-lightbox" aria-hidden="true">

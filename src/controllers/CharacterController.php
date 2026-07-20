@@ -9,6 +9,8 @@ require_once __DIR__ . '/../repositories/FilterRepository.php';
 require_once __DIR__ . '/../repositories/RelationRepository.php';
 require_once __DIR__ . '/../repositories/ImageRepository.php';
 require_once __DIR__ . '/../repositories/StoryRepository.php';
+require_once __DIR__ . '/../repositories/PublicationRepository.php';
+require_once __DIR__ . '/../repositories/SocialFeatureSettingsRepository.php';
 require_once __DIR__ . '/../services/CharacterFieldUploadService.php';
 
 class CharacterController extends AppController
@@ -21,6 +23,8 @@ class CharacterController extends AppController
     private $relationRepository;
     private $imageRepository;
     private $storyRepository;
+    private $publicationRepository;
+    private $socialFeatureSettingsRepository;
     private CharacterFieldUploadService $characterFieldUploadService;
 
     public function __construct()
@@ -33,6 +37,8 @@ class CharacterController extends AppController
         $this->relationRepository  = new RelationRepository();
         $this->imageRepository     = new ImageRepository();
         $this->storyRepository     = new StoryRepository();
+        $this->publicationRepository = new PublicationRepository();
+        $this->socialFeatureSettingsRepository = new SocialFeatureSettingsRepository();
         $this->characterFieldUploadService = new CharacterFieldUploadService($this->imageRepository, $this->filterRepository);
     }
 
@@ -339,6 +345,10 @@ class CharacterController extends AppController
         foreach ($characters as $character) {
             $characterFiltersById[$character->getId()] = $this->filterRepository->getAllCharacterFilters($character->getId());
         }
+        $publicationMap = $this->publicationRepository->ownedCharacterPublicationMap(
+            (int)$userId,
+            array_map(fn($character) => $character->getId(), $characters)
+        );
 
         // Breadcrumb (pusta tablica gdy jesteśmy w root)
         $breadcrumb = $worldId !== null
@@ -371,6 +381,7 @@ class CharacterController extends AppController
             'characters'   => $characters,
             'variantsByCharacterId' => $variantsByCharacterId,
             'characterFiltersById' => $characterFiltersById,
+            'characterPublicationMap' => $publicationMap,
             'blockedFilterIds' => $blockedFilterIds,
             'subfolders'   => $subfolders,
             'currentWorld' => $currentWorld,
@@ -393,6 +404,7 @@ class CharacterController extends AppController
     public function createWorld()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Tworzenie postaci i folderow jest obecnie wylaczone.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !isset($input['name']) || trim($input['name']) === '') {
@@ -441,6 +453,7 @@ class CharacterController extends AppController
     public function renameWorld()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja folderow jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         $worldId = (int)($input['worldId'] ?? 0);
@@ -491,6 +504,7 @@ class CharacterController extends AppController
     public function deleteWorld()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Usuwanie folderow jest obecnie wylaczone.', true);
 
         $input = $this->requireJsonPost();
         $worldId = (int)($input['worldId'] ?? 0);
@@ -522,6 +536,7 @@ class CharacterController extends AppController
     public function assignCharacterToWorld()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !array_key_exists('characterId', $input) || !array_key_exists('worldId', $input)) {
@@ -561,6 +576,8 @@ class CharacterController extends AppController
     public function createCharacter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Tworzenie postaci jest obecnie wylaczone.');
+        $this->characterFieldUploadService->setUploadsEnabled($this->isFeatureEnabled('gallery.enabled'));
         $returnUrl = $this->characterReturnUrl('/characters');
 
         if ($this->isPost()) {
@@ -752,6 +769,13 @@ class CharacterController extends AppController
             $values = array_replace($values, $selectedVariant['values']);
         }
 
+        $currentVariantId = !empty($selectedVariant) ? (int)$selectedVariant['id'] : null;
+        $publication = $this->publicationRepository->findOwnedCharacterPublication(
+            (int)$_SESSION['user_id'],
+            $character->getId(),
+            $currentVariantId
+        );
+
         return $this->render('view_character', [
             'title'               => $character->getName() . ' - OCStudio',
             'character'           => $character,
@@ -766,12 +790,16 @@ class CharacterController extends AppController
             'returnUrl'           => $returnUrl,
             'returnLabel'         => $returnLabel,
             'characterStories'     => $characterStories,
+            'publication'          => $publication,
+            'publicationVariantId'  => $currentVariantId,
         ]);
     }
 
     public function editCharacter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.');
+        $this->characterFieldUploadService->setUploadsEnabled($this->isFeatureEnabled('gallery.enabled'));
         $returnUrl = $this->characterReturnUrl('/dashboard');
         $selectedVariantId = ((int)($_GET['variant'] ?? 0)) ?: null;
 
@@ -915,6 +943,7 @@ class CharacterController extends AppController
     public function updateCharacterStatus()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId'])) {
@@ -941,6 +970,7 @@ class CharacterController extends AppController
     public function addCharacterFilter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId']) || !isset($input['filterName'])) {
@@ -964,6 +994,7 @@ class CharacterController extends AppController
     public function removeCharacterFilter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId']) || !isset($input['filterId'])) {
@@ -1118,7 +1149,7 @@ class CharacterController extends AppController
  
         $q = isset($_GET['q']) ? trim($_GET['q']) : '';
         if (mb_strlen($q) < 2) {
-            echo json_encode(['characters' => [], 'worlds' => [], 'stories' => [], 'templates' => [], 'filters' => []]);
+            echo json_encode(['characters' => [], 'worlds' => [], 'stories' => [], 'templates' => [], 'filters' => [], 'publications' => []]);
             exit();
         }
  
@@ -1233,12 +1264,37 @@ class CharacterController extends AppController
             'slug' => $filter->getSlug(),
         ], $searchFilters);
 
+        $publicationsOut = [];
+        if ($this->socialFeatureSettingsRepository->isEnabled('community.enabled')
+            && $this->socialFeatureSettingsRepository->isEnabled('publications.enabled')
+            && $this->socialFeatureSettingsRepository->isEnabled('public_search.enabled')) {
+            $publicationsOut = array_map(function (array $publication): array {
+                $card = is_array($publication['card'] ?? null) ? $publication['card'] : [];
+                $author = is_array($publication['author'] ?? null) ? $publication['author'] : [];
+
+                return [
+                    'id' => (int)($publication['id'] ?? 0),
+                    'publicId' => (string)($publication['publicId'] ?? ''),
+                    'contentType' => (string)($publication['contentType'] ?? ''),
+                    'ageRating' => (string)($publication['ageRating'] ?? 'general'),
+                    'isOwn' => !empty($publication['isOwn']),
+                    'title' => (string)($card['title'] ?? 'Publikacja'),
+                    'description' => (string)($card['description'] ?? ''),
+                    'typeLabel' => (string)($card['typeLabel'] ?? 'Publikacja'),
+                    'image' => (string)($card['image'] ?? 'default.png'),
+                    'authorName' => (string)($author['displayName'] ?? 'Uzytkownik'),
+                    'authorProfileUrl' => (string)($author['profileUrl'] ?? ''),
+                ];
+            }, $this->publicationRepository->searchVisiblePublications($q, (int)$userId, $includeAdult));
+        }
+
         echo json_encode([
             'characters' => $charsOut,
             'worlds' => $worldsOut,
             'stories' => $storiesOut,
             'templates' => $templatesOut,
             'filters' => $filtersOut,
+            'publications' => $publicationsOut,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
@@ -1246,6 +1302,7 @@ class CharacterController extends AppController
     public function toggleCharacterHidden(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);
@@ -1265,6 +1322,7 @@ class CharacterController extends AppController
     public function toggleCharacterPinned(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);
@@ -1284,6 +1342,7 @@ class CharacterController extends AppController
     public function toggleWorldHidden(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja folderow jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         $worldId = (int)($input['worldId'] ?? 0);
@@ -1307,6 +1366,7 @@ class CharacterController extends AppController
     public function restoreDefaultImage()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja postaci jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         if (!$input || !isset($input['characterId'])) {
@@ -1337,6 +1397,7 @@ class CharacterController extends AppController
     public function duplicateCharacter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Tworzenie postaci jest obecnie wylaczone.', true);
 
         $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);
@@ -1356,6 +1417,7 @@ class CharacterController extends AppController
     public function deleteCharacter()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Usuwanie postaci jest obecnie wylaczone.', true);
 
         $input = $this->requireJsonPost();
         $characterId = (int)($input['characterId'] ?? 0);

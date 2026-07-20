@@ -21,6 +21,7 @@ class RelationController extends AppController
     public function index(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Relacje sa obecnie wylaczone.');
         $userId = (int)$_SESSION['user_id'];
         $includeHidden = !empty($this->getUserInterfaceSettings()['revealHidden']);
         $boards = $this->relationRepository->getBoards($userId, $includeHidden);
@@ -38,6 +39,7 @@ class RelationController extends AppController
     public function editor(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Relacje sa obecnie wylaczone.');
         $userId = (int)$_SESSION['user_id'];
         $includeHidden = !empty($this->getUserInterfaceSettings()['revealHidden']);
         $boardParam = trim((string)($_GET['board'] ?? ''));
@@ -94,6 +96,7 @@ class RelationController extends AppController
     public function tree(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Relacje sa obecnie wylaczone.', true);
         $this->relationJsonResponse(function () {
             $boardId = (int)($_GET['boardId'] ?? 0);
             if ($boardId <= 0) {
@@ -110,6 +113,7 @@ class RelationController extends AppController
     public function saveBoard(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Tworzenie relacji jest obecnie wylaczone.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -135,6 +139,7 @@ class RelationController extends AppController
     public function duplicateBoard(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Tworzenie relacji jest obecnie wylaczone.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -152,12 +157,23 @@ class RelationController extends AppController
     public function deleteBoard(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Usuwanie relacji jest obecnie wylaczone.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
             $boardId = (int)($input['boardId'] ?? 0);
             if ($boardId <= 0) {
                 throw new InvalidArgumentException('Brak pola relacji.');
+            }
+
+            $board = $this->relationRepository->getBoard((int)$_SESSION['user_id'], $boardId);
+            if (!$board) {
+                throw new InvalidArgumentException('Pole relacji nie istnieje.');
+            }
+
+            $confirmation = trim((string)($input['confirmation'] ?? ''));
+            if ($confirmation !== (string)($board['name'] ?? '')) {
+                throw new InvalidArgumentException('Nazwa relacji nie zgadza sie.');
             }
 
             $this->relationRepository->deleteBoard((int)$_SESSION['user_id'], $boardId);
@@ -168,6 +184,7 @@ class RelationController extends AppController
     public function toggleBoardHidden(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -189,6 +206,7 @@ class RelationController extends AppController
     public function addNode(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -217,6 +235,7 @@ class RelationController extends AppController
     public function updateNodePosition(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -244,6 +263,7 @@ class RelationController extends AppController
     public function removeNode(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -263,6 +283,7 @@ class RelationController extends AppController
     public function saveRelation(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -286,6 +307,7 @@ class RelationController extends AppController
     public function deleteRelation(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -302,6 +324,7 @@ class RelationController extends AppController
     public function saveRules(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('relations.enabled', 'Edycja relacji jest obecnie wylaczona.', true);
         $this->requirePost();
         $this->relationJsonResponse(function () {
             $input = $this->jsonInput();
@@ -345,6 +368,8 @@ class RelationController extends AppController
             echo json_encode(['error' => 'Method not allowed']);
             exit();
         }
+
+        $this->validateCsrfRequest(true);
     }
 
     private function jsonInput(): array

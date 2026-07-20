@@ -4,11 +4,20 @@ require_once 'src/controllers/SecurityController.php';
 require_once 'src/controllers/DashboardController.php';
 require_once 'src/controllers/TemplateController.php';
 require_once 'src/controllers/CharacterController.php';
+require_once 'src/controllers/CharacterExportController.php';
 require_once 'src/controllers/FileController.php';
 require_once 'src/controllers/AdminController.php';
 require_once 'src/controllers/SettingsController.php';
 require_once 'src/controllers/RelationController.php';
 require_once 'src/controllers/StoryController.php';
+require_once 'src/controllers/LocaleController.php';
+require_once 'src/controllers/PublicationController.php';
+require_once 'src/controllers/ProfileController.php';
+require_once 'src/controllers/NotificationController.php';
+require_once 'src/controllers/MessageController.php';
+require_once 'src/controllers/CommunityController.php';
+require_once 'src/controllers/FollowController.php';
+require_once 'src/controllers/BlockController.php';
 
 class Routing
 {
@@ -21,6 +30,10 @@ class Routing
             "controller" => "DashboardController",
             "action" => "index"
         ],
+        'community' => [
+            'controller' => 'CommunityController',
+            'action' => 'index',
+        ],
         "" => [
             "controller" => "SecurityController",
             "action" => "login"
@@ -32,6 +45,10 @@ class Routing
         "forgot-password" => [
             "controller" => "SecurityController",
             "action" => "forgotPassword"
+        ],
+        "locale" => [
+            "controller" => "LocaleController",
+            "action" => "setLocale"
         ],
         'createTemplate' => [
             'controller' => 'TemplateController',
@@ -65,9 +82,49 @@ class Routing
             'controller' => 'AdminController',
             'action' => 'saveEffects'
         ],
+        'admin/social-features' => [
+            'controller' => 'AdminController',
+            'action' => 'saveSocialFeatures'
+        ],
+        'admin/storage-quotas' => [
+            'controller' => 'AdminController',
+            'action' => 'saveStorageQuotas'
+        ],
+        'admin/account-types/create' => [
+            'controller' => 'AdminController',
+            'action' => 'createAccountType'
+        ],
+        'admin/account-types/update' => [
+            'controller' => 'AdminController',
+            'action' => 'updateAccountType'
+        ],
+        'admin/users/account-type' => [
+            'controller' => 'AdminController',
+            'action' => 'assignAccountType'
+        ],
+        'admin/filters/alias' => [
+            'controller' => 'AdminController',
+            'action' => 'addFilterAlias'
+        ],
+        'admin/filters/cell' => [
+            'controller' => 'AdminController',
+            'action' => 'saveFilterCell'
+        ],
+        'admin/filters/merge' => [
+            'controller' => 'AdminController',
+            'action' => 'mergeFilters'
+        ],
+        'admin/publications/moderate' => [
+            'controller' => 'AdminController',
+            'action' => 'moderatePublication'
+        ],
         'admin/backup' => [
             'controller' => 'AdminController',
             'action' => 'backupDatabase'
+        ],
+        'admin/backup-reminder' => [
+            'controller' => 'AdminController',
+            'action' => 'saveBackupReminder'
         ],
         'admin/import' => [
             'controller' => 'AdminController',
@@ -76,6 +133,18 @@ class Routing
         'settings' => [
             'controller' => 'SettingsController',
             'action' => 'index'
+        ],
+        'profile' => [
+            'controller' => 'ProfileController',
+            'action' => 'ownProfile',
+        ],
+        'profile/bio' => [
+            'controller' => 'ProfileController',
+            'action' => 'updateBio',
+        ],
+        'profile/avatar' => [
+            'controller' => 'ProfileController',
+            'action' => 'updateAvatar',
         ],
         'settings/export' => [
             'controller' => 'SettingsController',
@@ -124,6 +193,14 @@ class Routing
         'viewCharacter' => [
             'controller' => 'CharacterController',
             'action' => 'viewCharacter'
+        ],
+        'character/export' => [
+            'controller' => 'CharacterExportController',
+            'action' => 'export'
+        ],
+        'character/export/bulk' => [
+            'controller' => 'CharacterExportController',
+            'action' => 'bulkExport'
         ],
         'uploadFile' => [
             'controller' => 'FileController',
@@ -286,6 +363,90 @@ class Routing
             'controller' => 'CharacterController',
             'action' => 'globalSearch'
         ],
+        'api/notifications' => [
+            'controller' => 'NotificationController',
+            'action' => 'list'
+        ],
+        'api/notifications/read' => [
+            'controller' => 'NotificationController',
+            'action' => 'markRead'
+        ],
+        'api/notifications/read-all' => [
+            'controller' => 'NotificationController',
+            'action' => 'markAllRead'
+        ],
+        'api/messages/conversations' => [
+            'controller' => 'MessageController',
+            'action' => 'conversations',
+        ],
+        'api/messages/search' => [
+            'controller' => 'MessageController',
+            'action' => 'searchRecipients',
+        ],
+        'api/messages/start' => [
+            'controller' => 'MessageController',
+            'action' => 'start',
+        ],
+        'api/messages/thread' => [
+            'controller' => 'MessageController',
+            'action' => 'thread',
+        ],
+        'api/messages/send' => [
+            'controller' => 'MessageController',
+            'action' => 'send',
+        ],
+        'api/follows/toggle' => [
+            'controller' => 'FollowController',
+            'action' => 'toggle',
+        ],
+        'api/blocks/block' => [
+            'controller' => 'BlockController',
+            'action' => 'block',
+        ],
+        'api/blocks/unblock' => [
+            'controller' => 'BlockController',
+            'action' => 'unblock',
+        ],
+        'api/publications/character/publish' => [
+            'controller' => 'PublicationController',
+            'action' => 'publishCharacter'
+        ],
+        'api/publications/template/publish' => [
+            'controller' => 'PublicationController',
+            'action' => 'publishTemplate'
+        ],
+        'api/publications/image/publish' => [
+            'controller' => 'PublicationController',
+            'action' => 'publishImage'
+        ],
+        'api/publications/story/publish' => [
+            'controller' => 'PublicationController',
+            'action' => 'publishStory'
+        ],
+        'api/publications/relation-board/publish' => [
+            'controller' => 'PublicationController',
+            'action' => 'publishRelationBoard'
+        ],
+        'api/publications/unpublish' => [
+            'controller' => 'PublicationController',
+            'action' => 'unpublish'
+        ],
+        'api/publications/copy' => [
+            'controller' => 'PublicationController',
+            'action' => 'copy'
+        ],
+        'api/publications/reaction' => [
+            'controller' => 'PublicationController',
+            'action' => 'react'
+        ],
+        'api/publications/comment' => [
+            'controller' => 'PublicationController',
+            'action' => 'comment'
+        ],
+        'api/publications/report' => [
+            'controller' => 'PublicationController',
+            'action' => 'report'
+        ],
 
         // ═══ HISTORIE (STORIES) ═══
         'stories' => [
@@ -348,6 +509,15 @@ class Routing
 
     public static function run(string $path)
     {
+        if (array_key_exists($path, self::$routes)) {
+            $controller = self::$routes[$path]["controller"];
+            $action     = self::$routes[$path]["action"];
+
+            $controllerObj = new $controller;
+            $controllerObj->$action();
+            return;
+        }
+
         if (preg_match('#^character/([^/]+)$#', $path, $matches)) {
             $_GET['id'] = $matches[1];
             $controllerObj = new CharacterController();
@@ -397,6 +567,27 @@ class Routing
             return;
         }
 
+        if (preg_match('#^p/([^/]+)$#', $path, $matches)) {
+            $_GET['id'] = $matches[1];
+            $controllerObj = new PublicationController();
+            $controllerObj->view();
+            return;
+        }
+
+        if (preg_match('#^u/([a-zA-Z0-9_-]+)$#', $path, $matches)) {
+            $_GET['username'] = $matches[1];
+            $controllerObj = new ProfileController();
+            $controllerObj->publicProfile();
+            return;
+        }
+
+        if (preg_match('#^media/([^/]+)$#', $path, $matches)) {
+            $_GET['filename'] = $matches[1];
+            $controllerObj = new FileController();
+            $controllerObj->serveMedia();
+            return;
+        }
+
         if (preg_match('#^editStory/([^/]+)$#', $path, $matches)) {
             $_GET['id'] = $matches[1];
             $controllerObj = new StoryController();
@@ -408,15 +599,6 @@ class Routing
             $_GET['world'] = $matches[1];
             $controllerObj = new StoryController();
             $controllerObj->stories();
-            return;
-        }
-
-        if (array_key_exists($path, self::$routes)) {
-            $controller = self::$routes[$path]["controller"];
-            $action     = self::$routes[$path]["action"];
-
-            $controllerObj = new $controller;
-            $controllerObj->$action();
             return;
         }
 

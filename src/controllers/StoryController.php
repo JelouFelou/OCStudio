@@ -8,6 +8,7 @@ require_once 'src/repositories/StoryRepository.php';
 require_once 'src/repositories/CharacterRepository.php';
 require_once 'src/repositories/WorldRepository.php';
 require_once 'src/repositories/FilterRepository.php';
+require_once 'src/services/ContentAccessPolicy.php';
 
 class StoryController extends AppController
 {
@@ -15,6 +16,7 @@ class StoryController extends AppController
     private CharacterRepository $characterRepository;
     private WorldRepository $worldRepository;
     private FilterRepository $filterRepository;
+    private ContentAccessPolicy $contentAccessPolicy;
     private int $currentUserId;
 
     public function __construct()
@@ -23,6 +25,7 @@ class StoryController extends AppController
         $this->characterRepository = new CharacterRepository();
         $this->worldRepository = new WorldRepository();
         $this->filterRepository = new FilterRepository();
+        $this->contentAccessPolicy = new ContentAccessPolicy();
         $this->currentUserId = (int)($_SESSION['user_id'] ?? 0);
     }
 
@@ -80,7 +83,9 @@ class StoryController extends AppController
             $title = trim((string)($_POST['title'] ?? ''));
             $description = (string)($_POST['description'] ?? '');
             $storyDate = trim((string)($_POST['story_date'] ?? ''));
-            $image = trim((string)($_POST['image'] ?? 'default_story.png'));
+            $image = $this->isFeatureEnabled('gallery.enabled')
+                ? trim((string)($_POST['image'] ?? 'default_story.png'))
+                : 'default_story.png';
             $status = (string)($_POST['status'] ?? 'draft');
 
             if (!$world || !$this->canAccessWorld($world, $includeHidden)) {
@@ -197,7 +202,9 @@ class StoryController extends AppController
                 $story->setTitle($title);
                 $story->setDescription((string)($_POST['description'] ?? ''));
                 $story->setStoryDate(trim((string)($_POST['story_date'] ?? '')));
-                $story->setImage($this->cleanImageName($_POST['image'] ?? 'default_story.png'));
+                $story->setImage($this->isFeatureEnabled('gallery.enabled')
+                    ? $this->cleanImageName($_POST['image'] ?? 'default_story.png')
+                    : 'default_story.png');
                 $story->setImageFit($this->cleanImageFit($_POST['image_fit'] ?? 'cover'));
                 $story->setImageFocusX($this->cleanPercent($_POST['image_focus_x'] ?? 50));
                 $story->setImageFocusY($this->cleanPercent($_POST['image_focus_y'] ?? 50));
@@ -308,6 +315,8 @@ class StoryController extends AppController
     public function updateTimelinePosition(): void
     {
         $this->requireLogin();
+        $this->currentUserId = (int)$_SESSION['user_id'];
+        $this->requireFeatureEnabled('stories.enabled', 'Historie sa obecnie wylaczone.', true);
         $input = $this->requireJsonPost();
 
         $storyId = (int)($input['storyId'] ?? 0);
@@ -338,7 +347,7 @@ class StoryController extends AppController
         $storyId = (int)($input['storyId'] ?? 0);
         $story = $storyId > 0
             ? $this->storyRepository->getStoryById($storyId)
-            : $this->storyRepository->getStoryByPublicId((string)($_POST['id'] ?? ''));
+            : $this->storyRepository->getStoryByPublicId((string)($input['publicId'] ?? $_POST['id'] ?? ''));
         if (!$this->canAccessOwnedStory($story, true)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'message' => 'Brak dostepu.']);
@@ -346,7 +355,7 @@ class StoryController extends AppController
         }
 
         $confirmation = trim((string)($input['confirmation'] ?? ''));
-        if ($storyId > 0 && $confirmation !== $story->getTitle()) {
+        if ($confirmation !== $story->getTitle()) {
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => 'Tytul historii nie zgadza sie.']);
             exit;
@@ -608,6 +617,9 @@ class StoryController extends AppController
                 if (!in_array($fieldType, ['text', 'textarea', 'image', 'dialog', 'section'], true)) {
                     $fieldType = 'text';
                 }
+                if ($fieldType === 'image' && !$this->isFeatureEnabled('gallery.enabled')) {
+                    $value = '';
+                }
 
                 $existingField = $this->storyRepository->getStoryFieldByClientKey($story->getId(), (string)$fieldId);
                 if ($existingField) {
@@ -772,25 +784,40 @@ class StoryController extends AppController
 
     private function canAccessOwnedStory(?Story $story, bool $includeHidden): bool
     {
-        return $story !== null
-            && $story->getIdUser() === $this->currentUserId
-            && ($includeHidden || !$story->isHidden())
-            && ($includeHidden || !$this->worldRepository->isHiddenInPath($story->getIdWorld(), $this->currentUserId));
+        if ($story === null) {
+            return false;
+        }
+
+        $worldHiddenInPath = !$includeHidden
+            && $this->worldRepository->isHiddenInPath($story->getIdWorld(), $this->currentUserId);
+
+        return $this->contentAccessPolicy->canViewOwnedStory(
+            $story,
+            $this->currentUserId,
+            $includeHidden,
+            $worldHiddenInPath
+        );
     }
 
     private function canViewStory(Story $story, bool $includeHidden): bool
     {
-        if ($story->getIdUser() === $this->currentUserId) {
-            return $this->canAccessOwnedStory($story, $includeHidden);
-        }
+        $worldHiddenInPath = !$includeHidden
+            && $story->getIdUser() === $this->currentUserId
+            && $this->worldRepository->isHiddenInPath($story->getIdWorld(), $this->currentUserId);
 
-        return $story->getStatus() === 'published' && !$story->isHidden();
+        return $this->contentAccessPolicy->canViewStorySource(
+            $story,
+            $this->currentUserId,
+            $includeHidden,
+            $worldHiddenInPath
+        );
     }
 
     private function requireStoriesLogin(): void
     {
         $this->requireLogin();
         $this->currentUserId = (int)$_SESSION['user_id'];
+        $this->requireFeatureEnabled('stories.enabled', 'Historie sa obecnie wylaczone.', ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET');
     }
 
     private function jsonForPost(): void
@@ -803,6 +830,8 @@ class StoryController extends AppController
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
             exit;
         }
+
+        $this->validateCsrfRequest(true);
     }
 
     private function jsonInput(): array

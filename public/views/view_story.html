@@ -18,7 +18,7 @@ $uploadSrc = function (?string $filename, string $fallback): string {
     if (preg_match('#^(https?://|/)#', $filename)) {
         return $filename;
     }
-    return '/public/uploads/' . basename($filename);
+    return '/media/' . basename($filename);
 };
 
 $storyStatusLabel = match ($story?->getStatus()) {

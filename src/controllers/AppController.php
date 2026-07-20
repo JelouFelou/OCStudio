@@ -1,7 +1,24 @@
 <?php
 
+require_once __DIR__ . '/../services/LocaleService.php';
+require_once __DIR__ . '/../repositories/SocialFeatureSettingsRepository.php';
+require_once __DIR__ . '/../repositories/AccountTypeRepository.php';
+
 class AppController {
     private const AUTH_TEMPLATES = ['login', 'register', 'forgot_password'];
+    private const PUBLIC_TEMPLATES = ['public_publication', 'public_profile'];
+    private const OFFLINE_DISABLED_FEATURES = [
+        'community.enabled',
+        'publications.enabled',
+        'comments.enabled',
+        'reactions.enabled',
+        'follows.enabled',
+        'messages.enabled',
+        'reports.enabled',
+        'copying.enabled',
+        'public_search.enabled',
+    ];
+    private ?SocialFeatureSettingsRepository $siteFeatureSettingsRepository = null;
 
     protected function isGet(): bool
     {
@@ -20,6 +37,8 @@ class AppController {
         if (!$this->isPost()) {
             $this->jsonResponse(['error' => 'Method not allowed'], 405);
         }
+
+        $this->validateCsrfRequest(true);
 
         $input = json_decode(file_get_contents('php://input'), true);
         return is_array($input) ? $input : [];
@@ -49,6 +68,8 @@ class AppController {
 
     protected function requireLogin()
     {
+        $this->applyOfflineUserSession();
+
         if (!isset($_SESSION['user_id'])) {
             http_response_code(401);
             $scheme = (
@@ -61,6 +82,21 @@ class AppController {
         }
 
         $this->enforceActiveAccount((int) $_SESSION['user_id']);
+    }
+
+    protected function requireFeatureEnabled(string $key, string $message, bool $json = false): void
+    {
+        if ($this->isFeatureEnabled($key)) {
+            return;
+        }
+
+        if ($json) {
+            $this->jsonError($message, 403);
+        }
+
+        http_response_code(403);
+        echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
+        exit();
     }
 
     protected function requireAdmin(): void
@@ -91,12 +127,34 @@ class AppController {
 
     protected function validateCsrf(): void
     {
-        $token = $_POST['csrf_token'] ?? '';
-        if (!$token || !hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
+        if (!$this->isValidCsrfRequest()) {
             http_response_code(403);
             echo 'Nieprawidlowy token formularza.';
             exit();
         }
+    }
+
+    protected function validateCsrfRequest(bool $json = false): void
+    {
+        if ($this->isValidCsrfRequest()) {
+            return;
+        }
+
+        if ($json) {
+            $this->jsonError('Nieprawidlowy token formularza.', 403);
+        }
+
+        http_response_code(403);
+        echo 'Nieprawidlowy token formularza.';
+        exit();
+    }
+
+    private function isValidCsrfRequest(): bool
+    {
+        $token = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '');
+        $sessionToken = (string)($_SESSION['csrf_token'] ?? '');
+
+        return $token !== '' && $sessionToken !== '' && hash_equals($sessionToken, $token);
     }
  
     protected function render(?string $template = null, array $variables = [])
@@ -111,6 +169,7 @@ class AppController {
         $mediaFramePath = $basePath . 'partials/media-frame.html';
         $mediaUploadPath = $basePath . 'partials/media-upload.html';
         $navPath = $basePath . 'partials/nav.html';
+        $chatWidgetPath = $basePath . 'partials/chat-widget.html';
         
         // Pobierz światy użytkownika dla nav (tylko jeśli jest zalogowany)
         if(file_exists($templatePath)){
@@ -131,14 +190,23 @@ class AppController {
             
             
             // Jeśli to nie jest login, dołączamy nawigację
-            if (!$this->isAuthTemplate($__viewName) && file_exists($navPath)) {
+            if (!$this->isChromelessTemplate($__viewName) && file_exists($navPath)) {
                 include $navPath;
             }
 
             include $templatePath;
 
             // Domykamy tagi, jeśli to nie login
-            if (!$this->isAuthTemplate($__viewName)) {
+            if (!$this->isChromelessTemplate($__viewName)
+                && isset($_SESSION['user_id'])
+                && empty($variables['isOfflineMode'])
+                && !empty($variables['siteFeatures']['messages'])
+                && file_exists($chatWidgetPath)
+            ) {
+                include $chatWidgetPath;
+            }
+
+            if (!$this->isChromelessTemplate($__viewName)) {
                 echo '    </main>'; 
                 echo '</div>';      
             }
@@ -156,7 +224,15 @@ class AppController {
 
     private function prepareLayoutVariables(?string $template, array $variables): array
     {
+        $locale = $this->currentLocale();
         $variables['userSettings'] = $variables['userSettings'] ?? $this->getUserInterfaceSettings();
+        $variables['csrfToken'] = $variables['csrfToken'] ?? (isset($_SESSION['user_id']) ? $this->csrfToken() : '');
+        $variables['locale'] = $variables['locale'] ?? $locale;
+        $variables['supportedLocales'] = LocaleService::SUPPORTED_LOCALES;
+        $variables['t'] = $variables['t'] ?? fn(string $key, array $params = []) => LocaleService::translate($key, $locale, $params);
+        $variables['siteFeatureSettings'] = $variables['siteFeatureSettings'] ?? $this->siteFeatureSettings();
+        $variables['isOfflineMode'] = $this->isOfflineMode();
+        $variables['siteFeatures'] = $this->siteFeatureFlags();
 
         if ($this->isAuthTemplate($template) || !isset($_SESSION['user_id'])) {
             return $variables;
@@ -183,7 +259,22 @@ class AppController {
         }
 
         if (!isset($variables['isAdmin'])) {
-            $variables['isAdmin'] = (int)($_SESSION['account_type'] ?? 0) === 1;
+            try {
+                require_once __DIR__ . '/../repositories/UserRepository.php';
+                $currentUser = (new UsersRepository())->getUserById($userId);
+                $variables['isAdmin'] = $currentUser ? $currentUser->isAdmin() : false;
+            } catch (Throwable $e) {
+                $variables['isAdmin'] = (int)($_SESSION['account_type'] ?? 0) === 1;
+            }
+        }
+
+        if (!isset($variables['currentUserProfile'])) {
+            try {
+                require_once __DIR__ . '/../repositories/UserRepository.php';
+                $variables['currentUserProfile'] = (new UsersRepository())->getPublicProfileById($userId) ?? [];
+            } catch (Throwable $e) {
+                $variables['currentUserProfile'] = [];
+            }
         }
 
         if (!isset($variables['pageEffect'])) {
@@ -193,9 +284,114 @@ class AppController {
         return $variables;
     }
 
+    protected function isOfflineMode(): bool
+    {
+        return !$this->featureSettingsRepository()->isEnabled('auth.login.enabled');
+    }
+
+    protected function isFeatureEnabled(string $key): bool
+    {
+        if ($this->isOfflineMode() && in_array($key, self::OFFLINE_DISABLED_FEATURES, true)) {
+            return false;
+        }
+
+        if (isset($_SESSION['account_type'])) {
+            return $this->featureSettingsRepository()->isEnabledForAccountType($key, (int)$_SESSION['account_type']);
+        }
+
+        return $this->featureSettingsRepository()->isEnabled($key);
+    }
+
+    protected function offlineUserId(): int
+    {
+        return $this->featureSettingsRepository()->integerValue('auth.offline_user_id', 0);
+    }
+
+    protected function applyOfflineUserSession(): bool
+    {
+        if (!$this->isOfflineMode()) {
+            return false;
+        }
+
+        $offlineUserId = $this->offlineUserId();
+        if ($offlineUserId <= 0) {
+            return false;
+        }
+
+        require_once __DIR__ . '/../repositories/UserRepository.php';
+        $user = (new UsersRepository())->getUserById($offlineUserId);
+        if (!$user || $this->isUserBanned($user)) {
+            return false;
+        }
+
+        $this->storeUserSession($user);
+
+        return true;
+    }
+
+    protected function storeUserSession(User $user): void
+    {
+        $_SESSION['user_id'] = $user->getId();
+        $_SESSION['email'] = $user->getEmail();
+        $_SESSION['username'] = $user->getUsername();
+        $_SESSION['first_name'] = $user->getFirstName();
+        $_SESSION['last_name'] = $user->getLastName();
+        $_SESSION['account_type'] = $user->getAccountType();
+        $_SESSION['account_type_name'] = (new AccountTypeRepository())->nameForAccountType($user->getAccountType());
+        $_SESSION['locale'] = $user->getLocale();
+    }
+
+    protected function siteFeatureSettings(): array
+    {
+        return $this->featureSettingsRepository()->all();
+    }
+
+    protected function siteFeatureFlags(): array
+    {
+        return [
+            'community' => $this->isFeatureEnabled('community.enabled'),
+            'publications' => $this->isFeatureEnabled('publications.enabled'),
+            'comments' => $this->isFeatureEnabled('comments.enabled'),
+            'reactions' => $this->isFeatureEnabled('reactions.enabled'),
+            'follows' => $this->isFeatureEnabled('follows.enabled'),
+            'messages' => $this->isFeatureEnabled('messages.enabled'),
+            'reports' => $this->isFeatureEnabled('reports.enabled'),
+            'copying' => $this->isFeatureEnabled('copying.enabled'),
+            'publicSearch' => $this->isFeatureEnabled('public_search.enabled'),
+            'characters' => $this->isFeatureEnabled('characters.enabled'),
+            'relations' => $this->isFeatureEnabled('relations.enabled'),
+            'stories' => $this->isFeatureEnabled('stories.enabled'),
+            'gallery' => $this->isFeatureEnabled('gallery.enabled'),
+            'login' => $this->isFeatureEnabled('auth.login.enabled'),
+            'offlineMode' => $this->isOfflineMode(),
+        ];
+    }
+
+    private function featureSettingsRepository(): SocialFeatureSettingsRepository
+    {
+        if ($this->siteFeatureSettingsRepository === null) {
+            $this->siteFeatureSettingsRepository = new SocialFeatureSettingsRepository();
+        }
+
+        return $this->siteFeatureSettingsRepository;
+    }
+
     private function isAuthTemplate(?string $template): bool
     {
-        return in_array($template, self::AUTH_TEMPLATES, true);
+        if (in_array($template, self::AUTH_TEMPLATES, true)) {
+            return true;
+        }
+
+        return in_array($template, self::PUBLIC_TEMPLATES, true) && !isset($_SESSION['user_id']);
+    }
+
+    private function isChromelessTemplate(?string $template): bool
+    {
+        if ($this->isAuthTemplate($template)) {
+            return true;
+        }
+
+        return $template === 'public_publication' && ($_GET['embed'] ?? '') === '1';
     }
 
     private function getAdultImageFilenames(int $userId): array
@@ -220,7 +416,8 @@ class AppController {
 
     protected function getUserStorageStats(int $userId): array
     {
-        $limitBytes = 500 * 1024 * 1024;
+        $limitMb = $this->getUserStorageLimitMb($userId);
+        $limitBytes = $limitMb * 1024 * 1024;
         $bytes = 0;
 
         try {
@@ -243,12 +440,30 @@ class AppController {
 
         return [
             'usedMb' => $this->formatMegabytes($usedMb),
-            'limitMb' => 500,
+            'limitMb' => $limitMb,
             'percent' => $percent,
             'barPercent' => min($percent, 100),
             'color' => $color,
             'isExceeded' => $bytes > $limitBytes,
         ];
+    }
+
+    protected function getUserStorageLimitMb(int $userId): int
+    {
+        $accountType = 0;
+        try {
+            require_once __DIR__ . '/../repositories/UserRepository.php';
+            $user = (new UsersRepository())->getUserById($userId);
+            if ($user) {
+                $accountType = $user->getAccountType();
+            }
+        } catch (Throwable $e) {
+            if ((int)($_SESSION['user_id'] ?? 0) === $userId) {
+                $accountType = (int)($_SESSION['account_type'] ?? 0);
+            }
+        }
+
+        return $this->featureSettingsRepository()->storageQuotaMbForAccountType($accountType);
     }
 
     protected function getUserInterfaceSettings(): array
@@ -277,6 +492,15 @@ class AppController {
         ];
     }
 
+    protected function currentLocale(): string
+    {
+        return LocaleService::resolve(
+            $_SESSION['locale'] ?? null,
+            $_COOKIE['oc_locale'] ?? null,
+            $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? null
+        );
+    }
+
     private function formatMegabytes(float $megabytes): string
     {
         if ($megabytes >= 10) {
@@ -299,6 +523,8 @@ class AppController {
         }
 
         $_SESSION['account_type'] = $user->getAccountType();
+        $_SESSION['account_type_name'] = (new AccountTypeRepository())->nameForAccountType($user->getAccountType());
+        $_SESSION['locale'] = $user->getLocale();
 
         if ($this->isUserBanned($user)) {
             $message = 'Konto zablokowane do ' . $user->getBannedUntil();

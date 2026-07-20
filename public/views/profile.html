@@ -1,0 +1,209 @@
+<?php
+$profile = is_array($profile ?? null) ? $profile : [];
+$publications = is_array($publications ?? null) ? $publications : [];
+$publicationsDisabled = !empty($publicationsDisabled);
+$followerCount = (int)($followerCount ?? 0);
+$followingCount = (int)($followingCount ?? 0);
+$query = trim((string)($query ?? ''));
+$type = (string)($type ?? 'all');
+$includeAdult = !empty($includeAdult);
+$publicationTotal = (int)($publicationTotal ?? count($publications));
+
+$profile_escape = static function ($value): string {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+};
+
+$defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+$resolveDefaultImage = static function (string $image) use ($defaultCharacterImage): string {
+    $image = basename($image) ?: 'default.png';
+    return in_array($image, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $image;
+};
+$avatarUrl = trim((string)($profile['avatarUrl'] ?? ''));
+
+$typeOptions = [
+    'all' => 'Wszystkie typy',
+    'character' => 'Postacie',
+    'story' => 'Historie',
+    'image' => 'Zdjecia',
+    'relation_board' => 'Relacje',
+    'template' => 'Szablony',
+];
+$hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
+?>
+
+<div class="content-view profile-page">
+    <aside class="profile-sidebar">
+        <form class="profile-avatar-form" method="POST" action="/profile/avatar">
+            <input type="hidden" name="csrf_token" value="<?= $profile_escape($csrfToken ?? '') ?>">
+            <input type="hidden" name="avatar_image_id" id="profile-avatar-image-id" value="<?= (int)($profile['avatarImageAssetId'] ?? 0) ?>">
+            <div class="profile-avatar-large" id="profile-avatar-preview" aria-hidden="true">
+                <span><?= $profile_escape(mb_strtoupper(mb_substr((string)($profile['username'] ?? 'U'), 0, 1))) ?></span>
+                <img src="<?= $profile_escape($avatarUrl) ?>" alt="" <?= $avatarUrl === '' ? 'hidden' : '' ?>>
+            </div>
+            <div class="profile-avatar-actions">
+                <button type="button"
+                        class="btn-secondary"
+                        data-open-image-picker
+                        data-preview-selector="#profile-avatar-preview"
+                        data-image-id-selector="#profile-avatar-image-id"
+                        data-picker-default-tab="gallery">
+                    <i class="fa-solid fa-image"></i>
+                    Wybierz
+                </button>
+                <button type="submit" class="btn-primary">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    Zapisz
+                </button>
+                <?php if ($avatarUrl !== ''): ?>
+                    <button type="submit" name="remove_avatar" value="1" class="btn-secondary profile-avatar-remove">
+                        <i class="fa-solid fa-rotate-left"></i>
+                    </button>
+                <?php endif; ?>
+            </div>
+        </form>
+
+        <div class="profile-header-main">
+            <span>Profil</span>
+            <h1><?= $profile_escape($profile['username'] ?? 'Uzytkownik') ?></h1>
+        </div>
+
+        <form class="profile-edit-card" method="POST" action="/profile/bio">
+            <input type="hidden" name="csrf_token" value="<?= $profile_escape($csrfToken ?? '') ?>">
+            <textarea name="bio" rows="7" maxlength="1200" placeholder="Napisz cos o sobie albo swoich OC..."><?= $profile_escape($profile['bio'] ?? '') ?></textarea>
+            <button type="submit" class="btn-primary">
+                <i class="fa-solid fa-floppy-disk"></i>
+                Zapisz opis
+            </button>
+        </form>
+
+        <a class="btn-secondary profile-public-preview" href="/u/<?= $profile_escape(rawurlencode((string)($profile['username'] ?? ''))) ?>">
+            <i class="fa-solid fa-eye"></i>
+            Publiczny podglad
+        </a>
+
+        <div class="profile-stat-list">
+            <div>
+                <strong><?= $publicationTotal ?></strong>
+                <span>publikacji</span>
+            </div>
+            <div>
+                <strong><?= $followerCount ?></strong>
+                <span>obserwujacych</span>
+            </div>
+            <div>
+                <strong><?= $followingCount ?></strong>
+                <span>obserwowanych</span>
+            </div>
+        </div>
+    </aside>
+
+    <main class="profile-main">
+        <form class="community-search-panel profile-search-panel" method="GET" action="/profile">
+            <label class="community-query">
+                <span>Szukaj</span>
+                <input type="search" name="q" value="<?= $profile_escape($query) ?>" placeholder="Nazwa postaci, filtr..." autocomplete="off">
+            </label>
+
+            <label>
+                <span>Zakres</span>
+                <select disabled>
+                    <option>Ten profil</option>
+                </select>
+            </label>
+
+            <label>
+                <span>Typ tresci</span>
+                <select name="type">
+                    <?php foreach ($typeOptions as $value => $label): ?>
+                        <option value="<?= $profile_escape($value) ?>" <?= $type === $value ? 'selected' : '' ?>>
+                            <?= $profile_escape($label) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+
+            <label class="community-checkbox">
+                <input type="checkbox" name="adult" value="1" <?= $includeAdult ? 'checked' : '' ?>>
+                <span>Pokaz +18</span>
+            </label>
+
+            <button type="submit" class="btn-primary">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                Szukaj
+            </button>
+        </form>
+
+        <section class="profile-publications-panel">
+            <div class="dashboard-section-header">
+                <h2>Udostepnione tresci</h2>
+                <a class="btn-secondary" href="/profile">
+                    <i class="fa-solid fa-id-badge"></i>
+                    Moje publiczne
+                </a>
+            </div>
+
+            <?php if ($publicationsDisabled): ?>
+                <div class="public-profile-empty">
+                    <p>Publikacje sa aktualnie wylaczone przez administracje.</p>
+                </div>
+            <?php elseif (empty($publications)): ?>
+                <div class="public-profile-empty">
+                    <p><?= $hasProfileFilters ? 'Brak wynikow dla wybranych filtrow.' : 'Nie masz jeszcze udostepnionych publikacji.' ?></p>
+                </div>
+            <?php else: ?>
+                <div class="public-profile-grid profile-publication-grid">
+                    <?php foreach ($publications as $publication): ?>
+                        <?php
+                        $card = is_array($publication['card'] ?? null) ? $publication['card'] : [];
+                        $image = $resolveDefaultImage((string)($card['image'] ?? 'default.png'));
+                        $filters = is_array($card['filters'] ?? null) ? $card['filters'] : [];
+                        $copyOrigin = is_array($publication['copyOrigin'] ?? null) ? $publication['copyOrigin'] : [];
+                        $isCopiedPublication = !empty($publication['isCopy']) || !empty($copyOrigin);
+                        $copyOriginIsOwn = !empty($publication['copyOriginIsOwn'])
+                            || !empty($publication['copiedFromViewer'])
+                            || !empty($copyOrigin['isOwn']);
+                        $copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
+                        $copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
+                        $copyOriginTooltip = $copyOriginIsOwn
+                            ? 'Skopiowano od Ciebie'
+                            : 'Kopia z zachowanym pochodzeniem';
+                        if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
+                            $copyOriginTooltip .= ': ' . $copyOriginAuthor;
+                        }
+                        if ($copyOriginTitle !== '') {
+                            $copyOriginTooltip .= ' - ' . $copyOriginTitle;
+                        }
+                        ?>
+                        <a class="public-profile-card is-own" href="/p/<?= $profile_escape($publication['publicId'] ?? '') ?>">
+                            <div class="public-profile-card-media">
+                                <img src="/media/<?= $profile_escape(rawurlencode($image)) ?>"
+                                     alt="<?= $profile_escape($card['title'] ?? 'Publikacja') ?>"
+                                     style="object-fit: <?= $profile_escape($card['fit'] ?? 'cover') ?>; object-position: <?= (int)($card['focusX'] ?? 50) ?>% <?= (int)($card['focusY'] ?? 50) ?>%;">
+                                <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
+                                    <span class="public-profile-age-badge">+18</span>
+                                <?php endif; ?>
+                                <?php if ($isCopiedPublication): ?>
+                                    <span class="public-profile-copy-badge <?= $copyOriginIsOwn ? 'is-own-origin' : '' ?>" title="<?= $profile_escape($copyOriginTooltip) ?>">
+                                        <i class="fa-solid fa-copy"></i>
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="public-profile-card-body">
+                                <span class="public-profile-card-type"><?= $profile_escape($card['typeLabel'] ?? 'Publikacja') ?></span>
+                                <h3><?= $profile_escape($card['title'] ?? 'Publikacja') ?></h3>
+                                <p><?= $profile_escape($card['description'] ?? '') ?></p>
+                                <?php if (!empty($filters)): ?>
+                                    <div class="public-profile-filter-row">
+                                        <?php foreach (array_slice($filters, 0, 4) as $filter): ?>
+                                            <span><?= $profile_escape($filter['label'] ?? $filter['name'] ?? '') ?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </section>
+    </main>
+</div>

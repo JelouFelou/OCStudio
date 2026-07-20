@@ -12,6 +12,8 @@ class User {
     private $bannedUntil;
     private $banReason;
     private $deletionScheduledAt;
+    private $locale;
+    private $isAdminType;
 
     public function __construct(
         string $email, 
@@ -24,7 +26,9 @@ class User {
         int $accountType = 0,
         ?string $bannedUntil = null,
         ?string $banReason = null,
-        ?string $deletionScheduledAt = null
+        ?string $deletionScheduledAt = null,
+        string $locale = 'pl',
+        ?bool $isAdminType = null
     ) {
         $this->email = $email;
         $this->password = $password;
@@ -37,6 +41,8 @@ class User {
         $this->bannedUntil = $bannedUntil;
         $this->banReason = $banReason;
         $this->deletionScheduledAt = $deletionScheduledAt;
+        $this->locale = $locale;
+        $this->isAdminType = $isAdminType;
     }
 
     public function getEmail(): string {
@@ -68,7 +74,7 @@ class User {
     }
 
     public function isAdmin(): bool {
-        return $this->accountType === 1;
+        return $this->isAdminType ?? $this->accountType === 1;
     }
 
     public function getBannedUntil(): ?string {
@@ -81,6 +87,10 @@ class User {
 
     public function getDeletionScheduledAt(): ?string {
         return $this->deletionScheduledAt;
+    }
+
+    public function getLocale(): string {
+        return $this->locale;
     }
     
     // Możesz dodać przydatne metody logiczne

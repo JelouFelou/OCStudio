@@ -135,12 +135,51 @@
         });
     });
 
+    document.querySelectorAll('.publish-board-btn').forEach(button => {
+        button.addEventListener('click', async event => {
+            const card = event.currentTarget.closest('.relations-index-card');
+            if (button.disabled || !card) return;
+            button.disabled = true;
+            try {
+                const data = await postJson('/api/publications/relation-board/publish', {
+                    boardId: parseInt(card.dataset.boardId, 10),
+                    changeReason: 'refresh'
+                });
+                const publicId = data.publication?.publicId || '';
+                if (publicId) {
+                    const publicationUrl = '/p/' + encodeURIComponent(publicId);
+                    if (window.OCPublicationPreview?.open?.(publicationUrl)) {
+                        button.disabled = false;
+                        return;
+                    }
+                    window.location.href = publicationUrl;
+                    return;
+                }
+                alert('Relacje zostaly udostepnione.');
+            } catch (error) {
+                button.disabled = false;
+                alert(error.message);
+            }
+        });
+    });
+
     document.querySelectorAll('.delete-board-btn').forEach(button => {
         button.addEventListener('click', async event => {
             const card = event.currentTarget.closest('.relations-index-card');
-            if (!confirm('Usunac to pole relacji? Same relacje miedzy postaciami zostana.')) return;
+            const board = card?.dataset.board ? JSON.parse(card.dataset.board) : {};
+            const name = board.name || '';
+            const confirmation = prompt('Aby usunac relacje, wpisz dokladnie jej nazwe:', '');
+            if (confirmation === null) return;
+            if (confirmation !== name) {
+                alert('Nazwa relacji nie zgadza sie.');
+                return;
+            }
+
             try {
-                await postJson('/api/relation-boards/delete', { boardId: parseInt(card.dataset.boardId, 10) });
+                await postJson('/api/relation-boards/delete', {
+                    boardId: parseInt(card.dataset.boardId, 10),
+                    confirmation
+                });
                 location.reload();
             } catch (error) {
                 alert(error.message);

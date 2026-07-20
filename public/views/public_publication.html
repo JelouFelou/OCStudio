@@ -1,0 +1,1599 @@
+<?php
+$publication = $publication ?? null;
+$payload = is_array($payload ?? null) ? $payload : [];
+
+$pp_escape = function ($value): string {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+};
+
+$pp_text = function ($value) use ($pp_escape): string {
+    $value = trim((string)$value);
+    return $value === '' ? '<span class="wiki-empty">Brak danych</span>' : nl2br($pp_escape($value));
+};
+
+$pp_decode_json = static function ($value) {
+    if ($value === null || trim((string)$value) === '') {
+        return null;
+    }
+    $decoded = json_decode((string)$value, true);
+    return json_last_error() === JSON_ERROR_NONE ? $decoded : null;
+};
+
+$pp_is_assoc_array = static function (array $value): bool {
+    return $value !== [] && array_keys($value) !== range(0, count($value) - 1);
+};
+
+$pp_readable_value = function ($value) use (&$pp_readable_value): string {
+    if (is_array($value) && array_key_exists('value', $value)) {
+        $value = $value['value'];
+    }
+    if ($value === null) {
+        return '';
+    }
+    if (is_scalar($value)) {
+        return trim((string)$value);
+    }
+    if (is_array($value)) {
+        if (!empty($value['filename'])) {
+            return (string)$value['filename'];
+        }
+        if (!empty($value['url'])) {
+            return (string)$value['url'];
+        }
+        if (array_key_exists('day', $value) || array_key_exists('monthName', $value) || array_key_exists('year', $value)) {
+            return trim(implode(' ', array_filter([
+                $value['day'] ?? null,
+                $value['monthName'] ?? null,
+                $value['year'] ?? null,
+                $value['era'] ?? null,
+            ], static fn($part) => $part !== null && $part !== '')));
+        }
+        return trim(implode(', ', array_filter(array_map($pp_readable_value, $value), static fn($item) => $item !== '')));
+    }
+    return '';
+};
+
+$pp_image_from_value = function ($value) use ($pp_decode_json): ?array {
+    $decoded = is_array($value) ? $value : $pp_decode_json($value);
+    if (is_array($decoded)) {
+        $url = trim((string)($decoded['url'] ?? ''));
+        $filename = basename((string)($decoded['filename'] ?? ($url !== '' ? parse_url($url, PHP_URL_PATH) : '')));
+        if ($url === '' && $filename !== '') {
+            $url = '/media/' . rawurlencode($filename);
+        }
+        if ($url !== '') {
+            return ['url' => $url, 'filename' => $filename];
+        }
+    }
+
+    $raw = trim((string)$value);
+    if ($raw !== '' && preg_match('/\.(avif|gif|jpe?g|png|webp)(\?.*)?$/i', $raw)) {
+        $path = parse_url($raw, PHP_URL_PATH) ?: $raw;
+        $filename = basename($path);
+        return [
+            'url' => preg_match('#^(https?:)?//#i', $raw) || str_starts_with($raw, '/') ? $raw : '/media/' . rawurlencode($filename),
+            'filename' => $filename,
+        ];
+    }
+
+    return null;
+};
+
+$pp_list_items = function ($value) use ($pp_decode_json, $pp_is_assoc_array, $pp_readable_value): array {
+    $decoded = is_string($value) ? $pp_decode_json($value) : $value;
+    if (is_array($decoded) && array_key_exists('value', $decoded)) {
+        $decoded = $decoded['value'];
+    }
+    if (is_array($decoded)) {
+        $items = $pp_is_assoc_array($decoded) ? array_values($decoded) : $decoded;
+        return array_values(array_filter(array_map($pp_readable_value, $items), static fn($item) => $item !== ''));
+    }
+    return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$value) ?: []), static fn($item) => $item !== ''));
+};
+
+$pp_render_public_character_field = function (array $field) use ($pp_escape, $pp_text, $pp_decode_json, $pp_is_assoc_array, $pp_readable_value, $pp_image_from_value, $pp_list_items): string {
+    $type = (string)($field['type'] ?? 'text');
+    $value = (string)($field['value'] ?? '');
+    ob_start();
+
+    if ($type === 'image') {
+        $image = $pp_image_from_value($value);
+        if ($image) {
+            echo '<figure class="wiki-single-image public-character-field-image"><img src="' . $pp_escape($image['url']) . '" alt="' . $pp_escape($field['label'] ?? 'Zdjecie') . '"></figure>';
+        } else {
+            echo $pp_text('');
+        }
+        return (string)ob_get_clean();
+    }
+
+    if ($type === 'image-gallery') {
+        $images = $pp_decode_json($value);
+        echo '<div class="wiki-gallery">';
+        if (is_array($images)) {
+            foreach ($images as $imageValue) {
+                $image = $pp_image_from_value($imageValue);
+                if ($image) {
+                    echo '<img src="' . $pp_escape($image['url']) . '" alt="">';
+                }
+            }
+        }
+        echo '</div>';
+        return (string)ob_get_clean();
+    }
+
+    if ($type === 'list') {
+        $items = $pp_list_items($value);
+        if (empty($items)) {
+            echo $pp_text('');
+        } else {
+            echo '<ul class="wiki-list">';
+            foreach ($items as $item) {
+                echo '<li>' . $pp_escape($item) . '</li>';
+            }
+            echo '</ul>';
+        }
+        return (string)ob_get_clean();
+    }
+
+    if ($type === 'date') {
+        echo '<p>' . $pp_escape($pp_readable_value($pp_decode_json($value) ?? $value)) . '</p>';
+        return (string)ob_get_clean();
+    }
+
+    if ($type === 'table' || $type === 'stats') {
+        $rows = $pp_decode_json($value);
+        if (!is_array($rows) || empty($rows)) {
+            echo $pp_text($value);
+            return (string)ob_get_clean();
+        }
+        $entries = $pp_is_assoc_array($rows) ? $rows : array_combine(range(1, count($rows)), $rows);
+        echo '<table class="' . ($type === 'stats' ? 'wiki-stats-table' : 'wiki-data-table') . '"><tbody>';
+        foreach ($entries as $label => $cell) {
+            echo '<tr><th>' . $pp_escape($label) . '</th><td>' . nl2br($pp_escape($pp_readable_value($cell))) . '</td></tr>';
+        }
+        echo '</tbody></table>';
+        return (string)ob_get_clean();
+    }
+
+    echo '<p>' . $pp_text($value) . '</p>';
+    return (string)ob_get_clean();
+};
+
+$contentType = (string)($publication['contentType'] ?? $payload['contentType'] ?? 'character');
+$character = is_array($payload['character'] ?? null) ? $payload['character'] : [];
+$template = is_array($payload['template'] ?? null) ? $payload['template'] : [];
+$imagePayload = is_array($payload['image'] ?? null) ? $payload['image'] : [];
+$story = is_array($payload['story'] ?? null) ? $payload['story'] : [];
+$relationBoard = is_array($payload['relationBoard'] ?? null) ? $payload['relationBoard'] : [];
+$author = is_array($publication['author'] ?? null) ? $publication['author'] : [];
+$fields = match ($contentType) {
+    'template' => is_array($template['fields'] ?? null) ? $template['fields'] : [],
+    'story' => is_array($story['fields'] ?? null) ? $story['fields'] : [],
+    'relation_board' => [],
+    'image' => [],
+    default => is_array($character['fields'] ?? null) ? $character['fields'] : [],
+};
+$filters = match ($contentType) {
+    'template' => is_array($template['filters'] ?? null) ? $template['filters'] : [],
+    'story' => is_array($story['filters'] ?? null) ? $story['filters'] : [],
+    'relation_board' => is_array($relationBoard['filters'] ?? null) ? $relationBoard['filters'] : [],
+    'image' => is_array($imagePayload['filters'] ?? null) ? $imagePayload['filters'] : [],
+    default => is_array($character['filters'] ?? null) ? $character['filters'] : [],
+};
+$reactions = is_array($publication['reactions'] ?? null) ? $publication['reactions'] : ['items' => [], 'total' => 0, 'currentReaction' => null];
+$reactionItems = is_array($reactions['items'] ?? null) ? $reactions['items'] : [];
+$comments = is_array($publication['comments'] ?? null) ? $publication['comments'] : [];
+$reactionsEnabled = !empty($reactionsEnabled);
+$commentsEnabled = !empty($commentsEnabled);
+$reportsEnabled = !empty($reportsEnabled);
+$copyingEnabled = !empty($copyingEnabled);
+$viewerLoggedIn = !empty($viewerLoggedIn);
+$imageDisplay = $contentType === 'story' && is_array($story['imageDisplay'] ?? null)
+    ? $story['imageDisplay']
+    : (is_array($character['imageDisplay'] ?? null) ? $character['imageDisplay'] : []);
+$defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+$defaultStoryImage = ($userSettings['theme'] ?? 'light') === 'dark' ? 'default_story_dark.png' : 'default_story.png';
+$image = $contentType === 'image'
+    ? (basename((string)($imagePayload['filename'] ?? 'default.png')) ?: 'default.png')
+    : ($contentType === 'story'
+        ? (basename((string)($story['image'] ?? 'default_story.png')) ?: 'default_story.png')
+        : (basename((string)($character['image'] ?? 'default.png')) ?: 'default.png'));
+$defaultImage = $contentType === 'story' ? $defaultStoryImage : $defaultCharacterImage;
+$defaultNames = $contentType === 'story'
+    ? ['default_story.png', 'default_story.jpg', 'default_story_dark.png', '']
+    : ['default.png', 'default.jpg', 'default_dark.png', ''];
+$image = in_array($image, $defaultNames, true) ? $defaultImage : $image;
+$imageUrl = '/media/' . rawurlencode($image);
+$displayName = match ($contentType) {
+    'template' => (string)($template['name'] ?? 'Szablon'),
+    'image' => (string)($imagePayload['title'] ?? 'Zdjecie'),
+    'story' => (string)($story['title'] ?? 'Historia'),
+    'relation_board' => (string)($relationBoard['name'] ?? 'Relacje'),
+    default => (string)($character['name'] ?? 'Publikacja'),
+};
+$description = match ($contentType) {
+    'template' => (string)($template['description'] ?? ''),
+    'image' => (string)($imagePayload['description'] ?? ''),
+    'story' => (string)($story['description'] ?? ''),
+    'relation_board' => (string)($relationBoard['description'] ?? ''),
+    default => (string)($character['description'] ?? ''),
+};
+$intro = $contentType === 'character' ? (string)($character['intro'] ?? '') : '';
+$contentTypeLabel = match ($contentType) {
+    'template' => 'Szablon',
+    'image' => 'Zdjecie',
+    'story' => 'Historia',
+    'relation_board' => 'Relacje',
+    default => 'Postac',
+};
+$contentTypeIcon = match ($contentType) {
+    'template' => 'fa-file-invoice',
+    'image' => 'fa-image',
+    'story' => 'fa-book-open',
+    'relation_board' => 'fa-diagram-project',
+    default => 'fa-user',
+};
+$templateFieldMeta = static function (string $type): array {
+    return match ($type) {
+        'textarea' => ['icon' => 'fa-align-left', 'label' => 'Dlugi tekst'],
+        'list' => ['icon' => 'fa-list-ul', 'label' => 'Lista'],
+        'select' => ['icon' => 'fa-chevron-down', 'label' => 'Wybor z listy'],
+        'image' => ['icon' => 'fa-image', 'label' => 'Zdjecie'],
+        'image-gallery' => ['icon' => 'fa-images', 'label' => 'Galeria zdjec'],
+        'table' => ['icon' => 'fa-table', 'label' => 'Tabela'],
+        'stats' => ['icon' => 'fa-chart-simple', 'label' => 'Statystyki'],
+        'date' => ['icon' => 'fa-calendar-days', 'label' => 'Data'],
+        default => ['icon' => 'fa-font', 'label' => 'Tekst'],
+    };
+};
+$templateFieldSummary = static function (array $field): string {
+    $type = (string)($field['type'] ?? 'text');
+    $placeholder = trim((string)($field['placeholder'] ?? ''));
+    $config = json_decode($placeholder, true);
+    $hasConfig = is_array($config);
+
+    if ($type === 'table' && $hasConfig) {
+        $rows = is_array($config['rows'] ?? null) ? $config['rows'] : [];
+        $labels = [];
+        foreach ($rows as $row) {
+            $labels[] = is_array($row) ? (string)($row['label'] ?? $row['name'] ?? '') : (string)$row;
+        }
+        $labels = array_values(array_filter(array_map('trim', $labels)));
+        return empty($labels) ? 'Tabela bez zdefiniowanych wierszy.' : 'Wiersze: ' . implode(', ', array_slice($labels, 0, 6)) . (count($labels) > 6 ? '...' : '');
+    }
+
+    if ($type === 'stats' && $hasConfig) {
+        $rows = is_array($config['rows'] ?? null) ? $config['rows'] : [];
+        $maxPoints = (int)($config['maxPoints'] ?? 0);
+        $base = count($rows) . ' statystyk';
+        return $maxPoints > 0 ? $base . ', pula ' . $maxPoints . ' pkt.' : $base . '.';
+    }
+
+    if ($type === 'select' && $hasConfig) {
+        $options = is_array($config['options'] ?? null) ? array_values(array_filter(array_map('trim', $config['options']))) : [];
+        return empty($options) ? 'Lista wyboru bez opcji.' : 'Opcje: ' . implode(', ', array_slice($options, 0, 6)) . (count($options) > 6 ? '...' : '');
+    }
+
+    if ($type === 'image' && $hasConfig) {
+        $sizes = ['small' => 'male', 'medium' => 'srednie', 'large' => 'duze', 'full' => 'pelna szerokosc'];
+        $size = (string)($config['size'] ?? 'medium');
+        return 'Rozmiar w podgladzie: ' . ($sizes[$size] ?? 'srednie') . '.';
+    }
+
+    if ($type === 'date') {
+        return 'Korzysta z ustawien dat szablonu.';
+    }
+
+    if ($placeholder !== '' && !$hasConfig) {
+        return $placeholder;
+    }
+
+    return 'Brak dodatkowego opisu pola.';
+};
+$rawFit = (string)($imageDisplay['fit'] ?? ($contentType === 'image' ? 'contain' : 'cover'));
+$fit = in_array($rawFit, ['cover', 'contain'], true) ? $rawFit : 'cover';
+$focusX = max(0, min(100, (int)($imageDisplay['focusX'] ?? 50)));
+$focusY = max(0, min(100, (int)($imageDisplay['focusY'] ?? 50)));
+$zoom = max(1, min(6, (float)($imageDisplay['zoom'] ?? 1)));
+$backUrl = $viewerLoggedIn ? '/community' : '/login';
+$backLabel = $viewerLoggedIn ? 'Spolecznosc' : 'OCStudio';
+$isEmbeddedPublication = (string)($_GET['embed'] ?? '') === '1';
+$copyOrigin = is_array($publication['copyOrigin'] ?? null) ? $publication['copyOrigin'] : [];
+$isCopiedPublication = !empty($publication['isCopy']) || !empty($copyOrigin);
+$copyOriginIsOwn = !empty($publication['copyOriginIsOwn'])
+    || !empty($publication['copiedFromViewer'])
+    || !empty($copyOrigin['isOwn']);
+$copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
+$copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
+$copyOriginTooltip = $copyOriginIsOwn
+    ? 'Skopiowano od Ciebie'
+    : 'Kopia z zachowanym pochodzeniem';
+if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
+    $copyOriginTooltip .= ': ' . $copyOriginAuthor;
+}
+if ($copyOriginTitle !== '') {
+    $copyOriginTooltip .= ' - ' . $copyOriginTitle;
+}
+?>
+
+<div class="public-publication-shell">
+    <?php if (!$isEmbeddedPublication): ?>
+        <header class="public-publication-top">
+            <a href="<?= $pp_escape($backUrl) ?>"
+               class="wiki-back-link public-publication-back-icon"
+               aria-label="<?= $pp_escape('Wroc do ' . $backLabel) ?>">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+        </header>
+    <?php endif; ?>
+
+    <?php if (!$publication): ?>
+        <section class="wiki-view">
+            <article class="wiki-article">
+                <h1>Publikacja nie znaleziona</h1>
+                <p class="wiki-empty">Ta publikacja zostala cofnieta, ukryta albo nie istnieje.</p>
+            </article>
+        </section>
+    <?php else: ?>
+        <?php if ($contentType === 'image'): ?>
+        <div class="public-image-view">
+            <main class="public-image-stage" aria-label="<?= $pp_escape($displayName) ?>">
+                <img src="<?= $pp_escape($imageUrl) ?>" alt="<?= $pp_escape($displayName) ?>">
+            </main>
+
+            <aside class="public-image-sidebar">
+                <section class="public-image-author-card">
+                    <h1><?= $pp_escape($displayName) ?></h1>
+                    <div class="public-publication-authorline">
+                        <span>
+                            Autor:
+                            <?php if (!empty($author['profileUrl'])): ?>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                            <?php else: ?>
+                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                            <?php endif; ?>
+                        </span>
+                        <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
+                            <strong>+18</strong>
+                        <?php endif; ?>
+                        <?php if ($isCopiedPublication): ?>
+                            <strong class="public-copy-origin-badge <?= $copyOriginIsOwn ? 'is-own-origin' : '' ?>" title="<?= $pp_escape($copyOriginTooltip) ?>">
+                                <i class="fa-solid fa-copy"></i>
+                            </strong>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
+                <div class="public-publication-actions">
+                    <?php if ($copyingEnabled && $viewerLoggedIn && !empty($publication['allowCopying'])): ?>
+                        <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
+                            <button type="button" class="btn-secondary" data-copy-publication>
+                                <i class="fa-solid fa-copy"></i>
+                                Kopiuj do siebie
+                            </button>
+                            <p data-copy-message hidden></p>
+                        </section>
+                    <?php endif; ?>
+
+                    <?php if ($reactionsEnabled && !empty($reactionItems)): ?>
+                        <section class="public-reactions-panel"
+                                 data-reaction-bar
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                                 data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                            <div class="public-reactions-heading">
+                                <h2>Reakcje</h2>
+                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                            </div>
+                            <div class="public-reactions-row">
+                                <?php foreach ($reactionItems as $reaction): ?>
+                                    <?php $active = !empty($reaction['active']); ?>
+                                    <button type="button"
+                                            class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
+                                            data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
+                                            <?= $viewerLoggedIn ? '' : 'disabled' ?>
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                        <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
+                                        <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
+                                        <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if (!$viewerLoggedIn): ?>
+                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                            <?php else: ?>
+                                <p class="public-reactions-note" data-reaction-message hidden></p>
+                            <?php endif; ?>
+
+                            <?php if ($reportsEnabled): ?>
+                                <section class="public-report-panel"
+                                         data-report-panel
+                                         data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                                    <details>
+                                        <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                        <?php if ($viewerLoggedIn): ?>
+                                            <form data-report-form>
+                                                <label>
+                                                    Powod
+                                                    <select name="reasonCategory">
+                                                        <option value="adult">Powinno byc +18</option>
+                                                        <option value="violence">Przemoc / drastyczne tresci</option>
+                                                        <option value="harassment">Hejt / nekannie</option>
+                                                        <option value="spam">Spam</option>
+                                                        <option value="copyright">Prawa autorskie</option>
+                                                        <option value="other">Inne</option>
+                                                    </select>
+                                                </label>
+                                                <label>
+                                                    Szczegoly
+                                                    <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                                </label>
+                                                <div class="public-report-actions">
+                                                    <p data-report-message hidden></p>
+                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                </div>
+                                            </form>
+                                        <?php else: ?>
+                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                        <?php endif; ?>
+                                    </details>
+                                </section>
+                            <?php endif; ?>
+                        </section>
+                    <?php elseif ($reportsEnabled): ?>
+                        <section class="public-report-panel"
+                                 data-report-panel
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                            <details>
+                                <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                <?php if ($viewerLoggedIn): ?>
+                                    <form data-report-form>
+                                        <label>
+                                            Powod
+                                            <select name="reasonCategory">
+                                                <option value="adult">Powinno byc +18</option>
+                                                <option value="violence">Przemoc / drastyczne tresci</option>
+                                                <option value="harassment">Hejt / nekannie</option>
+                                                <option value="spam">Spam</option>
+                                                <option value="copyright">Prawa autorskie</option>
+                                                <option value="other">Inne</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Szczegoly
+                                            <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                        </label>
+                                        <div class="public-report-actions">
+                                            <p data-report-message hidden></p>
+                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                        </div>
+                                    </form>
+                                <?php else: ?>
+                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                <?php endif; ?>
+                            </details>
+                        </section>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (trim($description) !== ''): ?>
+                    <section class="public-image-info-panel">
+                        <h2>Opis</h2>
+                        <p><?= $pp_text($description) ?></p>
+                    </section>
+                <?php endif; ?>
+
+                <?php if (!empty($filters)): ?>
+                    <section class="public-image-info-panel">
+                        <h2>Filtry</h2>
+                        <div class="public-image-tags">
+                            <?php foreach ($filters as $filter): ?>
+                                <span><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
+                <?php if ($commentsEnabled): ?>
+                    <section class="public-comments-panel"
+                             data-comments-panel
+                             data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                             data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                        <div class="public-comments-heading">
+                            <h2>Komentarze</h2>
+                            <span data-comments-count><?= count($comments) ?></span>
+                        </div>
+
+                        <div class="public-comments-list" data-comments-list>
+                            <?php if (empty($comments)): ?>
+                                <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                            <?php else: ?>
+                                <?php foreach ($comments as $comment): ?>
+                                    <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
+                                    <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
+                                        <header>
+                                            <?php if (!empty($commentAuthor['profileUrl'])): ?>
+                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                            <?php else: ?>
+                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                            <?php endif; ?>
+                                            <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
+                                        </header>
+                                        <p><?= nl2br($pp_escape($comment['body'] ?? '')) ?></p>
+                                    </article>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ($viewerLoggedIn): ?>
+                            <form class="public-comment-form" data-comment-form>
+                                <label for="public-comment-body">Dodaj komentarz</label>
+                                <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
+                                <div class="public-comment-form-actions">
+                                    <p data-comment-message hidden></p>
+                                    <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                                </div>
+                            </form>
+                        <?php else: ?>
+                            <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                        <?php endif; ?>
+                    </section>
+                <?php endif; ?>
+            </aside>
+        </div>
+        <?php else: ?>
+        <div class="public-detail-view public-detail-view--<?= $pp_escape($contentType) ?>">
+            <main class="public-detail-stage">
+                <section class="public-detail-hero-card">
+                    <div class="public-detail-visual public-detail-visual--<?= $pp_escape($contentType) ?>">
+                        <?php if ($contentType === 'character' || $contentType === 'story'): ?>
+                            <img src="<?= $pp_escape($imageUrl) ?>"
+                                 alt="<?= $pp_escape($displayName) ?>"
+                                 style="object-fit: <?= $pp_escape($fit) ?>; object-position: <?= $focusX ?>% <?= $focusY ?>%; --image-zoom: <?= $pp_escape((string)$zoom) ?>;">
+                        <?php else: ?>
+                            <i class="fa-solid <?= $pp_escape($contentTypeIcon) ?>"></i>
+                        <?php endif; ?>
+                    </div>
+                    <div class="public-detail-hero-copy">
+                        <span><i class="fa-solid <?= $pp_escape($contentTypeIcon) ?>"></i> <?= $pp_escape($contentTypeLabel) ?></span>
+                        <h1><?= $pp_escape($displayName) ?></h1>
+                        <?php if (trim($intro) !== ''): ?>
+                            <p><?= $pp_text($intro) ?></p>
+                        <?php elseif (trim($description) !== ''): ?>
+                            <p><?= $pp_text($description) ?></p>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
+                <?php if ($contentType === 'character'): ?>
+                    <?php
+                        $characterFields = $fields;
+                        usort($characterFields, static fn(array $a, array $b): int => ((int)($a['order'] ?? 0)) <=> ((int)($b['order'] ?? 0)));
+                        $characterColumns = ['left' => [], 'right' => []];
+                        foreach ($characterFields as $field) {
+                            $side = (string)($field['location'] ?? 'left') === 'right' ? 'right' : 'left';
+                            $characterColumns[$side][] = $field;
+                        }
+                    ?>
+                    <?php if (trim($intro) !== ''): ?>
+                        <section class="wiki-article wiki-intro-section public-character-intro-section">
+                            <h2><?= $pp_escape($displayName) ?></h2>
+                            <p><?= $pp_text($intro) ?></p>
+                        </section>
+                    <?php endif; ?>
+
+                    <div class="wiki-layout public-character-preview-layout">
+                        <?php if (!empty($characterColumns['left'])): ?>
+                            <article class="wiki-article">
+                                <?php foreach ($characterColumns['left'] as $field): ?>
+                                    <section class="wiki-section">
+                                        <?php if (trim((string)($field['label'] ?? '')) !== ''): ?>
+                                            <h2><?= $pp_escape($field['label']) ?></h2>
+                                        <?php endif; ?>
+                                        <?= $pp_render_public_character_field($field) ?>
+                                    </section>
+                                <?php endforeach; ?>
+                            </article>
+                        <?php endif; ?>
+
+                        <aside class="wiki-infobox public-character-infobox">
+                            <h2 class="wiki-infobox-title"><?= $pp_escape($displayName) ?></h2>
+                            <div class="oc-media-frame oc-media-frame--portrait character-main-image-frame oc-media-frame--anchored-cover image-mode-square">
+                                <img src="<?= $pp_escape($imageUrl) ?>"
+                                     alt="<?= $pp_escape($displayName) ?>"
+                                     style="object-fit: <?= $pp_escape($fit) ?>; object-position: <?= $focusX ?>% <?= $focusY ?>%; --image-zoom: <?= $pp_escape((string)$zoom) ?>;">
+                            </div>
+                            <?php if (trim($description) !== ''): ?>
+                                <p class="wiki-infobox-caption"><?= $pp_text($description) ?></p>
+                            <?php endif; ?>
+
+                            <?php foreach ($characterColumns['right'] as $field): ?>
+                                <div class="wiki-infobox-field">
+                                    <?php if (trim((string)($field['label'] ?? '')) !== ''): ?>
+                                        <h3><?= $pp_escape($field['label']) ?></h3>
+                                    <?php endif; ?>
+                                    <?= $pp_render_public_character_field($field) ?>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <?php if (!empty($filters)): ?>
+                                <div class="wiki-infobox-field">
+                                    <h3>Filtry</h3>
+                                    <p>
+                                        <?php foreach ($filters as $index => $filter): ?>
+                                            <?= $index > 0 ? ', ' : '' ?><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?>
+                                        <?php endforeach; ?>
+                                    </p>
+                                </div>
+                            <?php endif; ?>
+                        </aside>
+                    </div>
+                <?php elseif ($contentType === 'relation_board'): ?>
+                    <?php $relationNodes = is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : []; ?>
+                    <?php $relationEdges = is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : []; ?>
+                    <section class="public-relation-board-window relations-shell is-public-readonly"
+                             data-public-relation-board
+                             data-nodes='<?= $pp_escape(json_encode($relationNodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>'
+                             data-relations='<?= $pp_escape(json_encode($relationEdges, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>'>
+                        <div class="relations-workspace" aria-label="Publiczna tablica relacji">
+                            <div class="relations-toolbar">
+                                <span class="relations-context">
+                                    <span><?= $pp_escape($displayName) ?></span>
+                                </span>
+                                <button type="button" data-public-relation-zoom-out title="Oddal"><i class="fa-solid fa-minus"></i></button>
+                                <span class="relations-zoom-value" data-public-relation-zoom-value>100%</span>
+                                <button type="button" data-public-relation-zoom-in title="Przybliz"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" data-public-relation-center title="Wycentruj"><i class="fa-solid fa-crosshairs"></i></button>
+                                <span class="relations-zoom-value"><?= count($relationNodes) ?> postaci</span>
+                                <span class="relations-zoom-value"><?= count($relationEdges) ?> relacji</span>
+                            </div>
+                            <?php if (empty($relationNodes)): ?>
+                                <div class="relation-empty-state">Brak postaci na publicznej tablicy.</div>
+                            <?php endif; ?>
+                            <div class="relations-stage" data-public-relation-stage>
+                                <svg class="relations-lines" data-public-relation-lines></svg>
+                                <div data-public-relation-nodes>
+                                    <?php foreach ($relationNodes as $node): ?>
+                                        <?php
+                                            $nodeDisplay = is_array($node['imageDisplay'] ?? null) ? $node['imageDisplay'] : [];
+                                            $nodeImage = basename((string)($node['image'] ?? 'default.png')) ?: 'default.png';
+                                            $nodeImage = in_array($nodeImage, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $nodeImage;
+                                            $nodeFit = in_array(($nodeDisplay['fit'] ?? 'cover'), ['cover', 'contain'], true) ? (string)$nodeDisplay['fit'] : 'cover';
+                                            $nodeFocusX = max(0, min(100, (int)($nodeDisplay['focusX'] ?? 50)));
+                                            $nodeFocusY = max(0, min(100, (int)($nodeDisplay['focusY'] ?? 50)));
+                                            $nodeZoom = max(1, min(6, (float)($nodeDisplay['zoom'] ?? 1)));
+                                        ?>
+                                        <article class="relation-node <?= !empty($node['isRedacted']) ? 'is-redacted' : '' ?>"
+                                                 data-entity-key="<?= $pp_escape($node['key'] ?? '') ?>"
+                                                 style="left: <?= $pp_escape((string)($node['x'] ?? 0)) ?>px; top: <?= $pp_escape((string)($node['y'] ?? 0)) ?>px;">
+                                            <div class="relation-node-image">
+                                                <img src="/media/<?= $pp_escape(rawurlencode($nodeImage)) ?>"
+                                                     alt=""
+                                                     style="object-fit: <?= $pp_escape($nodeFit) ?>; object-position: <?= $nodeFocusX ?>% <?= $nodeFocusY ?>%; --image-zoom: <?= $pp_escape((string)$nodeZoom) ?>;">
+                                            </div>
+                                            <strong><?= $pp_escape($node['name'] ?? 'Postac') ?></strong>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <div class="relation-note-popover" data-public-relation-note hidden></div>
+                        </div>
+                    </section>
+                <?php elseif ($contentType === 'template'): ?>
+                    <?php
+                        $templateFields = $fields;
+                        usort($templateFields, static function (array $a, array $b): int {
+                            $sideA = (string)($a['location'] ?? 'left');
+                            $sideB = (string)($b['location'] ?? 'left');
+                            if ($sideA !== $sideB) {
+                                return $sideA === 'left' ? -1 : 1;
+                            }
+                            return ((int)($a['order'] ?? 0)) <=> ((int)($b['order'] ?? 0));
+                        });
+                        $templateColumns = ['left' => [], 'right' => []];
+                        foreach ($templateFields as $field) {
+                            $side = (string)($field['location'] ?? 'left') === 'right' ? 'right' : 'left';
+                            $templateColumns[$side][] = $field;
+                        }
+                    ?>
+                    <section class="public-detail-panel public-template-schema-panel">
+                        <div class="public-detail-panel-heading">
+                            <h2>Uklad szablonu</h2>
+                            <span><?= count($fields) ?></span>
+                        </div>
+                        <?php if (empty($fields)): ?>
+                            <p class="public-detail-empty">Ten szablon nie ma publicznych pol.</p>
+                        <?php else: ?>
+                            <div class="public-template-schema-grid">
+                                <?php foreach ([
+                                    'left' => ['title' => 'Tresc glowna', 'icon' => 'fa-align-left', 'empty' => 'Brak pol po lewej stronie.'],
+                                    'right' => ['title' => 'Infobox', 'icon' => 'fa-circle-info', 'empty' => 'Brak pol po prawej stronie.'],
+                                ] as $side => $column): ?>
+                                    <article class="public-template-schema-column public-template-schema-column--<?= $pp_escape($side) ?>">
+                                        <header class="public-template-schema-column-head">
+                                            <span><i class="fa-solid <?= $pp_escape($column['icon']) ?>"></i> <?= $pp_escape($column['title']) ?></span>
+                                            <strong><?= count($templateColumns[$side]) ?></strong>
+                                        </header>
+                                        <?php if (empty($templateColumns[$side])): ?>
+                                            <p class="public-detail-empty public-template-schema-empty"><?= $pp_escape($column['empty']) ?></p>
+                                        <?php else: ?>
+                                            <div class="public-template-schema-fields">
+                                                <?php foreach ($templateColumns[$side] as $field): ?>
+                                                    <?php
+                                                        $fieldType = (string)($field['type'] ?? 'text');
+                                                        $fieldMeta = $templateFieldMeta($fieldType);
+                                                        $fieldLabel = trim((string)($field['label'] ?? '')) ?: 'Pole bez nazwy';
+                                                        $fieldSummary = $templateFieldSummary($field);
+                                                    ?>
+                                                    <article class="public-template-schema-field">
+                                                        <div class="public-template-schema-field-icon">
+                                                            <i class="fa-solid <?= $pp_escape($fieldMeta['icon']) ?>"></i>
+                                                        </div>
+                                                        <div class="public-template-schema-field-copy">
+                                                            <strong><?= $pp_escape($fieldLabel) ?></strong>
+                                                            <span><?= $pp_escape($fieldMeta['label']) ?></span>
+                                                            <p><?= $pp_escape($fieldSummary) ?></p>
+                                                        </div>
+                                                    </article>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </article>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </section>
+                <?php elseif (false && $contentType === 'template'): ?>
+                    <section class="public-detail-panel">
+                        <div class="public-detail-panel-heading">
+                            <h2>Pola szablonu</h2>
+                            <span><?= count($fields) ?></span>
+                        </div>
+                        <?php if (empty($fields)): ?>
+                            <p class="public-detail-empty">Ten szablon nie ma publicznych pol.</p>
+                        <?php else: ?>
+                            <div class="public-template-field-grid">
+                                <?php foreach ($fields as $field): ?>
+                                    <article class="public-template-field-card">
+                                        <strong><?= $pp_escape($field['label'] ?? 'Pole') ?></strong>
+                                        <span><?= $pp_escape($field['type'] ?? 'text') ?> · <?= $pp_escape($field['location'] ?? 'left') ?></span>
+                                        <?php if (trim((string)($field['placeholder'] ?? '')) !== ''): ?>
+                                            <p><?= $pp_escape($field['placeholder'] ?? '') ?></p>
+                                        <?php endif; ?>
+                                    </article>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </section>
+                <?php else: ?>
+                    <?php if (trim($description) !== '' && trim($description) !== trim($intro)): ?>
+                        <section class="public-detail-panel">
+                            <h2>Opis</h2>
+                            <p><?= $pp_text($description) ?></p>
+                        </section>
+                    <?php endif; ?>
+
+                    <?php if (!empty($fields)): ?>
+                        <section class="public-detail-field-list">
+                            <?php foreach ($fields as $field): ?>
+                                <article class="public-detail-panel">
+                                    <h2><?= $pp_escape($field['label'] ?? 'Pole') ?></h2>
+                                    <?php if ($contentType === 'story' && ($field['type'] ?? '') === 'image'): ?>
+                                        <?php $fieldImage = basename((string)($field['value'] ?? '')); ?>
+                                        <?php if ($fieldImage !== ''): ?>
+                                            <figure class="public-story-image-field">
+                                                <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? 'Obraz historii') ?>">
+                                            </figure>
+                                        <?php else: ?>
+                                            <p><?= $pp_text('') ?></p>
+                                        <?php endif; ?>
+                                    <?php elseif ($contentType === 'story' && ($field['type'] ?? '') === 'section'): ?>
+                                        <p class="public-story-section-label"><?= $pp_text($field['value'] ?? $field['label'] ?? '') ?></p>
+                                    <?php else: ?>
+                                        <p><?= $pp_text($field['value'] ?? '') ?></p>
+                                    <?php endif; ?>
+                                </article>
+                            <?php endforeach; ?>
+                        </section>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </main>
+
+            <aside class="public-image-sidebar public-detail-sidebar">
+                <section class="public-image-author-card">
+                    <h1><?= $pp_escape($displayName) ?></h1>
+                    <div class="public-publication-authorline">
+                        <span>
+                            Autor:
+                            <?php if (!empty($author['profileUrl'])): ?>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                            <?php else: ?>
+                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                            <?php endif; ?>
+                        </span>
+                        <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
+                            <strong>+18</strong>
+                        <?php endif; ?>
+                        <?php if ($isCopiedPublication): ?>
+                            <strong class="public-copy-origin-badge <?= $copyOriginIsOwn ? 'is-own-origin' : '' ?>" title="<?= $pp_escape($copyOriginTooltip) ?>">
+                                <i class="fa-solid fa-copy"></i>
+                            </strong>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
+                <div class="public-publication-actions">
+                    <?php if ($copyingEnabled && $viewerLoggedIn && !empty($publication['allowCopying'])): ?>
+                        <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
+                            <button type="button" class="btn-secondary" data-copy-publication>
+                                <i class="fa-solid fa-copy"></i>
+                                Kopiuj do siebie
+                            </button>
+                            <p data-copy-message hidden></p>
+                        </section>
+                    <?php endif; ?>
+
+                    <?php if ($reactionsEnabled && !empty($reactionItems)): ?>
+                        <section class="public-reactions-panel"
+                                 data-reaction-bar
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                                 data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                            <div class="public-reactions-heading">
+                                <h2>Reakcje</h2>
+                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                            </div>
+                            <div class="public-reactions-row">
+                                <?php foreach ($reactionItems as $reaction): ?>
+                                    <?php $active = !empty($reaction['active']); ?>
+                                    <button type="button"
+                                            class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
+                                            data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
+                                            <?= $viewerLoggedIn ? '' : 'disabled' ?>
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                        <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
+                                        <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
+                                        <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if (!$viewerLoggedIn): ?>
+                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                            <?php else: ?>
+                                <p class="public-reactions-note" data-reaction-message hidden></p>
+                            <?php endif; ?>
+
+                            <?php if ($reportsEnabled): ?>
+                                <section class="public-report-panel"
+                                         data-report-panel
+                                         data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                                    <details>
+                                        <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                        <?php if ($viewerLoggedIn): ?>
+                                            <form data-report-form>
+                                                <label>
+                                                    Powod
+                                                    <select name="reasonCategory">
+                                                        <option value="adult">Powinno byc +18</option>
+                                                        <option value="violence">Przemoc / drastyczne tresci</option>
+                                                        <option value="harassment">Hejt / nekannie</option>
+                                                        <option value="spam">Spam</option>
+                                                        <option value="copyright">Prawa autorskie</option>
+                                                        <option value="other">Inne</option>
+                                                    </select>
+                                                </label>
+                                                <label>
+                                                    Szczegoly
+                                                    <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                                </label>
+                                                <div class="public-report-actions">
+                                                    <p data-report-message hidden></p>
+                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                </div>
+                                            </form>
+                                        <?php else: ?>
+                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                        <?php endif; ?>
+                                    </details>
+                                </section>
+                            <?php endif; ?>
+                        </section>
+                    <?php elseif ($reportsEnabled): ?>
+                        <section class="public-report-panel"
+                                 data-report-panel
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                            <details>
+                                <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                <?php if ($viewerLoggedIn): ?>
+                                    <form data-report-form>
+                                        <label>
+                                            Powod
+                                            <select name="reasonCategory">
+                                                <option value="adult">Powinno byc +18</option>
+                                                <option value="violence">Przemoc / drastyczne tresci</option>
+                                                <option value="harassment">Hejt / nekannie</option>
+                                                <option value="spam">Spam</option>
+                                                <option value="copyright">Prawa autorskie</option>
+                                                <option value="other">Inne</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Szczegoly
+                                            <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                        </label>
+                                        <div class="public-report-actions">
+                                            <p data-report-message hidden></p>
+                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                        </div>
+                                    </form>
+                                <?php else: ?>
+                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                <?php endif; ?>
+                            </details>
+                        </section>
+                    <?php endif; ?>
+                </div>
+
+                <?php if ($contentType !== 'character' && trim($description) !== ''): ?>
+                    <section class="public-image-info-panel">
+                        <h2>Opis</h2>
+                        <p><?= $pp_text($description) ?></p>
+                    </section>
+                <?php endif; ?>
+
+                <?php if (!empty($filters)): ?>
+                    <section class="public-image-info-panel">
+                        <h2>Filtry</h2>
+                        <div class="public-image-tags">
+                            <?php foreach ($filters as $filter): ?>
+                                <span><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </section>
+                <?php endif; ?>
+
+                <?php if ($commentsEnabled): ?>
+                    <section class="public-comments-panel"
+                             data-comments-panel
+                             data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                             data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                        <div class="public-comments-heading">
+                            <h2>Komentarze</h2>
+                            <span data-comments-count><?= count($comments) ?></span>
+                        </div>
+
+                        <div class="public-comments-list" data-comments-list>
+                            <?php if (empty($comments)): ?>
+                                <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                            <?php else: ?>
+                                <?php foreach ($comments as $comment): ?>
+                                    <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
+                                    <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
+                                        <header>
+                                            <?php if (!empty($commentAuthor['profileUrl'])): ?>
+                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                            <?php else: ?>
+                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                            <?php endif; ?>
+                                            <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
+                                        </header>
+                                        <p><?= nl2br($pp_escape($comment['body'] ?? '')) ?></p>
+                                    </article>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ($viewerLoggedIn): ?>
+                            <form class="public-comment-form" data-comment-form>
+                                <label for="public-comment-body">Dodaj komentarz</label>
+                                <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
+                                <div class="public-comment-form-actions">
+                                    <p data-comment-message hidden></p>
+                                    <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                                </div>
+                            </form>
+                        <?php else: ?>
+                            <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                        <?php endif; ?>
+                    </section>
+                <?php endif; ?>
+            </aside>
+        </div>
+        <?php if (false): ?>
+        <div class="wiki-view public-publication-view">
+            <header class="wiki-header public-publication-hero">
+                <div class="public-publication-title">
+                    <h1><?= $pp_escape($displayName) ?></h1>
+                    <div class="public-publication-authorline">
+                        <span>
+                            Autor:
+                            <?php if (!empty($author['profileUrl'])): ?>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                            <?php else: ?>
+                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                            <?php endif; ?>
+                        </span>
+                        <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
+                            <strong>+18</strong>
+                        <?php endif; ?>
+                        <?php if ($isCopiedPublication): ?>
+                            <strong class="public-copy-origin-badge <?= $copyOriginIsOwn ? 'is-own-origin' : '' ?>" title="<?= $pp_escape($copyOriginTooltip) ?>">
+                                <i class="fa-solid fa-copy"></i>
+                            </strong>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="public-publication-actions">
+                    <?php if ($copyingEnabled && $viewerLoggedIn && !empty($publication['allowCopying'])): ?>
+                        <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
+                            <button type="button" class="btn-secondary" data-copy-publication>
+                                <i class="fa-solid fa-copy"></i>
+                                Kopiuj do siebie
+                            </button>
+                            <p data-copy-message hidden></p>
+                        </section>
+                    <?php endif; ?>
+
+                    <?php if ($reactionsEnabled && !empty($reactionItems)): ?>
+                        <section class="public-reactions-panel"
+                                 data-reaction-bar
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                                 data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                            <div class="public-reactions-heading">
+                                <h2>Reakcje</h2>
+                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                            </div>
+                            <div class="public-reactions-row">
+                                <?php foreach ($reactionItems as $reaction): ?>
+                                    <?php $active = !empty($reaction['active']); ?>
+                                    <button type="button"
+                                            class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
+                                            data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
+                                            <?= $viewerLoggedIn ? '' : 'disabled' ?>
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                        <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
+                                        <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
+                                        <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if (!$viewerLoggedIn): ?>
+                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                            <?php else: ?>
+                                <p class="public-reactions-note" data-reaction-message hidden></p>
+                            <?php endif; ?>
+
+                            <?php if ($reportsEnabled): ?>
+                                <section class="public-report-panel"
+                                         data-report-panel
+                                         data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                                    <details>
+                                        <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                        <?php if ($viewerLoggedIn): ?>
+                                            <form data-report-form>
+                                                <label>
+                                                    Powod
+                                                    <select name="reasonCategory">
+                                                        <option value="adult">Powinno byc +18</option>
+                                                        <option value="violence">Przemoc / drastyczne tresci</option>
+                                                        <option value="harassment">Hejt / nekannie</option>
+                                                        <option value="spam">Spam</option>
+                                                        <option value="copyright">Prawa autorskie</option>
+                                                        <option value="other">Inne</option>
+                                                    </select>
+                                                </label>
+                                                <label>
+                                                    Szczegoly
+                                                    <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                                </label>
+                                                <div class="public-report-actions">
+                                                    <p data-report-message hidden></p>
+                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                </div>
+                                            </form>
+                                        <?php else: ?>
+                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                        <?php endif; ?>
+                                    </details>
+                                </section>
+                            <?php endif; ?>
+                        </section>
+                    <?php elseif ($reportsEnabled): ?>
+                        <section class="public-report-panel"
+                                 data-report-panel
+                                 data-publication-id="<?= (int)($publication['id'] ?? 0) ?>">
+                            <details>
+                                <summary><i class="fa-solid fa-flag"></i> Zglos publikacje</summary>
+                                <?php if ($viewerLoggedIn): ?>
+                                    <form data-report-form>
+                                        <label>
+                                            Powod
+                                            <select name="reasonCategory">
+                                                <option value="adult">Powinno byc +18</option>
+                                                <option value="violence">Przemoc / drastyczne tresci</option>
+                                                <option value="harassment">Hejt / nekannie</option>
+                                                <option value="spam">Spam</option>
+                                                <option value="copyright">Prawa autorskie</option>
+                                                <option value="other">Inne</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Szczegoly
+                                            <textarea name="details" maxlength="1000" rows="3"></textarea>
+                                        </label>
+                                        <div class="public-report-actions">
+                                            <p data-report-message hidden></p>
+                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                        </div>
+                                    </form>
+                                <?php else: ?>
+                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                <?php endif; ?>
+                            </details>
+                        </section>
+                    <?php endif; ?>
+                </div>
+            </header>
+
+            <?php if (trim($intro) !== ''): ?>
+                <section class="wiki-article wiki-intro-section">
+                    <h2>Wstep</h2>
+                    <p><?= $pp_text($intro) ?></p>
+                </section>
+            <?php endif; ?>
+
+            <div class="wiki-layout">
+                <article class="wiki-article">
+                    <section class="wiki-section">
+                        <h2>Opis</h2>
+                        <p><?= $pp_text($description) ?></p>
+                    </section>
+
+                    <?php if ($contentType === 'relation_board'): ?>
+                        <?php $relationNodes = is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : []; ?>
+                        <?php $relationEdges = is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : []; ?>
+                        <section class="wiki-section">
+                            <h2>Postacie na tablicy</h2>
+                            <?php if (empty($relationNodes)): ?>
+                                <p><?= $pp_text('') ?></p>
+                            <?php else: ?>
+                                <div class="public-relation-node-grid">
+                                    <?php foreach ($relationNodes as $node): ?>
+                                        <?php
+                                            $nodeDisplay = is_array($node['imageDisplay'] ?? null) ? $node['imageDisplay'] : [];
+                                            $nodeImage = basename((string)($node['image'] ?? 'default.png')) ?: 'default.png';
+                                            $nodeImage = in_array($nodeImage, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $nodeImage;
+                                            $nodeFit = in_array(($nodeDisplay['fit'] ?? 'cover'), ['cover', 'contain'], true) ? (string)$nodeDisplay['fit'] : 'cover';
+                                            $nodeFocusX = max(0, min(100, (int)($nodeDisplay['focusX'] ?? 50)));
+                                            $nodeFocusY = max(0, min(100, (int)($nodeDisplay['focusY'] ?? 50)));
+                                            $nodeZoom = max(1, min(6, (float)($nodeDisplay['zoom'] ?? 1)));
+                                        ?>
+                                        <article class="public-relation-node <?= !empty($node['isRedacted']) ? 'is-redacted' : '' ?>">
+                                            <img src="/media/<?= $pp_escape(rawurlencode($nodeImage)) ?>"
+                                                 alt=""
+                                                 style="object-fit: <?= $pp_escape($nodeFit) ?>; object-position: <?= $nodeFocusX ?>% <?= $nodeFocusY ?>%; --image-zoom: <?= $pp_escape((string)$nodeZoom) ?>;">
+                                            <strong><?= $pp_escape($node['name'] ?? 'Postac') ?></strong>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
+
+                        <section class="wiki-section">
+                            <h2>Relacje</h2>
+                            <?php if (empty($relationEdges)): ?>
+                                <p><?= $pp_text('') ?></p>
+                            <?php else: ?>
+                                <div class="public-relation-edge-list">
+                                    <?php foreach ($relationEdges as $edge): ?>
+                                        <article class="public-relation-edge" style="--relation-color: <?= $pp_escape($edge['color'] ?? '#7B61FF') ?>;">
+                                            <span><?= $pp_escape($edge['icon'] ?? '') ?></span>
+                                            <div>
+                                                <strong><?= $pp_escape($edge['label'] ?? 'Relacja') ?></strong>
+                                                <?php if (trim((string)($edge['note'] ?? '')) !== ''): ?>
+                                                    <p><?= $pp_text($edge['note'] ?? '') ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                            <?php if (!empty($edge['isAdult'])): ?>
+                                                <em>+18</em>
+                                            <?php endif; ?>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </section>
+                    <?php endif; ?>
+
+                    <?php if (!empty($fields)): ?>
+                        <?php foreach ($fields as $field): ?>
+                            <section class="wiki-section">
+                                <h2><?= $pp_escape($field['label'] ?? 'Pole') ?></h2>
+                                <?php if ($contentType === 'template'): ?>
+                                    <p>
+                                        Typ: <?= $pp_escape($field['type'] ?? 'text') ?><br>
+                                        Miejsce: <?= $pp_escape($field['location'] ?? 'left') ?>
+                                        <?php if (trim((string)($field['placeholder'] ?? '')) !== ''): ?>
+                                            <br>Placeholder: <?= $pp_escape($field['placeholder'] ?? '') ?>
+                                        <?php endif; ?>
+                                    </p>
+                                <?php elseif ($contentType === 'story' && ($field['type'] ?? '') === 'image'): ?>
+                                    <?php $fieldImage = basename((string)($field['value'] ?? '')); ?>
+                                    <?php if ($fieldImage !== ''): ?>
+                                        <figure class="public-story-image-field">
+                                            <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? 'Obraz historii') ?>">
+                                        </figure>
+                                    <?php else: ?>
+                                        <p><?= $pp_text('') ?></p>
+                                    <?php endif; ?>
+                                <?php elseif ($contentType === 'story' && ($field['type'] ?? '') === 'section'): ?>
+                                    <p class="public-story-section-label"><?= $pp_text($field['value'] ?? $field['label'] ?? '') ?></p>
+                                <?php else: ?>
+                                    <p><?= $pp_text($field['value'] ?? '') ?></p>
+                                <?php endif; ?>
+                            </section>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </article>
+
+                <aside class="wiki-infobox">
+                    <?php if ($contentType === 'template'): ?>
+                        <div class="public-template-visual" aria-hidden="true">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                    <?php elseif ($contentType === 'relation_board'): ?>
+                        <div class="public-template-visual public-relation-visual" aria-hidden="true">
+                            <i class="fa-solid fa-diagram-project"></i>
+                        </div>
+                    <?php else: ?>
+                        <div class="oc-media-frame oc-media-frame--portrait character-main-image-frame oc-media-frame--anchored-cover image-mode-square">
+                            <img src="<?= $pp_escape($imageUrl) ?>"
+                                 alt="<?= $pp_escape($displayName) ?>"
+                                 style="object-fit: <?= $pp_escape($fit) ?>; object-position: <?= $focusX ?>% <?= $focusY ?>%; --image-zoom: <?= $pp_escape((string)$zoom) ?>;">
+                        </div>
+                    <?php endif; ?>
+                    <h2 class="wiki-infobox-title"><?= $pp_escape($displayName) ?></h2>
+                    <p class="wiki-infobox-caption"><?= $pp_text($description) ?></p>
+
+                    <?php if ($contentType === 'template'): ?>
+                        <div class="wiki-infobox-field">
+                            <h3>Pola</h3>
+                            <p><?= count($fields) ?> pol</p>
+                        </div>
+                        <div class="wiki-infobox-field">
+                            <h3>Kalendarz</h3>
+                            <p><?= $pp_escape($template['dateCalendarType'] ?? 'real') ?></p>
+                        </div>
+                    <?php elseif ($contentType === 'story'): ?>
+                        <div class="wiki-infobox-field">
+                            <h3>Pola</h3>
+                            <p><?= count($fields) ?> blokow</p>
+                        </div>
+                        <?php if (trim((string)($story['storyDate'] ?? '')) !== ''): ?>
+                            <div class="wiki-infobox-field">
+                                <h3>Data</h3>
+                                <p><?= $pp_escape($story['storyDate'] ?? '') ?></p>
+                            </div>
+                        <?php endif; ?>
+                    <?php elseif ($contentType === 'relation_board'): ?>
+                        <div class="wiki-infobox-field">
+                            <h3>Postacie</h3>
+                            <p><?= count(is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : []) ?> wezlow</p>
+                        </div>
+                        <div class="wiki-infobox-field">
+                            <h3>Relacje</h3>
+                            <p><?= count(is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : []) ?> polaczen</p>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($filters)): ?>
+                        <div class="wiki-infobox-field">
+                            <h3>Filtry</h3>
+                            <p>
+                                <?php foreach ($filters as $index => $filter): ?>
+                                    <?= $index > 0 ? ', ' : '' ?><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?>
+                                <?php endforeach; ?>
+                            </p>
+                        </div>
+                    <?php endif; ?>
+                </aside>
+            </div>
+
+            <?php if ($commentsEnabled): ?>
+                <section class="public-comments-panel"
+                         data-comments-panel
+                         data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
+                         data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
+                    <div class="public-comments-heading">
+                        <h2>Komentarze</h2>
+                        <span data-comments-count><?= count($comments) ?></span>
+                    </div>
+
+                    <div class="public-comments-list" data-comments-list>
+                        <?php if (empty($comments)): ?>
+                            <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                        <?php else: ?>
+                            <?php foreach ($comments as $comment): ?>
+                                <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
+                                <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
+                                    <header>
+                                        <?php if (!empty($commentAuthor['profileUrl'])): ?>
+                                            <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                        <?php else: ?>
+                                            <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                        <?php endif; ?>
+                                        <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
+                                    </header>
+                                    <p><?= nl2br($pp_escape($comment['body'] ?? '')) ?></p>
+                                </article>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($viewerLoggedIn): ?>
+                        <form class="public-comment-form" data-comment-form>
+                            <label for="public-comment-body">Dodaj komentarz</label>
+                            <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
+                            <div class="public-comment-form-actions">
+                                <p data-comment-message hidden></p>
+                                <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                            </div>
+                        </form>
+                    <?php else: ?>
+                        <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                    <?php endif; ?>
+                </section>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        <?php endif; ?>
+    <?php endif; ?>
+</div>
+
+<?php if ($publication && $copyingEnabled && $viewerLoggedIn): ?>
+<script>
+(function () {
+    const panel = document.querySelector('[data-copy-panel]');
+    const button = panel?.querySelector('[data-copy-publication]');
+    const message = panel?.querySelector('[data-copy-message]');
+    if (!panel || !button) return;
+
+    function setMessage(html, isError) {
+        if (!message) return;
+        message.hidden = !html;
+        message.classList.toggle('is-error', Boolean(isError));
+        message.innerHTML = html || '';
+    }
+
+    button.addEventListener('click', async () => {
+        const publicId = panel.dataset.publicId || '';
+        if (!publicId) return;
+
+        button.disabled = true;
+        setMessage('', false);
+
+        try {
+            const response = await fetch('/api/publications/copy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ publicId })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Nie udalo sie skopiowac publikacji.');
+            }
+
+            const privateUrl = data.publication?.privateUrl || data.publication?.privateCopyUrl || '';
+            const link = privateUrl ? ' <a href="' + privateUrl + '">Otworz kopie</a>' : '';
+            setMessage('Skopiowano do Twojego konta.' + link, false);
+        } catch (error) {
+            setMessage(error.message || 'Nie udalo sie skopiowac publikacji.', true);
+        } finally {
+            button.disabled = false;
+        }
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($publication && $reactionsEnabled && $viewerLoggedIn): ?>
+<script>
+(function () {
+    const bar = document.querySelector('[data-reaction-bar]');
+    if (!bar) return;
+
+    const publicationId = Number(bar.dataset.publicationId || 0);
+    const message = bar.querySelector('[data-reaction-message]');
+    const total = bar.querySelector('[data-reaction-total]');
+    const buttons = Array.from(bar.querySelectorAll('[data-reaction-type]'));
+
+    function setMessage(text, isError) {
+        if (!message) return;
+        message.hidden = !text;
+        message.textContent = text || '';
+        message.classList.toggle('is-error', Boolean(isError));
+    }
+
+    function render(reactions) {
+        const items = Array.isArray(reactions?.items) ? reactions.items : [];
+        const byType = new Map(items.map(item => [String(item.type), item]));
+
+        buttons.forEach(button => {
+            const type = button.dataset.reactionType || '';
+            const item = byType.get(type) || {};
+            const count = button.querySelector('[data-reaction-count]');
+            if (count) count.textContent = String(item.count || 0);
+            button.classList.toggle('is-active', Boolean(item.active));
+        });
+
+        if (total) total.textContent = String(reactions?.total || 0) + ' razem';
+    }
+
+    buttons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const reactionType = button.dataset.reactionType || '';
+            if (!publicationId || !reactionType) return;
+
+            setMessage('', false);
+            buttons.forEach(item => item.disabled = true);
+
+            try {
+                const response = await fetch('/api/publications/reaction', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ publicationId, reactionType })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Nie udalo sie zapisac reakcji.');
+                }
+                render(data.reactions || {});
+            } catch (error) {
+                setMessage(error.message || 'Nie udalo sie zapisac reakcji.', true);
+            } finally {
+                buttons.forEach(item => item.disabled = false);
+            }
+        });
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($publication && $commentsEnabled && $viewerLoggedIn): ?>
+<script>
+(function () {
+    const panel = document.querySelector('[data-comments-panel]');
+    const form = document.querySelector('[data-comment-form]');
+    if (!panel || !form) return;
+
+    const publicationId = Number(panel.dataset.publicationId || 0);
+    const list = panel.querySelector('[data-comments-list]');
+    const empty = panel.querySelector('[data-comments-empty]');
+    const count = panel.querySelector('[data-comments-count]');
+    const message = panel.querySelector('[data-comment-message]');
+    const textarea = form.querySelector('textarea[name="body"]');
+    const submit = form.querySelector('button[type="submit"]');
+
+    function setMessage(text, isError) {
+        if (!message) return;
+        message.hidden = !text;
+        message.textContent = text || '';
+        message.classList.toggle('is-error', Boolean(isError));
+    }
+
+    function appendComment(comment) {
+        if (!list || !comment) return;
+        empty?.remove();
+
+        const article = document.createElement('article');
+        article.className = 'public-comment';
+        article.dataset.commentId = String(comment.id || '');
+
+        const header = document.createElement('header');
+        const authorName = comment.author?.displayName || 'Uzytkownik';
+        if (comment.author?.profileUrl) {
+            const link = document.createElement('a');
+            link.href = comment.author.profileUrl;
+            link.textContent = authorName;
+            header.appendChild(link);
+        } else {
+            const span = document.createElement('span');
+            span.textContent = authorName;
+            header.appendChild(span);
+        }
+
+        const time = document.createElement('time');
+        time.textContent = comment.createdAt || '';
+        header.appendChild(time);
+
+        const body = document.createElement('p');
+        body.textContent = comment.body || '';
+
+        article.append(header, body);
+        list.appendChild(article);
+
+        if (count) {
+            count.textContent = String(Number(count.textContent || 0) + 1);
+        }
+    }
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const body = String(textarea?.value || '').trim();
+        if (!publicationId || body.length < 2) {
+            setMessage('Komentarz musi miec przynajmniej 2 znaki.', true);
+            return;
+        }
+
+        setMessage('', false);
+        if (submit) submit.disabled = true;
+
+        try {
+            const response = await fetch('/api/publications/comment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ publicationId, body })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Nie udalo sie zapisac komentarza.');
+            }
+            appendComment(data.comment);
+            form.reset();
+        } catch (error) {
+            setMessage(error.message || 'Nie udalo sie zapisac komentarza.', true);
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($publication && $reportsEnabled && $viewerLoggedIn): ?>
+<script>
+(function () {
+    const panel = document.querySelector('[data-report-panel]');
+    const form = panel?.querySelector('[data-report-form]');
+    if (!panel || !form) return;
+
+    const publicationId = Number(panel.dataset.publicationId || 0);
+    const message = form.querySelector('[data-report-message]');
+    const submit = form.querySelector('button[type="submit"]');
+
+    function setMessage(text, isError) {
+        if (!message) return;
+        message.hidden = !text;
+        message.textContent = text || '';
+        message.classList.toggle('is-error', Boolean(isError));
+    }
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!publicationId) return;
+        setMessage('', false);
+        if (submit) submit.disabled = true;
+
+        try {
+            const response = await fetch('/api/publications/report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    publicationId,
+                    reasonCategory: form.reasonCategory?.value || 'other',
+                    details: form.details?.value || ''
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Nie udalo sie wyslac zgloszenia.');
+            }
+            form.reset();
+            setMessage('Zgloszenie zapisane. Dzieki.', false);
+        } catch (error) {
+            setMessage(error.message || 'Nie udalo sie wyslac zgloszenia.', true);
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    });
+})();
+</script>
+<?php endif; ?>

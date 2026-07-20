@@ -3,6 +3,8 @@ $worldId = isset($worldId) ? (int)$worldId : (int)($_GET['world'] ?? 0);
 $messages = $messages ?? [];
 $stories = $stories ?? [];
 $worlds = $worlds ?? [];
+$siteFeatures = $siteFeatures ?? ['stories' => true];
+$canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community']) && !empty($siteFeatures['publications']);
 $storyFiltersById = $storyFiltersById ?? [];
 $storyDefaultImage = (($userSettings['theme'] ?? 'light') === 'dark') ? 'default_story_dark.png' : 'default_story.png';
 $storyStatuses = [
@@ -36,11 +38,13 @@ if (!function_exists('story_filters_have_adult')) {
             <p>Przeglądaj i zarządzaj historiami.</p>
         </div>
 
-        <div class="header-actions" style="display: flex; gap: 10px;">
-            <button type="button" class="btn-primary" onclick="window.location.href='<?= $world ? '/createStory?world=' . htmlspecialchars($world->getPublicId(), ENT_QUOTES, 'UTF-8') : '/createStory' ?>'">
-                <i class="fa-solid fa-plus"></i> Nowa historia
-            </button>
-        </div>
+        <?php if (!empty($siteFeatures['stories'])): ?>
+            <div class="header-actions" style="display: flex; gap: 10px;">
+                <button type="button" class="btn-primary" onclick="window.location.href='<?= $world ? '/createStory?world=' . htmlspecialchars($world->getPublicId(), ENT_QUOTES, 'UTF-8') : '/createStory' ?>'">
+                    <i class="fa-solid fa-plus"></i> Nowa historia
+                </button>
+            </div>
+        <?php endif; ?>
     </header>
 
     <?php if (!empty($messages)): ?>
@@ -115,7 +119,7 @@ if (!function_exists('story_filters_have_adult')) {
 
                         <?php oc_render_media_frame([
                             'variant' => 'story-card',
-                            'src' => '/public/uploads/' . $storyImage,
+                            'src' => '/media/' . $storyImage,
                             'alt' => 'Okładka historii',
                         ]); ?>
 
@@ -132,6 +136,15 @@ if (!function_exists('story_filters_have_adult')) {
                                     title="Duplikuj">
                                 <i class="fa-solid fa-copy"></i>
                             </button>
+                            <?php if ($canPublishContent): ?>
+                                <button type="button"
+                                        class="card-action-btn"
+                                        onclick="event.stopPropagation(); publishStory(<?= (int)$story->getId() ?>, this)"
+                                        title="<?= $story->isHidden() ? 'Ukrytej historii nie mozna udostepnic' : 'Udostepnij' ?>"
+                                        <?= $story->isHidden() ? 'disabled' : '' ?>>
+                                    <i class="fa-solid fa-share-nodes"></i>
+                                </button>
+                            <?php endif; ?>
                             <button type="button"
                                     class="card-action-btn danger"
                                     onclick="event.stopPropagation(); deleteStoryWithConfirm(<?= (int)$story->getId() ?>, this.closest('.story-list-card').dataset.storyTitle || '')"
@@ -252,6 +265,35 @@ if (!function_exists('story_filters_have_adult')) {
         }
     };
 
+    window.publishStory = async function(storyId, button) {
+        if (button) button.disabled = true;
+        try {
+            const res = await fetch('/api/publications/story/publish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ storyId, changeReason: 'refresh' })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Nie udalo sie udostepnic historii.');
+            }
+            const publicId = data.publication?.publicId || '';
+            if (publicId) {
+                const publicationUrl = '/p/' + encodeURIComponent(publicId);
+                if (window.OCPublicationPreview?.open?.(publicationUrl)) {
+                    if (button) button.disabled = false;
+                    return;
+                }
+                window.location.href = publicationUrl;
+                return;
+            }
+            alert('Historia zostala udostepniona.');
+        } catch (error) {
+            if (button) button.disabled = false;
+            alert(error.message);
+        }
+    };
+
     window.deleteStoryWithConfirm = async function(storyId, title) {
         const confirmation = prompt('Aby usunac historie, wpisz dokladnie jej tytul:', '');
         if (confirmation === null) return;
@@ -273,24 +315,24 @@ if (!function_exists('story_filters_have_adult')) {
         }
     };
 
-    function deleteStory(publicId) {
-        if (confirm('Czy na pewno chcesz usunąć tę historię?')) {
-            fetch('/deleteStory', {
+    async function deleteStory(publicId) {
+        const confirmation = prompt('Aby usunac historie, wpisz dokladnie jej tytul:', '');
+        if (confirmation === null) return;
+
+        try {
+            const res = await fetch('/deleteStory', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'id=' + encodeURIComponent(publicId)
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = data.redirect || '/stories';
-                } else {
-                    alert('Błąd: ' + (data.message || 'Nie udało się usunąć historii'));
-                }
-            })
-            .catch(e => alert('Błąd: ' + e.message));
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ publicId, confirmation })
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = data.redirect || '/stories';
+            } else {
+                alert('Blad: ' + (data.message || 'Nie udalo sie usunac historii'));
+            }
+        } catch (e) {
+            alert('Blad: ' + e.message);
         }
     }
 </script>

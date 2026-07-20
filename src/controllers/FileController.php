@@ -4,21 +4,34 @@ require_once 'AppController.php';
 require_once __DIR__ . '/../services/ImageUploadService.php';
 require_once __DIR__ . '/../repositories/ImageRepository.php';
 require_once __DIR__ . '/../repositories/FilterRepository.php';
+require_once __DIR__ . '/../repositories/PublicationRepository.php';
 
 class FileController extends AppController
 {
+    private const PUBLIC_DEFAULT_MEDIA = [
+        'default.png',
+        'default.jpg',
+        'default_dark.png',
+        'default_story.png',
+        'default_story.jpg',
+        'default_story_dark.png',
+    ];
+
     private ImageRepository $imageRepository;
     private FilterRepository $filterRepository;
+    private PublicationRepository $publicationRepository;
 
     public function __construct()
     {
         $this->imageRepository = new ImageRepository();
         $this->filterRepository = new FilterRepository();
+        $this->publicationRepository = new PublicationRepository();
     }
 
     public function gallery(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.');
         $this->render('gallery', [
             'title' => 'Galeria zdjec - OCStudio',
             'images' => $this->imageRepository->listAssets(
@@ -29,9 +42,47 @@ class FileController extends AppController
         ]);
     }
 
+    public function serveMedia(): void
+    {
+        $filename = $this->cleanMediaFilename($_GET['filename'] ?? '');
+        if ($filename === '') {
+            $this->mediaNotFound();
+        }
+
+        $path = $this->uploadPath($filename);
+        if (!is_file($path)) {
+            $this->mediaNotFound();
+        }
+
+        $isDefault = in_array($filename, self::PUBLIC_DEFAULT_MEDIA, true);
+        $asset = null;
+        if (!$isDefault) {
+            if (isset($_SESSION['user_id'])) {
+                $asset = $this->imageRepository->getAssetByFilename((int)$_SESSION['user_id'], $filename);
+            }
+            if (!$asset && !$this->publicationRepository->isFilenameInVisiblePublication($filename)) {
+                $this->mediaNotFound();
+            }
+        }
+
+        $mimeType = (string)($asset['mimeType'] ?? mime_content_type($path) ?: 'application/octet-stream');
+        if (!str_starts_with($mimeType, 'image/')) {
+            $this->mediaNotFound();
+        }
+
+        header('Content-Type: ' . $mimeType);
+        header('Content-Length: ' . filesize($path));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: ' . ($isDefault ? 'public, max-age=86400' : 'private, max-age=300'));
+        readfile($path);
+        exit();
+    }
+
     public function uploadFile(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Przesylanie zdjec jest obecnie wylaczone.', true);
+        $this->validateCsrfRequest(true);
 
         try {
             $filterIds = [];
@@ -54,6 +105,7 @@ class FileController extends AppController
     public function updateImageVisibility(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
 
         try {
             $input = $this->requireJsonPost();
@@ -71,6 +123,7 @@ class FileController extends AppController
     public function listImages(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
         $query = trim($_GET['q'] ?? '');
         $this->jsonResponse([
             'images' => $this->imageRepository->listAssets(
@@ -84,10 +137,13 @@ class FileController extends AppController
     public function uploadImage(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Przesylanie zdjec jest obecnie wylaczone.', true);
 
         if (!$this->isPost()) {
             $this->jsonError('Method not allowed', 405);
         }
+
+        $this->validateCsrfRequest(true);
 
         try {
             $tags = $this->filterRepository->validateMinimumTags($_POST['tags'] ?? '');
@@ -107,6 +163,7 @@ class FileController extends AppController
     public function updateImageTags(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
 
         try {
             $input = $this->requireJsonPost();
@@ -127,6 +184,7 @@ class FileController extends AppController
     public function deleteImage(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
 
         if (!$this->isPost()) {
             $this->jsonError('Method not allowed', 405);
@@ -134,6 +192,10 @@ class FileController extends AppController
 
         try {
             $input = $this->requireJsonPost();
+            if ((string)($input['confirmation'] ?? '') !== '123456') {
+                $this->jsonError('Kod potwierdzenia nie zgadza sie.', 400);
+            }
+
             $this->imageRepository->deleteAsset(
                 (int)$_SESSION['user_id'],
                 (int)($input['imageId'] ?? 0),
@@ -151,6 +213,7 @@ class FileController extends AppController
     public function imageUsage(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
 
         try {
             $imageId = (int)($_GET['imageId'] ?? 0);
@@ -169,6 +232,7 @@ class FileController extends AppController
     public function mergeImages(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('gallery.enabled', 'Galeria jest obecnie wylaczona.', true);
 
         try {
             $input = $this->requireJsonPost();
@@ -193,5 +257,29 @@ class FileController extends AppController
         } catch (Throwable $e) {
             $this->jsonException($e, 'Nie udalo sie rozpoznac filtrow.');
         }
+    }
+
+    private function cleanMediaFilename(mixed $filename): string
+    {
+        $filename = rawurldecode(trim((string)$filename));
+        $basename = basename($filename);
+
+        if ($basename !== $filename || $basename === '' || str_contains($basename, "\0")) {
+            return '';
+        }
+
+        return preg_match('/^[a-zA-Z0-9_.-]+$/', $basename) ? $basename : '';
+    }
+
+    private function uploadPath(string $filename): string
+    {
+        return dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads'
+            . DIRECTORY_SEPARATOR . $filename;
+    }
+
+    private function mediaNotFound(): void
+    {
+        http_response_code(404);
+        exit();
     }
 }

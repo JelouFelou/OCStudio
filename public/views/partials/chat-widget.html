@@ -1,0 +1,51 @@
+<div class="chat-widget" data-chat-widget>
+    <button type="button" class="chat-launcher" data-chat-toggle aria-label="Wiadomosci" aria-expanded="false">
+        <i class="fa-solid fa-comments"></i>
+        <span data-chat-unread hidden>0</span>
+    </button>
+
+    <section class="chat-panel" data-chat-panel hidden aria-label="Wiadomosci">
+        <header class="chat-panel-header">
+            <div>
+                <strong>Wiadomosci</strong>
+                <span data-chat-status>Gotowe</span>
+            </div>
+            <button type="button" class="chat-icon-btn" data-chat-close aria-label="Zamknij wiadomosci">
+                <i class="fa-solid fa-minus"></i>
+            </button>
+        </header>
+
+        <div class="chat-panel-body">
+            <aside class="chat-conversations">
+                <label class="chat-search">
+                    <span>Szukaj osoby</span>
+                    <input type="search" data-chat-search placeholder="Nick uzytkownika..." autocomplete="off">
+                </label>
+                <div class="chat-search-results" data-chat-search-results hidden></div>
+                <div class="chat-conversation-list" data-chat-conversation-list>
+                    <p class="chat-empty">Brak rozmow.</p>
+                </div>
+            </aside>
+
+            <section class="chat-thread" data-chat-thread>
+                <div class="chat-thread-empty" data-chat-empty>
+                    <i class="fa-solid fa-comment-dots"></i>
+                    <p>Wybierz rozmowe albo znajdz uzytkownika.</p>
+                </div>
+
+                <div class="chat-thread-head" data-chat-thread-head hidden>
+                    <strong data-chat-thread-title>Rozmowa</strong>
+                </div>
+
+                <div class="chat-message-list" data-chat-messages hidden></div>
+
+                <form class="chat-compose" data-chat-compose hidden>
+                    <textarea data-chat-input maxlength="2000" rows="2" placeholder="Napisz wiadomosc..."></textarea>
+                    <button type="submit" class="btn-primary" aria-label="Wyslij wiadomosc">
+                        <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </form>
+            </section>
+        </div>
+    </section>
+</div>

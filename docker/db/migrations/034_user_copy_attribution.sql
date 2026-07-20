@@ -1,0 +1,2 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS copy_attribution_enabled BOOLEAN NOT NULL DEFAULT TRUE;

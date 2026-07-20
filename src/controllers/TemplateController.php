@@ -3,16 +3,19 @@
 require_once 'AppController.php';
 require_once __DIR__ . '/../repositories/TemplateRepository.php';
 require_once __DIR__ . '/../repositories/FilterRepository.php';
+require_once __DIR__ . '/../repositories/PublicationRepository.php';
 
 class TemplateController extends AppController
 {
     private $templateRepository;
     private $filterRepository;
+    private PublicationRepository $publicationRepository;
 
     public function __construct()
     {
         $this->templateRepository = new TemplateRepository();
         $this->filterRepository = new FilterRepository();
+        $this->publicationRepository = new PublicationRepository();
     }
 
     public function templates()
@@ -25,16 +28,19 @@ class TemplateController extends AppController
             $blockedFilterIds,
             !empty($this->getUserInterfaceSettings()['revealHidden'])
         );
+        $templateIds = array_map(fn($template) => (int)$template->getId(), $templates);
 
         $this->render('templates', [
             'title' => 'OCStudio - Szablony postaci',
-            'templates' => $templates
+            'templates' => $templates,
+            'templatePublications' => $this->publicationRepository->ownedTemplatePublicationMap((int)$_SESSION['user_id'], $templateIds),
         ]);
     }
 
     public function createTemplate()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Tworzenie szablonow postaci jest obecnie wylaczone.');
 
         if ($this->isPost()) {
             $name        = $_POST['template_name'];
@@ -45,6 +51,8 @@ class TemplateController extends AppController
             $dateCalendarType = $this->cleanDateCalendarType($_POST['date_calendar_type'] ?? 'real');
             $dateSettings = $this->cleanDateSettings($_POST['date_settings'] ?? '');
             $currentWorldDate = trim((string)($_POST['current_world_date'] ?? ''));
+            $txtExportEnabled = !empty($_POST['txt_export_enabled']);
+            $txtExportTemplate = $this->cleanTxtExportTemplate($_POST['txt_export_template'] ?? '');
 
             // Zbieramy pola – teraz także placeholder (JSON z wierszami tabeli lub pusty string)
             $fields      = [];
@@ -80,10 +88,10 @@ class TemplateController extends AppController
                         ]);
                         return;
                     }
-                    $this->templateRepository->updateTemplate((int) $templateId, $name, $description, $fields, $dateCalendarType, $dateSettings, $currentWorldDate);
+                    $this->templateRepository->updateTemplate((int) $templateId, $name, $description, $fields, $dateCalendarType, $dateSettings, $currentWorldDate, $txtExportEnabled, $txtExportTemplate);
                     $this->filterRepository->replaceObjectFilters('template', (int)$templateId, $templateFilterIds);
                 } else {
-                    $newTemplateId = $this->templateRepository->addTemplate($name, $description, $userId, $fields, $dateCalendarType, $dateSettings, $currentWorldDate);
+                    $newTemplateId = $this->templateRepository->addTemplate($name, $description, $userId, $fields, $dateCalendarType, $dateSettings, $currentWorldDate, $txtExportEnabled, $txtExportTemplate);
                     $this->filterRepository->replaceObjectFilters('template', $newTemplateId, $templateFilterIds);
                 }
                 header("Location: /templates");
@@ -106,10 +114,26 @@ class TemplateController extends AppController
     public function deleteTemplate()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Usuwanie szablonow jest obecnie wylaczone.');
 
-        $id = $this->templateIdFromPublicOrLegacyId($_GET['id'] ?? null, (int)$_SESSION['user_id']);
-        if ($id > 0) {
-            $this->templateRepository->deleteTemplate($id, (int) $_SESSION['user_id']);
+        if (!$this->isPost()) {
+            http_response_code(405);
+            header('Location: /templates');
+            exit();
+        }
+
+        $this->validateCsrf();
+
+        $template = $this->templateFromPublicOrLegacyId($_POST['id'] ?? null, (int)$_SESSION['user_id']);
+        if ($template) {
+            $confirmation = trim((string)($_POST['confirmation'] ?? ''));
+            if ($confirmation !== (string)$template['name']) {
+                http_response_code(400);
+                echo 'Nazwa szablonu nie zgadza sie.';
+                exit();
+            }
+
+            $this->templateRepository->deleteTemplate((int)$template['id'], (int) $_SESSION['user_id']);
         }
 
         http_response_code(302);
@@ -120,6 +144,7 @@ class TemplateController extends AppController
     public function duplicateTemplate()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Tworzenie szablonow jest obecnie wylaczone.');
 
         if ($this->isPost()) {
             $id      = $this->templateIdFromPublicOrLegacyId($_POST['id'] ?? null, (int)$_SESSION['user_id']);
@@ -134,7 +159,9 @@ class TemplateController extends AppController
                     $original['fields'],
                     $original['date_calendar_type'] ?? 'real',
                     $original['date_settings'] ?? '',
-                    $original['current_world_date'] ?? ''
+                    $original['current_world_date'] ?? '',
+                    !empty($original['txt_export_enabled']),
+                    (string)($original['txt_export_template'] ?? '')
                 );
             }
         }
@@ -144,6 +171,7 @@ class TemplateController extends AppController
     public function editTemplate()
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja szablonow jest obecnie wylaczona.');
 
         $template = $this->templateFromPublicOrLegacyId($_GET['id'] ?? null, (int)$_SESSION['user_id']);
 
@@ -168,6 +196,7 @@ class TemplateController extends AppController
     public function toggleHidden(): void
     {
         $this->requireLogin();
+        $this->requireFeatureEnabled('characters.enabled', 'Edycja szablonow jest obecnie wylaczona.', true);
 
         $input = $this->requireJsonPost();
         $templateId = (int)($input['templateId'] ?? 0);
@@ -264,5 +293,15 @@ class TemplateController extends AppController
                 : 'fixed',
             'currentDateAnchor' => trim((string)($data['currentDateAnchor'] ?? '')),
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function cleanTxtExportTemplate(mixed $raw): string
+    {
+        $value = trim((string)$raw);
+        if (mb_strlen($value) > 12000) {
+            $value = mb_substr($value, 0, 12000);
+        }
+
+        return $value;
     }
 }

@@ -10,6 +10,23 @@
     $storyPaths = ['stories', 'createStory', 'editStory', 'viewStory', 'story'];
     $currentSection = strtok($currentPath, '/');
     $isStoriesPath = in_array($currentSection, $storyPaths, true);
+    $siteFeatures = $siteFeatures ?? [
+        'characters' => true,
+        'relations' => true,
+        'stories' => true,
+        'community' => true,
+        'gallery' => true,
+        'login' => true,
+        'offlineMode' => false,
+    ];
+    $isOfflineMode = !empty($isOfflineMode) || !empty($siteFeatures['offlineMode']) || (($siteFeatures['login'] ?? true) === false);
+    if ($isOfflineMode) {
+        foreach (['community', 'publications', 'comments', 'reactions', 'follows', 'messages', 'reports', 'copying', 'publicSearch'] as $offlineDisabledFeature) {
+            $siteFeatures[$offlineDisabledFeature] = false;
+        }
+        $siteFeatures['login'] = false;
+        $siteFeatures['offlineMode'] = true;
+    }
 ?>
 <div class="sidebar-top">
             <div class="logo-container">
@@ -20,37 +37,45 @@
                 <li>
                     <a href="/dashboard" class="<?= $currentPath === 'dashboard' ? 'active' : '' ?>">
                         <i class="fa-solid fa-house"></i>
-                        <span>Dashboard</span>
+                        <span><?= htmlspecialchars($t('nav.dashboard'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
                 <li>
                     <a href="/characters" class="<?= $currentPath === 'characters' ? 'active' : '' ?>">
                         <i class="fa-solid fa-users"></i>
-                        <span>Postacie</span>
+                        <span><?= htmlspecialchars($t('nav.characters'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
                 <li>
                     <a href="/relations" class="<?= $currentPath === 'relations' ? 'active' : '' ?>">
                         <i class="fa-solid fa-diagram-project"></i>
-                        <span>Relacje</span>
+                        <span><?= htmlspecialchars($t('nav.relations'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
                 <li>
                     <a href="/stories" class="<?= $isStoriesPath ? 'active' : '' ?>">
                         <i class="fa-solid fa-book-open"></i>
-                        <span>Historie</span>
+                        <span><?= htmlspecialchars($t('nav.stories'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
+                <?php if (($siteFeatures['community'] ?? true) !== false && !$isOfflineMode): ?>
+                <li>
+                    <a href="/community" class="<?= $currentPath === 'community' ? 'active' : '' ?>">
+                        <i class="fa-solid fa-compass"></i>
+                        <span><?= htmlspecialchars($t('nav.community'), ENT_QUOTES, 'UTF-8') ?></span>
+                    </a>
+                </li>
+                <?php endif; ?>
                 <li>
                     <a href="/gallery" class="<?= $currentPath === 'gallery' ? 'active' : '' ?>">
                         <i class="fa-solid fa-images"></i>
-                        <span>Galeria</span>
+                        <span><?= htmlspecialchars($t('nav.gallery'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
                 <li>
                     <a href="/templates" class="<?= $currentPath === 'templates' ? 'active' : '' ?>">
                         <i class="fa-solid fa-layer-group"></i>
-                        <span>Szablony postaci</span>
+                        <span><?= htmlspecialchars($t('nav.templates'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
                 <?php if (!empty($isAdmin)): ?>
@@ -64,7 +89,7 @@
             </ul>
 
             <div class="sidebar-section">
-                <span class="section-title">TWOJE FOLDERY</span>
+                <span class="section-title"><?= htmlspecialchars($t('nav.folders'), ENT_QUOTES, 'UTF-8') ?></span>
                 <ul class="nav-menu characters-list sidebar-folders-list">
                     <?php if(isset($worlds) && !empty($worlds)): ?>
                         <?php foreach($worlds as $world): ?>
@@ -100,15 +125,15 @@
             ?>
             <div class="storage-info">
                 <div class="storage-text">
-                    <span>Storage</span>
+                    <span><?= htmlspecialchars($t('nav.storage'), ENT_QUOTES, 'UTF-8') ?></span>
                     <span><?= htmlspecialchars((string)$storage['percent'], ENT_QUOTES, 'UTF-8') ?>%</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: <?= htmlspecialchars((string)$storage['barPercent'], ENT_QUOTES, 'UTF-8') ?>%; background: <?= htmlspecialchars($storage['color'], ENT_QUOTES, 'UTF-8') ?>;"></div>
                 </div>
-                <span class="storage-detail">Used <?= htmlspecialchars($storage['usedMb'], ENT_QUOTES, 'UTF-8') ?> of <?= htmlspecialchars((string)$storage['limitMb'], ENT_QUOTES, 'UTF-8') ?> MB</span>
+                <span class="storage-detail"><?= htmlspecialchars($t('nav.storage_used', ['used' => $storage['usedMb'], 'limit' => (string)$storage['limitMb']]), ENT_QUOTES, 'UTF-8') ?></span>
                 <?php if (!empty($storage['isExceeded'])): ?>
-                    <span class="storage-warning">Przekroczyłeś 500 MB, ulepsz do PRO</span>
+                    <span class="storage-warning">Przekroczono limit miejsca</span>
                 <?php endif; ?>
             </div>
 
@@ -116,7 +141,7 @@
                 <li>
                     <a href="/settings" class="<?= $currentPath === 'settings' ? 'active' : '' ?>">
                         <i class="fa-solid fa-gear"></i>
-                        <span>Settings</span>
+                        <span><?= htmlspecialchars($t('nav.settings'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
                 </li>
             </ul>
@@ -145,10 +170,30 @@
                 <button type="button" class="editor-shortcuts-btn" data-editor-shortcuts-toggle hidden title="Skróty klawiszowe" aria-label="Pokaż skróty klawiszowe">
                     <i class="fa-solid fa-keyboard"></i>
                 </button>
-                <a href="login" class="logout-header-btn" title="Wyloguj się">
+                <?php if (($siteFeatures['community'] ?? true) !== false && !$isOfflineMode): ?>
+                <div class="header-notifications" data-notifications-root>
+                    <button type="button" class="header-notifications-btn" data-notifications-toggle title="<?= htmlspecialchars($t('nav.notifications'), ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($t('nav.notifications'), ENT_QUOTES, 'UTF-8') ?>" aria-expanded="false">
+                        <i class="fa-solid fa-bell"></i>
+                        <span data-notifications-count hidden>0</span>
+                    </button>
+                    <div class="header-notifications-popover" data-notifications-popover hidden>
+                        <div class="header-notifications-head">
+                            <strong><?= htmlspecialchars($t('nav.notifications'), ENT_QUOTES, 'UTF-8') ?></strong>
+                            <button type="button" data-notifications-read-all><?= htmlspecialchars($t('nav.notifications_mark_read'), ENT_QUOTES, 'UTF-8') ?></button>
+                        </div>
+                        <div class="header-notifications-list" data-notifications-list>
+                            <p class="header-notifications-empty"><?= htmlspecialchars($t('nav.notifications_empty'), ENT_QUOTES, 'UTF-8') ?></p>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if (($siteFeatures['login'] ?? true) !== false && !$isOfflineMode): ?>
+                <a href="login" class="logout-header-btn" title="<?= htmlspecialchars($t('nav.logout'), ENT_QUOTES, 'UTF-8') ?>">
                     <i class="fa-solid fa-right-from-bracket"></i>
                 </a>
-                <div class="user-profile">
+                <?php endif; ?>
+                <?php if (!$isOfflineMode): ?>
+                <a href="/profile" class="user-profile" title="<?= htmlspecialchars($t('nav.profile'), ENT_QUOTES, 'UTF-8') ?>">
                     <div class="user-info-text">
                         <span class="user-name">
                             <?php if(isset($_SESSION['user_id'])): ?>
@@ -156,44 +201,52 @@
                                     $displayName = $_SESSION['username'] ?? '';
                                     if (empty($displayName)) {
                                         $displayName = ($_SESSION['first_name'] ?? '') . ' ' . ($_SESSION['last_name'] ?? '');
-                                        $displayName = trim($displayName) ?: 'User';
+                                        $displayName = trim($displayName) ?: $t('nav.user');
                                     }
                                     echo htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
                                 ?>
                             <?php else: ?>
-                                User
+                                <?= htmlspecialchars($t('nav.user'), ENT_QUOTES, 'UTF-8') ?>
                             <?php endif; ?>
                         </span>
                         <?php
                             $accountType = (int)($_SESSION['account_type'] ?? 0);
                             $accountLabels = [
-                                0 => 'User',
+                                0 => $t('nav.user'),
                                 1 => 'Admin',
                             ];
-                            $accountLabel = $accountLabels[$accountType] ?? 'User';
+                            $accountLabel = (string)($_SESSION['account_type_name'] ?? ($accountLabels[$accountType] ?? 'User'));
                         ?>
                         <span class="user-plan"><?= htmlspecialchars($accountLabel, ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
-                    <div class="user-avatar-icon" style="
-                        width: 38px;
-                        height: 38px;
-                        border-radius: 50%;
-                        background: var(--primary, #FF8A00);
-                        color: #fff;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 1.1rem;
-                        flex-shrink: 0;
-                    ">
-                        <i class="fa-solid fa-user"></i>
+                    <?php $currentAvatarUrl = trim((string)($currentUserProfile['avatarUrl'] ?? '')); ?>
+                    <div class="user-avatar-icon">
+                        <?php if ($currentAvatarUrl !== ''): ?>
+                            <img src="<?= htmlspecialchars($currentAvatarUrl, ENT_QUOTES, 'UTF-8') ?>" alt="">
+                        <?php else: ?>
+                            <i class="fa-solid fa-user"></i>
+                        <?php endif; ?>
                     </div>
-                </div>
+                </a>
+                <?php endif; ?>
             </div>
         </header>
 
 <script>
 (function () {
+    const features = window.OCFeatures || {};
+    const featureLinks = [
+        ['/characters', 'characters'],
+        ['/templates', 'characters'],
+        ['/relations', 'relations'],
+        ['/stories', 'stories'],
+        ['/community', 'community'],
+        ['/gallery', 'gallery'],
+    ];
+    featureLinks.forEach(([href, key]) => {
+        if (features[key] !== false) return;
+        document.querySelectorAll(`.sidebar a[href="${href}"]`).forEach(link => link.closest('li')?.remove());
+    });
     const input    = document.getElementById('global-search-input');
     const dropdown = document.getElementById('global-search-dropdown');
     if (!input || !dropdown) return;
@@ -255,13 +308,13 @@
         const avatar = document.createElement('img');
         avatar.src   = window.OCDefaults?.characterImageSrc
             ? window.OCDefaults.characterImageSrc(char.image)
-            : '/public/uploads/' + (char.image || 'default.png');
+            : '/media/' + (char.image || 'default.png');
         avatar.alt = '';
         avatar.draggable = false;
         avatar.onerror = () => {
             avatar.src = window.OCDefaults?.characterImageSrc
                 ? window.OCDefaults.characterImageSrc()
-                : '/public/uploads/default.png';
+                : '/media/' + themedDefault('default.png');
         };
         avatar.addEventListener('load', () => window.OCMediaFrame?.refresh?.(avatarFrame), { passive: true });
         avatar.style.cssText = 'width:100%;height:100%;border-radius:0;object-fit:' + crop.fit + ';object-position:var(--image-focus-x,50%) var(--image-focus-y,50%);transform:scale(var(--image-zoom,1));transform-origin:var(--image-focus-x,50%) var(--image-focus-y,50%);display:block;';
@@ -314,8 +367,22 @@
         return el;
     }
 
+    function themedDefault(filename) {
+        const value = String(filename || '').split('/').pop();
+        const isDark = document.body?.dataset.theme === 'dark';
+        if (['default_story.png', 'default_story.jpg', 'default_story_dark.png'].includes(value)) {
+            return isDark ? 'default_story_dark.png' : 'default_story.png';
+        }
+        if (['default.png', 'default.jpg', 'default_dark.png', ''].includes(value)) {
+            return window.OCDefaults?.characterDefaultImageName
+                ? window.OCDefaults.characterDefaultImageName()
+                : (isDark ? 'default_dark.png' : 'default.png');
+        }
+        return value;
+    }
+
     function uploadSrc(filename, fallback) {
-        return '/public/uploads/' + (filename || fallback);
+        return '/media/' + themedDefault(filename || fallback);
     }
 
     function makeThumb(filename, fallback, iconClass, size = 34) {
@@ -403,14 +470,15 @@
 
     function renderResults(data) {
         dropdown.innerHTML = '';
-        const { characters, worlds, stories, templates, filters } = data;
+        const { characters, worlds, stories, templates, filters, publications } = data;
         const hasChars  = characters  && characters.length  > 0;
         const hasWorlds = worlds       && worlds.length       > 0;
         const hasStories = stories && stories.length > 0;
         const hasTemplates = templates && templates.length > 0;
         const hasFilters = filters && filters.length > 0;
+        const hasPublications = publications && publications.length > 0;
 
-        if (!hasChars && !hasWorlds && !hasStories && !hasTemplates && !hasFilters) {
+        if (!hasChars && !hasWorlds && !hasStories && !hasTemplates && !hasFilters && !hasPublications) {
             dropdown.appendChild(makeEmpty());
             openDropdown();
             return;
@@ -462,6 +530,23 @@
                 template.name,
                 template.description || '',
                 '/templates/' + encodeURIComponent(template.publicId || template.id) + '/edit'
+            )));
+        }
+
+        if (hasPublications) {
+            if (dropdown.children.length) dropdown.appendChild(makeDivider());
+            dropdown.appendChild(makeSectionLabel('Publikacje publiczne'));
+            publications.forEach(publication => dropdown.appendChild(makeSimpleRow(
+                'fa-solid fa-share-nodes',
+                publication.title,
+                [
+                    publication.isOwn ? 'Twoja publikacja' : 'Autor: ' + (publication.authorName || 'Uzytkownik'),
+                    publication.typeLabel || 'Publikacja'
+                ].filter(Boolean).join(' - '),
+                '/p/' + encodeURIComponent(publication.publicId || publication.id),
+                publication.image,
+                publication.contentType === 'story' ? 'default_story.png' : 'default.png',
+                { iconSize: 54 }
             )));
         }
 
@@ -523,6 +608,106 @@
     });
 })();
 </script>
+
+<?php if (($siteFeatures['community'] ?? true) !== false && !$isOfflineMode): ?>
+<script>
+(function () {
+    const root = document.querySelector('[data-notifications-root]');
+    if (!root) return;
+
+    const toggle = root.querySelector('[data-notifications-toggle]');
+    const popover = root.querySelector('[data-notifications-popover]');
+    const list = root.querySelector('[data-notifications-list]');
+    const badge = root.querySelector('[data-notifications-count]');
+    const readAll = root.querySelector('[data-notifications-read-all]');
+    let loaded = false;
+
+    function setBadge(count) {
+        const value = Number(count || 0);
+        if (!badge) return;
+        badge.hidden = value <= 0;
+        badge.textContent = value > 99 ? '99+' : String(value);
+    }
+
+    function escapeText(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function render(notifications) {
+        if (!list) return;
+        list.innerHTML = '';
+        if (!notifications.length) {
+            const empty = document.createElement('p');
+            empty.className = 'header-notifications-empty';
+            empty.textContent = 'Brak powiadomien.';
+            list.appendChild(empty);
+            return;
+        }
+
+        notifications.forEach(notification => {
+            const row = document.createElement(notification.url ? 'a' : 'div');
+            row.className = 'header-notification-item' + (!notification.read ? ' is-unread' : '');
+            if (notification.url) row.href = notification.url;
+            row.dataset.notificationId = String(notification.id || '');
+            row.innerHTML =
+                '<strong>' + escapeText(notification.title) + '</strong>' +
+                '<span>' + escapeText(notification.body) + '</span>' +
+                '<small>' + escapeText(notification.createdAt || '') + '</small>';
+            row.addEventListener('click', () => {
+                if (notification.id && !notification.read) {
+                    fetch('/api/notifications/read', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ notificationId: notification.id })
+                    }).catch(() => {});
+                }
+            });
+            list.appendChild(row);
+        });
+    }
+
+    async function loadNotifications() {
+        try {
+            const response = await fetch('/api/notifications');
+            if (!response.ok) return;
+            const data = await response.json();
+            setBadge(data.unreadCount || 0);
+            render(Array.isArray(data.notifications) ? data.notifications : []);
+            loaded = true;
+        } catch (error) {
+            return;
+        }
+    }
+
+    toggle?.addEventListener('click', async event => {
+        event.stopPropagation();
+        const open = popover?.hidden;
+        if (open && !loaded) await loadNotifications();
+        if (popover) popover.hidden = !open;
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+
+    readAll?.addEventListener('click', async event => {
+        event.preventDefault();
+        await fetch('/api/notifications/read-all', { method: 'POST' });
+        await loadNotifications();
+    });
+
+    document.addEventListener('click', event => {
+        if (!root.contains(event.target)) {
+            if (popover) popover.hidden = true;
+            toggle?.setAttribute('aria-expanded', 'false');
+        }
+    });
+
+    loadNotifications();
+})();
+</script>
+<?php endif; ?>
 
 <script>
 (function () {

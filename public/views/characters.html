@@ -9,7 +9,7 @@
 
             $path = parse_url($image, PHP_URL_PATH);
             $filename = basename(str_replace('\\', '/', $path ?: $image));
-            return $filename !== '' ? '/public/uploads/' . rawurlencode($filename) : '';
+            return $filename !== '' ? '/media/' . rawurlencode($filename) : '';
         }
     }
     if (!function_exists('folder_filter_text')) {
@@ -92,6 +92,53 @@
                         <span>Przejdź do relacji</span>
                     </button>
                 <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if (!empty($characters)): ?>
+                <details class="folder-toolbar-export" style="position:relative;">
+                    <summary class="btn-secondary folder-toolbar-btn" style="list-style:none;cursor:pointer;">
+                        <i class="fa-solid fa-file-export"></i>
+                        <span>Eksport masowy</span>
+                    </summary>
+                    <form method="POST"
+                          action="/character/export/bulk"
+                          class="bulk-export-menu"
+                          style="position:absolute;right:0;top:calc(100% + 8px);z-index:30;min-width:300px;
+                                 padding:12px;background:var(--card-bg,#fff);border:1px solid var(--border,#ddd);
+                                 border-radius:10px;box-shadow:0 16px 38px rgba(0,0,0,.22);display:grid;gap:10px;"
+                          onclick="event.stopPropagation();">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        <?php foreach ($characters as $exportCharacter): ?>
+                            <input type="hidden" name="character_ids[]" value="<?= (int)$exportCharacter->getId() ?>">
+                        <?php endforeach; ?>
+
+                        <div style="font-weight:800;color:var(--text,#fff);">Eksportuj widoczne postacie</div>
+                        <p style="margin:0;color:var(--text-muted,#9ca3af);font-size:.86rem;">
+                            Obejmuje <?= count($characters) ?> <?= count($characters) === 1 ? 'postać' : 'postaci' ?> z tego widoku, razem z wariantami.
+                        </p>
+
+                        <label style="display:grid;gap:6px;font-size:.82rem;font-weight:700;color:var(--text-muted,#9ca3af);text-transform:uppercase;">
+                            Format
+                            <select name="format" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--border,#303846);background:var(--input-bg,#111820);color:var(--text,#fff);font-weight:700;">
+                                <option value="pdf">PDF</option>
+                                <option value="txt">TXT</option>
+                            </select>
+                        </label>
+
+                        <label style="display:grid;gap:6px;font-size:.82rem;font-weight:700;color:var(--text-muted,#9ca3af);text-transform:uppercase;">
+                            Sposób zapisu
+                            <select name="delivery" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--border,#303846);background:var(--input-bg,#111820);color:var(--text,#fff);font-weight:700;">
+                                <option value="single">Jeden plik zbiorczy</option>
+                                <option value="zip">Osobne pliki w ZIP</option>
+                            </select>
+                        </label>
+
+                        <button type="submit" class="btn-primary" style="justify-content:center;">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Pobierz eksport</span>
+                        </button>
+                    </form>
+                </details>
             <?php endif; ?>
 
             <!-- Nowy element -->
@@ -511,7 +558,7 @@
                     if (imgEl) {
                         imgEl.src = window.OCDefaults?.characterImageSrc
                             ? window.OCDefaults.characterImageSrc()
-                            : '/public/uploads/' + (document.body.dataset.defaultCharacterImage || 'default.png');
+                            : '/media/' + (document.body.dataset.defaultCharacterImage || 'default.png');
                     }
                 }
                 btn.remove();
@@ -564,10 +611,10 @@
         try {
             const parsed = new URL(image, window.location.origin);
             const filename = parsed.pathname.split('/').filter(Boolean).pop();
-            return filename ? '/public/uploads/' + encodeURIComponent(filename) : '';
+            return filename ? '/media/' + encodeURIComponent(filename) : '';
         } catch (e) {
             const filename = image.replace(/\\/g, '/').split('/').filter(Boolean).pop();
-            return filename ? '/public/uploads/' + encodeURIComponent(filename) : '';
+            return filename ? '/media/' + encodeURIComponent(filename) : '';
         }
     }
 

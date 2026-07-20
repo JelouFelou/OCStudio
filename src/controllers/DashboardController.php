@@ -8,6 +8,7 @@ require_once __DIR__.'/../repositories/WorldRepository.php';
 require_once __DIR__.'/../repositories/CharacterStatusRepository.php';
 require_once __DIR__.'/../repositories/FilterRepository.php';
 require_once __DIR__.'/../repositories/StoryRepository.php';
+require_once __DIR__.'/../repositories/PublicationRepository.php';
 
 class DashboardController extends AppController {
     public function index() {
@@ -24,9 +25,10 @@ class DashboardController extends AppController {
 
         $templateRepository = new TemplateRepository();
         $filterRepository = new FilterRepository();
+        $blockedFilterIds = $filterRepository->blockedFilterIds((int)$_SESSION['user_id']);
         $templates = $templateRepository->getTemplatesByUserId(
             (int)$_SESSION['user_id'],
-            $filterRepository->blockedFilterIds((int)$_SESSION['user_id']),
+            $blockedFilterIds,
             $includeHidden
         );
         $numberOfTemplates = 0;
@@ -80,10 +82,26 @@ class DashboardController extends AppController {
             0,
             6
         );
+        $variantsByCharacterId = $characterRepository->getCharacterVariantsByCharacterIds(
+            array_map(fn($character) => $character->getId(), $dashboardChars),
+            $includeHidden,
+            $includeAdult
+        );
+        foreach ($variantsByCharacterId as $characterId => $variants) {
+            $variantsByCharacterId[$characterId] = array_values(array_filter(
+                $variants,
+                fn($variant) => !$this->filtersHaveBlocked($variant['content_filters'] ?? [], $blockedFilterIds)
+            ));
+        }
         $characterFiltersById = [];
         foreach ($dashboardChars as $character) {
             $characterFiltersById[$character->getId()] = $allCharacterFiltersById[$character->getId()] ?? [];
         }
+        $publicationRepository = new PublicationRepository();
+        $publicationMap = $publicationRepository->ownedCharacterPublicationMap(
+            (int)$_SESSION['user_id'],
+            array_map(fn($character) => $character->getId(), $dashboardChars)
+        );
 
         $templateFiltersById = [];
         $dashboardTemplates = [];
@@ -120,7 +138,9 @@ class DashboardController extends AppController {
             "title"          => "OCStudio - Dashboard",
             "users"          => $users,
             "characters"     => $dashboardChars,
+            "variantsByCharacterId" => $variantsByCharacterId,
             "characterFiltersById" => $characterFiltersById,
+            "characterPublicationMap" => $publicationMap,
             "stories"        => $dashboardStories,
             "storyFiltersById" => $storyDirectFiltersById,
             "templates"      => $dashboardTemplates,
@@ -143,6 +163,25 @@ class DashboardController extends AppController {
                 }
             }
         }
+        return false;
+    }
+
+    private function filtersHaveBlocked(array $filters, array $blockedFilterIds): bool
+    {
+        $blockedFilterIds = array_values(array_unique(array_filter(array_map('intval', $blockedFilterIds))));
+        if (empty($blockedFilterIds)) {
+            return false;
+        }
+
+        foreach ($filters as $filter) {
+            $id = is_array($filter)
+                ? (int)($filter['id'] ?? 0)
+                : (is_object($filter) && method_exists($filter, 'getId') ? (int)$filter->getId() : 0);
+            if ($id > 0 && in_array($id, $blockedFilterIds, true)) {
+                return true;
+            }
+        }
+
         return false;
     }
 }

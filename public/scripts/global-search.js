@@ -90,7 +90,7 @@
     function render(data) {
         dropdown.innerHTML = '';
 
-        const { characters = [], worlds = [], stories = [], templates = [], filters = [] } = data;
+        const { characters = [], worlds = [], stories = [], templates = [], filters = [], publications = [] } = data;
 
         // Zbieramy ID postaci już pokazanych w sekcji "Postacie"
         // żeby nie powielać ich pod folderami
@@ -144,12 +144,17 @@
             templates.forEach(template => dropdown.appendChild(templateRow(template)));
         }
 
+        if (publications.length > 0) {
+            dropdown.appendChild(sectionLabel('Publikacje publiczne'));
+            publications.forEach(publication => dropdown.appendChild(publicationRow(publication)));
+        }
+
         if (filters.length > 0) {
             dropdown.appendChild(sectionLabel('Filtry'));
             filters.slice(0, 8).forEach(filter => dropdown.appendChild(filterRow(filter)));
         }
 
-        if (characters.length === 0 && worlds.length === 0 && stories.length === 0 && templates.length === 0 && filters.length === 0) {
+        if (characters.length === 0 && worlds.length === 0 && stories.length === 0 && templates.length === 0 && filters.length === 0 && publications.length === 0) {
             const empty = makeEl('p', 'search-empty');
             empty.textContent = 'Brak wyników dla „' + input.value.trim() + '"';
             dropdown.appendChild(empty);
@@ -195,7 +200,7 @@
         avatar.style.setProperty('--image-zoom', crop.zoom);
         img.src    = window.OCDefaults?.characterImageSrc
             ? window.OCDefaults.characterImageSrc(c.image)
-            : '/public/uploads/' + (c.image || 'default.png');
+            : '/media/' + (c.image || 'default.png');
         img.alt    = '';
         img.draggable = false;
         img.style.objectFit = crop.fit;
@@ -203,7 +208,7 @@
         img.onerror = () => {
             img.src = window.OCDefaults?.characterImageSrc
                 ? window.OCDefaults.characterImageSrc()
-                : '/public/uploads/default.png';
+                : '/media/' + (document.body?.dataset.theme === 'dark' ? 'default_dark.png' : 'default.png');
         };
 
         const info = makeEl('div', 'search-char-info');
@@ -257,6 +262,22 @@
         });
     }
 
+    function publicationRow(publication) {
+        return mediaRow({
+            href: '/p/' + encodeURIComponent(publication.publicId || publication.id),
+            image: window.OCDefaults?.characterImageSrc
+                ? window.OCDefaults.characterImageSrc(publication.image)
+                : '/media/' + (publication.image || 'default.png'),
+            icon: 'fa-share-nodes',
+            title: publication.title || 'Publikacja',
+            description: [
+                publication.isOwn ? 'Twoja publikacja' : 'Autor: ' + (publication.authorName || 'Uzytkownik'),
+                publication.typeLabel || 'Publikacja'
+            ].filter(Boolean).join(' - '),
+            badge: publication.ageRating === 'adult' ? '+18' : ''
+        });
+    }
+
     function mediaRow(item) {
         const row = makeEl('div', 'search-media-row');
         row.dataset.href = item.href;
@@ -299,13 +320,15 @@
 
     function folderVisual(world) {
         if (world.image && !['default.jpg', 'default.png', ''].includes(world.image)) {
-            return '<span class="search-folder-thumb"><img src="/public/uploads/' + esc(world.image) + '" alt=""></span>';
+            return '<span class="search-folder-thumb"><img src="/media/' + esc(world.image) + '" alt=""></span>';
         }
         return '<span class="search-folder-icon" style="background:' + esc(world.iconColor || '#7B61FF') + '"><i class="fa-solid fa-folder"></i></span>';
     }
 
     function storyImageSrc(image) {
-        return '/public/uploads/' + (image || 'default_story.png');
+        const filename = String(image || '').split('/').pop();
+        const isDefault = !filename || ['default_story.png', 'default_story.jpg', 'default_story_dark.png'].includes(filename);
+        return '/media/' + (isDefault && document.body?.dataset.theme === 'dark' ? 'default_story_dark.png' : (filename || 'default_story.png'));
     }
 
     function trimText(text, limit) {

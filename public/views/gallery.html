@@ -1,3 +1,8 @@
+<?php
+$siteFeatures = is_array($siteFeatures ?? null) ? $siteFeatures : [];
+$canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community']) && !empty($siteFeatures['publications']);
+?>
+
 <div class="content-view gallery-content-view">
     <section class="gallery-header">
         <div>
@@ -54,6 +59,15 @@
                     </span>
                 <?php endif; ?>
                 <div class="gallery-card-actions">
+                    <?php if ($canPublishContent): ?>
+                    <button type="button"
+                            class="gallery-publish-image"
+                            data-publish-image
+                            title="<?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'Ukrytego zdjecia nie mozna opublikowac' : 'Udostepnij zdjecie' ?>"
+                            <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'disabled' : '' ?>>
+                        <i class="fa-solid fa-share-nodes"></i>
+                    </button>
+                    <?php endif; ?>
                     <button type="button" class="gallery-delete-image" data-delete-image title="Usuń zdjęcie">
                         <i class="fa-solid fa-trash"></i>
                     </button>
@@ -72,6 +86,14 @@
                         </select>
                     </label>
                     <button type="button" class="gallery-save-tags" data-save-card-tags>Zapisz</button>
+                    <?php if ($canPublishContent): ?>
+                    <button type="button"
+                            class="gallery-publish-image"
+                            data-publish-image
+                            <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'disabled' : '' ?>>
+                        Udostepnij
+                    </button>
+                    <?php endif; ?>
                 </div>
             </article>
         <?php endforeach; ?>

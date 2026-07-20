@@ -6,7 +6,14 @@ require_once __DIR__ . '/../services/ImageThumbnailService.php';
 
 class ImageRepository extends Repository
 {
-    private const DEFAULT_IMAGES = ['default.png', 'default.jpg', 'default_dark.png'];
+    private const DEFAULT_IMAGES = [
+        'default.png',
+        'default.jpg',
+        'default_dark.png',
+        'default_story.png',
+        'default_story.jpg',
+        'default_story_dark.png',
+    ];
     private ImageThumbnailService $thumbnailService;
 
     public function __construct()
@@ -66,6 +73,50 @@ class ImageRepository extends Repository
         $stmt->execute([':id' => $imageId, ':userId' => $userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ? $this->decorateAsset($row) : null;
+    }
+
+    public function getAssetFilters(int $imageId): array
+    {
+        return array_map(static fn(array $tag): array => [
+            'id' => (int)($tag['id'] ?? 0),
+            'name' => (string)($tag['name'] ?? ''),
+            'slug' => (string)($tag['slug'] ?? ''),
+            'label' => (string)($tag['name'] ?? ''),
+        ], $this->getImageTags($imageId));
+    }
+
+    public function copyAssetReferenceForUser(int $userId, array $sourceImage, array $filters): array
+    {
+        $filename = basename((string)($sourceImage['filename'] ?? ''));
+        $sha256 = (string)($sourceImage['sha256'] ?? '');
+        if ($filename === '' || $sha256 === '') {
+            throw new InvalidArgumentException('Nie mozna skopiowac zdjecia bez pliku zrodlowego.', 422);
+        }
+
+        $existing = $this->findByHash($userId, $sha256);
+        if ($existing) {
+            return $existing;
+        }
+
+        $existing = $this->getAssetByFilename($userId, $filename);
+        if ($existing) {
+            return $existing;
+        }
+
+        $filterIds = array_values(array_unique(array_filter(array_map(
+            static fn($filter): int => (int)($filter['id'] ?? 0),
+            $filters
+        ))));
+
+        return $this->createAsset(
+            $userId,
+            $filename,
+            (string)($sourceImage['mimeType'] ?? 'image/png'),
+            (int)($sourceImage['sizeBytes'] ?? 0),
+            $sha256,
+            $filterIds,
+            (string)($sourceImage['visibility'] ?? 'normal')
+        );
     }
 
     public function getAssetByFilename(int $userId, string $filename): ?array
@@ -443,6 +494,8 @@ class ImageRepository extends Repository
         $replacements = [
             $source['filename'] => $target['filename'],
             $source['url'] => $target['url'],
+            '/public/uploads/' . $source['filename'] => $target['url'],
+            'public/uploads/' . $source['filename'] => $target['url'],
             '"imageId":' . $source['id'] => '"imageId":' . $target['id'],
             '"imageId": ' . $source['id'] => '"imageId": ' . $target['id'],
         ];
@@ -519,7 +572,7 @@ class ImageRepository extends Repository
         return [
             'id' => $id,
             'filename' => $row['filename'],
-            'url' => '/public/uploads/' . $row['filename'],
+            'url' => '/media/' . rawurlencode((string)$row['filename']),
             'thumbnailUrl' => $this->thumbnailService->galleryThumbnailUrl((string)$row['filename'], (string)($row['mime_type'] ?? '')),
             'mimeType' => $row['mime_type'] ?? '',
             'sizeBytes' => (int)($row['size_bytes'] ?? 0),

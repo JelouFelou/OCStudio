@@ -17,12 +17,12 @@ class ImageThumbnailService
     {
         $filename = basename($filename);
         if ($filename === '' || $this->isDefaultImage($filename)) {
-            return '/public/uploads/' . $filename;
+            return '/media/' . rawurlencode($filename);
         }
 
         $source = $this->uploadPath($filename);
         if (!is_file($source)) {
-            return '/public/uploads/' . $filename;
+            return '/media/' . rawurlencode($filename);
         }
 
         $mimeType = $mimeType !== '' ? $mimeType : (mime_content_type($source) ?: '');
@@ -30,7 +30,7 @@ class ImageThumbnailService
             $mimeType = mime_content_type($source) ?: $mimeType;
         }
         if (!isset(self::SUPPORTED_MIME_TYPES[$mimeType])) {
-            return '/public/uploads/' . $filename;
+            return '/media/' . rawurlencode($filename);
         }
 
         $thumbPath = $this->thumbnailPath($filename);
@@ -38,9 +38,7 @@ class ImageThumbnailService
             $this->createThumbnail($source, $thumbPath, self::SUPPORTED_MIME_TYPES[$mimeType]);
         }
 
-        return is_file($thumbPath)
-            ? '/public/uploads/thumbs/gallery/' . basename($thumbPath)
-            : '/public/uploads/' . $filename;
+        return '/media/' . rawurlencode($filename);
     }
 
     public function deleteGalleryThumbnail(string $filename): void
@@ -108,6 +106,13 @@ class ImageThumbnailService
 
     private function isDefaultImage(string $filename): bool
     {
-        return in_array(basename($filename), ['default.png', 'default.jpg', 'default_dark.png'], true);
+        return in_array(basename($filename), [
+            'default.png',
+            'default.jpg',
+            'default_dark.png',
+            'default_story.png',
+            'default_story.jpg',
+            'default_story_dark.png',
+        ], true);
     }
 }

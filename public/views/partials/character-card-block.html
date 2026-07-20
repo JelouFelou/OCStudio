@@ -35,6 +35,8 @@ $imageFocusY = $char->getImageFocusY();
 $imageZoom = $char->getImageZoom();
 $characterFilters = $characterFiltersById[$char->getId()] ?? [];
 $characterVariants = $variantsByCharacterId[$char->getId()] ?? [];
+$characterPublicationMap = $characterPublicationMap ?? [];
+$characterPublications = $characterPublicationMap[$char->getId()] ?? [];
 if (!function_exists('oc_character_filters_have_adult')) {
     function oc_character_filters_have_adult(array $filters): bool {
         foreach ($filters as $filter) {
@@ -96,6 +98,40 @@ if (!function_exists('oc_character_filter_label')) {
         return trim((string)$filter);
     }
 }
+if (!function_exists('oc_character_publication_badge')) {
+    function oc_character_publication_badge(?array $publication): array {
+        if (!$publication) {
+            return [
+                'label' => 'Prywatna',
+                'class' => 'is-private',
+                'publicId' => '',
+                'id' => 0,
+                'status' => 'none',
+            ];
+        }
+
+        $status = (string)($publication['status'] ?? '');
+        $publicId = (string)($publication['publicId'] ?? '');
+        if ($status === 'published' && $publicId !== '') {
+            $isOutdated = !empty($publication['isOutdated']);
+            return [
+                'label' => $isOutdated ? 'Zmieniona' : 'Opublikowana',
+                'class' => $isOutdated ? 'is-outdated' : 'is-published',
+                'publicId' => $publicId,
+                'id' => (int)($publication['id'] ?? 0),
+                'status' => $isOutdated ? 'outdated' : 'published',
+            ];
+        }
+
+        return [
+            'label' => 'Cofnieta',
+            'class' => 'is-unpublished',
+            'publicId' => $publicId,
+            'id' => (int)($publication['id'] ?? 0),
+            'status' => 'unpublished',
+        ];
+    }
+}
 $blockedFilterIds = array_map('intval', $blockedFilterIds ?? []);
 $showAdultBadge = $showAdultBadge || oc_character_filters_have_adult($characterFilters);
 $baseAdultBadge = $showAdultBadge;
@@ -112,12 +148,14 @@ if ($characterReturnQuery) {
     $characterReturnUrl .= '?' . $characterReturnQuery;
 }
 $encodedCharacterReturnUrl = rawurlencode($characterReturnUrl);
+$basePublicationBadge = oc_character_publication_badge($characterPublications[0] ?? null);
 $variantPreviewOptions = [];
 foreach ($characterVariants as $variant) {
     $variantImage = trim((string)($variant['image'] ?? ''));
     $variantFilters = $variant['content_filters'] ?? [];
     $variantDescription = trim((string)($variant['description'] ?? ''));
     $variantName = (string)($variant['name'] ?? 'Wariant');
+    $variantPublicationBadge = oc_character_publication_badge($characterPublications[(int)($variant['id'] ?? 0)] ?? null);
     $variantPreviewOptions[] = [
         'id' => (int)($variant['id'] ?? 0),
         'name' => $variantName,
@@ -131,6 +169,7 @@ foreach ($characterVariants as $variant) {
         'focusX' => (int)($variant['image_focus_x'] ?? 50),
         'focusY' => (int)($variant['image_focus_y'] ?? 50),
         'zoom' => (float)($variant['image_zoom'] ?? 1),
+        'publication' => $variantPublicationBadge,
     ];
 }
 $hasVariantAdult = (bool)array_filter($variantPreviewOptions, fn($variant) => !empty($variant['isAdult']));
@@ -148,6 +187,7 @@ $cardTitle = $defaultVariantOption['name'] ?? $char->getName();
 $cardCaption = $defaultVariantOption['caption'] ?? $char->getDescription();
 $cardFilters = $defaultVariantOption['filters'] ?? $characterFilters;
 $cardFilterTitle = $defaultVariantOption['filterTitle'] ?? $characterFilterTitle;
+$cardPublicationBadge = $defaultVariantOption['publication'] ?? $basePublicationBadge;
 
 // Oblicz poziom gotowości
 if (!$noImage && !$noTemplate) {
@@ -190,6 +230,7 @@ if (isset($statuses) && $char->getIdStatus()) {
      data-base-focus-x="<?= (int)$char->getImageFocusX() ?>"
      data-base-focus-y="<?= (int)$char->getImageFocusY() ?>"
      data-base-zoom="<?= htmlspecialchars((string)$char->getImageZoom(), ENT_QUOTES, 'UTF-8') ?>"
+     data-base-publication="<?= htmlspecialchars(json_encode($basePublicationBadge, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') ?>"
      data-variants="<?= htmlspecialchars(json_encode($variantPreviewOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') ?>"
      data-character-url="/character/<?= htmlspecialchars($char->getPublicId(), ENT_QUOTES, 'UTF-8') ?>?return_url=<?= htmlspecialchars($encodedCharacterReturnUrl, ENT_QUOTES, 'UTF-8') ?>"
      data-character-edit-url="/editCharacter/<?= htmlspecialchars($char->getPublicId(), ENT_QUOTES, 'UTF-8') ?>?return_url=<?= htmlspecialchars($encodedCharacterReturnUrl, ENT_QUOTES, 'UTF-8') ?>"
@@ -239,18 +280,23 @@ if (isset($statuses) && $char->getIdStatus()) {
             <div class="adult-badge" data-character-adult-badge title="Treść 18+" <?= $showAdultBadge ? '' : 'hidden' ?>>+18</div>
         <?php endif; ?>
     </div>
-    
+    <div class="card-publication-badge <?= htmlspecialchars($cardPublicationBadge['class'], ENT_QUOTES, 'UTF-8') ?>"
+         data-card-publication-badge
+         title="Status publikacji">
+        <?= htmlspecialchars($cardPublicationBadge['label'], ENT_QUOTES, 'UTF-8') ?>
+    </div>
+
     <?php oc_render_media_frame([
         'variant' => 'character-card',
         'mode' => $imageDisplayMode,
-        'src' => '/public/uploads/' . $displayImg,
+        'src' => '/media/' . $displayImg,
         'alt' => 'Postać',
         'fit' => $imageFit,
         'focusX' => $imageFocusX,
         'focusY' => $imageFocusY,
         'zoom' => $imageZoom,
         'imgAttrs' => [
-            'onerror' => "this.src='/public/uploads/" . htmlspecialchars($defaultCharacterImage, ENT_QUOTES, 'UTF-8') . "'",
+            'onerror' => "this.src='/media/" . htmlspecialchars($defaultCharacterImage, ENT_QUOTES, 'UTF-8') . "'",
         ],
         'after' => function () use ($showEditButton, $char, $encodedCharacterReturnUrl, $showCharacterActions, $characterFilters, $characterFilterTitle, $isMainCharacter, $isPinned, $variantPreviewOptions, $defaultVariantOption, $cardTitle, $cardCaption, $cardFilters, $cardFilterTitle) {
     ?>
@@ -402,7 +448,7 @@ document.addEventListener('change', event => {
         };
         freshImage.addEventListener('load', () => requestAnimationFrame(refreshFrame), { once: true });
         freshImage.addEventListener('error', () => requestAnimationFrame(refreshFrame), { once: true });
-        freshImage.src = '/public/uploads/' + filename;
+        freshImage.src = '/media/' + filename;
         image.replaceWith(freshImage);
         requestAnimationFrame(() => requestAnimationFrame(refreshFrame));
     }
@@ -410,6 +456,16 @@ document.addEventListener('change', event => {
     const adultBadge = card.querySelector('[data-character-adult-badge]');
     if (adultBadge) {
         adultBadge.hidden = selected ? !selected.isAdult : card.dataset.baseAdult !== '1';
+    }
+
+    const publicationBadge = card.querySelector('[data-card-publication-badge]');
+    if (publicationBadge) {
+        let basePublication = {};
+        try { basePublication = JSON.parse(card.dataset.basePublication || '{}'); } catch (error) {}
+        const publication = selected?.publication || basePublication || {};
+        publicationBadge.textContent = publication.label || 'Prywatna';
+        publicationBadge.classList.remove('is-private', 'is-published', 'is-unpublished', 'is-outdated');
+        publicationBadge.classList.add(publication.class || 'is-private');
     }
 
     const title = card.querySelector('[data-card-title]');
