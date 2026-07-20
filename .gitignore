@@ -4,8 +4,14 @@ scripts/*
 
 # Ale zachowaj sam folder (opcjonalnie)
 !public/uploads/.gitkeep
+!scripts/generate_erd.php
+!scripts/migrate.php
+!scripts/security_smoke.php
 docker/db/init/init_for_future.txt
 key.env
 
 # Lokalne backupy bazy danych
 backups/
+
+# Lokalne notatki dokumentacyjne
+docs/*.md
