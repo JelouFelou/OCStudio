@@ -15,3 +15,7 @@ backups/
 
 # Lokalne notatki dokumentacyjne
 docs/*.md
+
+# Lokalne pliki narzedzi
+.agents/
+.postman/
