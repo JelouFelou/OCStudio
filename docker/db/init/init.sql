@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS relation_board_worlds CASCADE;
 DROP TABLE IF EXISTS relation_boards CASCADE;
 DROP TABLE IF EXISTS character_relations CASCADE;
 DROP TABLE IF EXISTS relation_types CASCADE;
+DROP TABLE IF EXISTS admin_activity_logs CASCADE;
 DROP TABLE IF EXISTS world_filters CASCADE;
 DROP TABLE IF EXISTS character_filters CASCADE;
 DROP TABLE IF EXISTS filters CASCADE;
@@ -102,6 +103,7 @@ CREATE TABLE templates (
     is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
     id_user INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_user) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -550,6 +552,13 @@ CREATE TABLE stories (
     card_image_focus_x SMALLINT NOT NULL DEFAULT 50,
     card_image_focus_y SMALLINT NOT NULL DEFAULT 50,
     card_image_zoom NUMERIC(4,2) NOT NULL DEFAULT 1,
+    timeline_branch_name TEXT NOT NULL DEFAULT '',
+    timeline_split_date TEXT NOT NULL DEFAULT '',
+    timeline_split_unknown BOOLEAN NOT NULL DEFAULT FALSE,
+    timeline_merge_date TEXT NOT NULL DEFAULT '',
+    timeline_merge_unknown BOOLEAN NOT NULL DEFAULT FALSE,
+    timeline_position_x DOUBLE PRECISION,
+    timeline_position_y DOUBLE PRECISION,
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
     order_number INTEGER NOT NULL DEFAULT 0,
     is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
@@ -625,6 +634,23 @@ CREATE INDEX idx_story_field_values_story ON story_field_values(id_story);
 CREATE INDEX idx_story_characters_story ON story_characters(id_story);
 CREATE INDEX idx_story_characters_character ON story_characters(id_character);
 CREATE INDEX idx_story_character_pseudonyms_story_char ON story_character_pseudonym_mapping(id_story_character);
+
+CREATE TABLE IF NOT EXISTS admin_activity_logs (
+    id SERIAL PRIMARY KEY,
+    admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(80) NOT NULL,
+    target_type VARCHAR(80),
+    target_id INTEGER,
+    details TEXT,
+    ip_address VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_created_at
+    ON admin_activity_logs (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_admin_activity_logs_admin_user_id
+    ON admin_activity_logs (admin_user_id);
 
 CREATE TABLE IF NOT EXISTS site_effect_settings (
     key VARCHAR(64) PRIMARY KEY,
