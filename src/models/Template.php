@@ -11,8 +11,10 @@ class Template {
     private string $date_calendar_type;
     private string $date_settings;
     private string $current_world_date;
+    private bool $txt_export_enabled;
+    private string $txt_export_template;
 
-    public function __construct($name, $description, $id_user, $id = null, $fields = [], $is_hidden = false, ?string $public_id = null, string $date_calendar_type = 'real', string $date_settings = '', string $current_world_date = '') {
+    public function __construct($name, $description, $id_user, $id = null, $fields = [], $is_hidden = false, ?string $public_id = null, string $date_calendar_type = 'real', string $date_settings = '', string $current_world_date = '', bool $txt_export_enabled = false, string $txt_export_template = '') {
         $this->name = $name;
         $this->description = $description;
         $this->id_user = $id_user;
@@ -23,6 +25,8 @@ class Template {
         $this->date_calendar_type = $date_calendar_type;
         $this->date_settings = $date_settings;
         $this->current_world_date = $current_world_date;
+        $this->txt_export_enabled = $txt_export_enabled;
+        $this->txt_export_template = $txt_export_template;
     }
 
     public function getId(): ?int { return $this->id; }
@@ -34,4 +38,6 @@ class Template {
     public function getDateCalendarType(): string { return $this->date_calendar_type; }
     public function getDateSettings(): string { return $this->date_settings; }
     public function getCurrentWorldDate(): string { return $this->current_world_date; }
+    public function isTxtExportEnabled(): bool { return $this->txt_export_enabled; }
+    public function getTxtExportTemplate(): string { return $this->txt_export_template; }
 }

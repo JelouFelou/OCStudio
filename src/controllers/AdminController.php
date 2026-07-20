@@ -5,6 +5,11 @@ require_once __DIR__ . '/../repositories/UserRepository.php';
 require_once __DIR__ . '/../repositories/CharacterRepository.php';
 require_once __DIR__ . '/../repositories/SiteEffectRepository.php';
 require_once __DIR__ . '/../repositories/AdminActivityLogRepository.php';
+require_once __DIR__ . '/../repositories/SocialFeatureSettingsRepository.php';
+require_once __DIR__ . '/../repositories/PublicationRepository.php';
+require_once __DIR__ . '/../repositories/NotificationRepository.php';
+require_once __DIR__ . '/../repositories/FilterRepository.php';
+require_once __DIR__ . '/../repositories/AccountTypeRepository.php';
 
 class AdminController extends AppController
 {
@@ -12,6 +17,11 @@ class AdminController extends AppController
     private CharacterRepository $characterRepository;
     private SiteEffectRepository $effectRepository;
     private AdminActivityLogRepository $activityLogRepository;
+    private SocialFeatureSettingsRepository $socialFeatureSettingsRepository;
+    private PublicationRepository $publicationRepository;
+    private NotificationRepository $notificationRepository;
+    private FilterRepository $filterRepository;
+    private AccountTypeRepository $accountTypeRepository;
 
     public function __construct()
     {
@@ -19,6 +29,11 @@ class AdminController extends AppController
         $this->characterRepository = new CharacterRepository();
         $this->effectRepository = new SiteEffectRepository();
         $this->activityLogRepository = new AdminActivityLogRepository();
+        $this->socialFeatureSettingsRepository = new SocialFeatureSettingsRepository();
+        $this->publicationRepository = new PublicationRepository();
+        $this->notificationRepository = new NotificationRepository();
+        $this->filterRepository = new FilterRepository();
+        $this->accountTypeRepository = new AccountTypeRepository();
     }
 
     public function index(): void
@@ -42,9 +57,76 @@ class AdminController extends AppController
             'adminSearch' => $search,
             'effectSettings' => $this->effectRepository->getSettings(),
             'activePageEffect' => $this->effectRepository->activeEffect(),
+            'socialFeatureSettings' => $this->socialFeatureSettingsRepository->all(),
+            'accountTypes' => $this->accountTypeRepository->all(),
+            'accountTypeOptions' => $this->accountTypeRepository->activeOptions(),
+            'accountTypeFeatureDefinitions' => $this->accountTypeRepository->featureDefinitions(),
+            'offlineUserId' => $this->socialFeatureSettingsRepository->integerValue('auth.offline_user_id', 0),
+            'adminUserOptions' => $this->userRepository->activeUserOptions(),
+            'adminPublicationReports' => $this->publicationRepository->adminReportQueue(),
+            'adminFilters' => $this->filterRepository->adminFilterRows(LocaleService::SUPPORTED_LOCALES),
+            'filterLocales' => LocaleService::SUPPORTED_LOCALES,
             'adminActivityLogs' => $this->activityLogRepository->latest(),
+            'backupReminder' => $this->backupReminderStatus(),
             'csrfToken' => $this->csrfToken(),
         ]);
+    }
+
+    public function addFilterAlias(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        try {
+            $this->filterRepository->addAlias(
+                (int)($_POST['filter_id'] ?? 0),
+                (string)($_POST['alias'] ?? ''),
+                (string)($_POST['language'] ?? 'pl')
+            );
+            $this->logAdminAction('filter.alias.add', 'filter', (int)($_POST['filter_id'] ?? 0), (string)($_POST['alias'] ?? ''));
+            header('Location: /admin?filters=alias');
+        } catch (Throwable $e) {
+            header('Location: /admin?filters=error');
+        }
+        exit();
+    }
+
+    public function saveFilterCell(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $filterId = (int)($_POST['filter_id'] ?? 0);
+        $column = (string)($_POST['column'] ?? '');
+        $value = (string)($_POST['value'] ?? '');
+        try {
+            $this->filterRepository->setAdminCell($filterId, $column, $value, LocaleService::SUPPORTED_LOCALES);
+            $this->logAdminAction('filter.cell.save', 'filter', $filterId, $column . '=' . $value);
+            $this->jsonResponse([
+                'success' => true,
+                'filters' => $this->filterRepository->adminFilterRows(LocaleService::SUPPORTED_LOCALES),
+                'locales' => LocaleService::SUPPORTED_LOCALES,
+            ]);
+        } catch (Throwable $e) {
+            $this->jsonError($e->getMessage(), 400);
+        }
+    }
+
+    public function mergeFilters(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $sourceId = (int)($_POST['source_filter_id'] ?? 0);
+        $targetId = (int)($_POST['target_filter_id'] ?? 0);
+        try {
+            $this->filterRepository->mergeFilters($sourceId, $targetId);
+            $this->logAdminAction('filter.merge', 'filter', $targetId, 'source=' . $sourceId);
+            header('Location: /admin?filters=merge');
+        } catch (Throwable $e) {
+            header('Location: /admin?filters=error');
+        }
+        exit();
     }
 
     public function saveEffects(): void
@@ -69,6 +151,212 @@ class AdminController extends AppController
 
         header('Location: /admin?effects=1');
         exit();
+    }
+
+    public function saveSocialFeatures(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $currentLoginEnabled = $this->socialFeatureSettingsRepository->isEnabled('auth.login.enabled');
+        $currentOfflineUserId = $this->socialFeatureSettingsRepository->integerValue('auth.offline_user_id', 0);
+        $postedEnabledKeys = array_flip(array_map('strval', is_array($_POST['enabled_keys'] ?? null) ? $_POST['enabled_keys'] : []));
+        $nextLoginEnabled = isset($postedEnabledKeys['auth.login.enabled']);
+        $nextOfflineUserId = max(0, (int)($_POST['offline_user_id'] ?? $currentOfflineUserId));
+
+        if ((!$nextLoginEnabled || $nextOfflineUserId !== $currentOfflineUserId || $nextLoginEnabled !== $currentLoginEnabled)
+            && !$this->validAdminPassword((string)($_POST['admin_password_confirm'] ?? ''))
+        ) {
+            header('Location: /admin?social=password');
+            exit();
+        }
+
+        if (!$nextLoginEnabled) {
+            $offlineUser = $nextOfflineUserId > 0 ? $this->userRepository->getUserById($nextOfflineUserId) : null;
+            if (!$offlineUser || !$offlineUser->isAdmin()) {
+                header('Location: /admin?social=offline_user');
+                exit();
+            }
+        }
+
+        $_POST['value']['auth__offline_user_id'] = (string)$nextOfflineUserId;
+        $saved = $this->socialFeatureSettingsRepository->save($_POST, (int)$_SESSION['user_id']);
+        $summary = [];
+        foreach ($saved as $key => $state) {
+            $summary[] = $key . '=' . (!empty($state['enabled']) ? 'on' : 'off') . (($state['value'] ?? '') !== '' ? ':' . $state['value'] : '');
+        }
+        $this->logAdminAction('social_features.update', 'social_feature_settings', null, implode(', ', $summary));
+
+        header('Location: /admin?social=1');
+        exit();
+    }
+
+    public function saveStorageQuotas(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $this->saveAccountTypeQuotasFromPost();
+
+        header('Location: /admin?accountTypes=1');
+        exit();
+    }
+
+    public function createAccountType(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        try {
+            $id = $this->accountTypeRepository->create(
+                (string)($_POST['name'] ?? ''),
+                (int)($_POST['storage_quota_mb'] ?? 500),
+                !empty($_POST['is_admin']),
+                $this->permissionsFromPost($_POST['features'] ?? [])
+            );
+            $this->logAdminAction('account_type.create', 'account_type', $id, (string)($_POST['name'] ?? ''));
+            header('Location: /admin?accountTypes=created');
+        } catch (Throwable $e) {
+            error_log('Account type create failed: ' . $e->getMessage());
+            header('Location: /admin?accountTypes=error');
+        }
+
+        exit();
+    }
+
+    public function updateAccountType(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $id = (int)($_POST['account_type_id'] ?? -1);
+        try {
+            $this->accountTypeRepository->update(
+                $id,
+                (string)($_POST['name'] ?? ''),
+                (int)($_POST['storage_quota_mb'] ?? 500),
+                !empty($_POST['is_admin']),
+                !empty($_POST['is_active']),
+                $this->permissionsFromPost($_POST['features'] ?? [])
+            );
+            $this->logAdminAction('account_type.update', 'account_type', $id, (string)($_POST['name'] ?? ''));
+            header('Location: /admin?accountTypes=updated');
+        } catch (Throwable $e) {
+            error_log('Account type update failed: ' . $e->getMessage());
+            header('Location: /admin?accountTypes=error');
+        }
+
+        exit();
+    }
+
+    public function assignAccountType(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $accountType = (int)($_POST['account_type'] ?? 0);
+        try {
+            $this->userRepository->setAccountType($userId, $accountType, (int)$_SESSION['user_id']);
+            $this->logAdminAction('user.account_type.update', 'user', $userId, 'account_type=' . $accountType);
+            header('Location: /admin?users=account_type');
+        } catch (Throwable $e) {
+            error_log('Account type assignment failed: ' . $e->getMessage());
+            header('Location: /admin?users=account_type_error');
+        }
+
+        exit();
+    }
+
+    private function saveAccountTypeQuotasFromPost(): void
+    {
+        $quotas = is_array($_POST['quota_mb'] ?? null) ? $_POST['quota_mb'] : [];
+        foreach ($this->accountTypeRepository->all() as $accountType) {
+            $id = (int)$accountType['id'];
+            if (!array_key_exists((string)$id, $quotas) && !array_key_exists($id, $quotas)) {
+                continue;
+            }
+
+            $this->accountTypeRepository->update(
+                $id,
+                (string)$accountType['name'],
+                (int)($quotas[(string)$id] ?? $quotas[$id] ?? $accountType['storageQuotaMb']),
+                !empty($accountType['isAdmin']),
+                !empty($accountType['isActive']),
+                $accountType['permissions'] ?? []
+            );
+        }
+    }
+
+    private function permissionsFromPost(mixed $input): array
+    {
+        $posted = array_flip(array_map('strval', is_array($input) ? $input : []));
+        $permissions = [];
+        foreach (array_keys($this->accountTypeRepository->featureDefinitions()) as $featureKey) {
+            $permissions[$featureKey] = isset($posted[$featureKey]);
+        }
+
+        return $permissions;
+    }
+
+    private function validAdminPassword(string $password): bool
+    {
+        if ($password === '') {
+            return false;
+        }
+
+        $user = $this->userRepository->getUserById((int)$_SESSION['user_id']);
+        return $user !== null && password_verify($password, $user->getPassword());
+    }
+
+    public function moderatePublication(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $publicationId = (int)($_POST['publication_id'] ?? 0);
+        $action = (string)($_POST['moderation_action'] ?? '');
+        if ($publicationId > 0) {
+            try {
+                $publication = $this->publicationRepository->moderatePublication(
+                    $publicationId,
+                    (int)$_SESSION['user_id'],
+                    $action
+                );
+                if ($publication) {
+                    $this->logAdminAction('publication.moderate.' . $action, 'publication', $publicationId);
+                    $this->notificationRepository->create(
+                        (int)$publication['ownerUserId'],
+                        (int)$_SESSION['user_id'],
+                        'publication.moderation',
+                        'Decyzja administracji',
+                        $this->moderationNotificationBody($action),
+                        'publication',
+                        $publicationId,
+                        '/p/' . (string)$publication['publicId'],
+                        ['action' => $action]
+                    );
+                }
+            } catch (Throwable $e) {
+                error_log('Publication moderation failed: ' . $e->getMessage());
+                header('Location: /admin?moderation=error');
+                exit();
+            }
+        }
+
+        header('Location: /admin?moderation=1');
+        exit();
+    }
+
+    private function moderationNotificationBody(string $action): string
+    {
+        return match ($action) {
+            'mark_adult' => 'Twoja publikacja zostala oznaczona jako +18.',
+            'mark_general' => 'Oznaczenie +18 zostalo zdjete z Twojej publikacji.',
+            'hide' => 'Twoja publikacja zostala ukryta przez administracje.',
+            'show' => 'Twoja publikacja zostala ponownie pokazana.',
+            default => 'Zgloszenia dotyczace Twojej publikacji zostaly rozpatrzone.',
+        };
     }
 
     public function backupDatabase(): void
@@ -112,6 +400,21 @@ class AdminController extends AppController
             header('Location: /admin?import=error');
         }
 
+        exit();
+    }
+
+    public function saveBackupReminder(): void
+    {
+        $this->requireAdmin();
+        $this->validateCsrf();
+
+        $enabled = !empty($_POST['backup_reminder_enabled']);
+        $days = max(1, min(365, (int)($_POST['backup_reminder_interval_days'] ?? 7)));
+        $this->socialFeatureSettingsRepository->setBoolean('backup.reminder.enabled', $enabled, (int)$_SESSION['user_id']);
+        $this->socialFeatureSettingsRepository->setInteger('backup.reminder_interval_days', $days, (int)$_SESSION['user_id']);
+        $this->logAdminAction('backup.reminder.update', 'backup', null, ($enabled ? 'enabled' : 'disabled') . ', days=' . $days);
+
+        header('Location: /admin?backupReminder=1');
         exit();
     }
 
@@ -191,6 +494,27 @@ class AdminController extends AppController
 
             $this->userRepository->deleteUserById($userId);
         }
+    }
+
+    private function backupReminderStatus(): array
+    {
+        $enabled = $this->socialFeatureSettingsRepository->isEnabled('backup.reminder.enabled');
+        $days = max(1, $this->socialFeatureSettingsRepository->integerValue('backup.reminder_interval_days', 7));
+        $latestBackup = $this->activityLogRepository->latestAction('database.backup');
+        $lastAtRaw = (string)($latestBackup['created_at'] ?? '');
+        $lastAt = $lastAtRaw !== '' ? new DateTimeImmutable($lastAtRaw) : null;
+        $now = new DateTimeImmutable('now');
+        $nextDue = $lastAt ? $lastAt->modify('+' . $days . ' days') : null;
+        $isDue = $enabled && ($nextDue === null || $nextDue <= $now);
+
+        return [
+            'enabled' => $enabled,
+            'intervalDays' => $days,
+            'lastAt' => $lastAt ? $lastAt->format('Y-m-d H:i') : '',
+            'nextDueAt' => $nextDue ? $nextDue->format('Y-m-d H:i') : '',
+            'isDue' => $isDue,
+            'lastFilename' => (string)($latestBackup['details'] ?? ''),
+        ];
     }
 
     private function createDatabaseBackup(): string

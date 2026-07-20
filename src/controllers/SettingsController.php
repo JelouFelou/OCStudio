@@ -2,6 +2,9 @@
 
 require_once 'AppController.php';
 require_once __DIR__ . '/../repositories/FilterRepository.php';
+require_once __DIR__ . '/../repositories/PublicationRepository.php';
+require_once __DIR__ . '/../repositories/UserRepository.php';
+require_once __DIR__ . '/../services/LocaleService.php';
 
 class SettingsController extends AppController
 {
@@ -68,6 +71,9 @@ class SettingsController extends AppController
             $revealHidden = isset($_POST['reveal_hidden']) ? '1' : '0';
             $revealAdultImages = isset($_POST['reveal_adult_images']) ? '1' : '0';
             $rememberCharacterVariant = isset($_POST['remember_character_variant']) ? '1' : '0';
+            $promotePublicProfile = isset($_POST['promote_public_profile']);
+            $copyAttributionEnabled = isset($_POST['copy_attribution_enabled']);
+            $locale = LocaleService::normalize($_POST['locale'] ?? $this->currentLocale());
 
             if (!in_array($theme, ['light', 'dark'], true)) {
                 $theme = 'light';
@@ -84,6 +90,13 @@ class SettingsController extends AppController
             setcookie('oc_reveal_hidden', $revealHidden, ['expires' => $expires, 'path' => '/', 'samesite' => 'Lax']);
             setcookie('oc_reveal_adult_images', $revealAdultImages, ['expires' => $expires, 'path' => '/', 'samesite' => 'Lax']);
             setcookie('oc_remember_character_variant', $rememberCharacterVariant, ['expires' => $expires, 'path' => '/', 'samesite' => 'Lax']);
+            setcookie('oc_locale', $locale, ['expires' => $expires, 'path' => '/', 'samesite' => 'Lax']);
+            $_SESSION['locale'] = $locale;
+            $usersRepository = new UsersRepository();
+            $usersRepository->setLocale((int)$_SESSION['user_id'], $locale);
+            $usersRepository->setPromotePublicProfile((int)$_SESSION['user_id'], $promotePublicProfile);
+            $usersRepository->setCopyAttributionEnabled((int)$_SESSION['user_id'], $copyAttributionEnabled);
+            (new PublicationRepository())->setOriginAttributionVisibleByOwner((int)$_SESSION['user_id'], $copyAttributionEnabled);
 
             $blockedTags = trim($_POST['blocked_tags'] ?? '');
             if ($blockedTags !== '') {
@@ -107,6 +120,7 @@ class SettingsController extends AppController
             'settingsSaved' => isset($_GET['saved']),
             'importMessage' => $this->importMessage($_GET['imported'] ?? null),
             'blockedTags' => implode(', ', array_map(fn($filter) => $filter->getName(), $blockedFilters)),
+            'communitySettings' => (new UsersRepository())->getCommunitySettings((int)$_SESSION['user_id']),
         ]);
     }
 

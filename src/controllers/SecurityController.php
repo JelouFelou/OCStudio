@@ -1,6 +1,7 @@
 <?php
 require_once 'AppController.php';
 require_once __DIR__.'/../repositories/UserRepository.php';
+require_once __DIR__.'/../services/LocaleService.php';
 class SecurityController extends AppController{
     private const MAX_EMAIL_LENGTH = 254;
     private const MAX_PASSWORD_LENGTH = 72;
@@ -15,6 +16,20 @@ class SecurityController extends AppController{
     {
         if (!$this->ensureHttps()) {
             return;
+        }
+
+        if ($this->isOfflineMode()) {
+            if ($this->applyOfflineUserSession()) {
+                http_response_code(303);
+                header('Location: /dashboard');
+                return;
+            }
+
+            return $this->render('login', [
+                'messages' => [LocaleService::translate('auth.login.offline_missing', $this->currentLocale())],
+                'showCaptcha' => false,
+                'turnstileSiteKey' => ''
+            ]);
         }
 
         if (!$this->isPost()) {
@@ -72,13 +87,9 @@ class SecurityController extends AppController{
 
         $this->clearFailedLogins();
         session_regenerate_id(true);
-        $_SESSION['user_id'] = $user->getId();
-        $_SESSION['email'] = $user->getEmail();
-        $_SESSION['username'] = $user->getUsername();
-        $_SESSION['first_name'] = $user->getFirstName(); 
-        $_SESSION['last_name'] = $user->getLastName();
-        $_SESSION['account_type'] = $user->getAccountType();
+        $this->storeUserSession($user);
         $this->applyRememberMeCookie($keepLoggedIn);
+        $this->applyLocaleCookie($user->getLocale());
         $this->resetRevealHiddenPreference();
 
         http_response_code(303);
@@ -92,8 +103,11 @@ class SecurityController extends AppController{
             return;
         }
 
+        $userRepository = new UsersRepository();
+        $isFirstUser = $userRepository->countUsers() === 0;
+
         if (!$this->isPost()) {
-            return $this->render('register');
+            return $this->render('register', ['canBootstrapFirstUser' => $isFirstUser]);
         }
 
         $email = trim($_POST['email'] ?? '');
@@ -105,31 +119,67 @@ class SecurityController extends AppController{
 
         if ($password !== $password2) {
             http_response_code(400);
-            return $this->render('register', ['messages' => ['Passwords do not match.']]);
+            return $this->render('register', [
+                'messages' => [LocaleService::translate('auth.register.error.passwords_match', $this->currentLocale())],
+                'canBootstrapFirstUser' => $isFirstUser,
+            ]);
         }
 
         $validationErrors = $this->validateRegistrationInput($email, $password, $username);
         if ($validationErrors) {
             http_response_code(400);
-            return $this->render('register', ['messages' => $validationErrors]);
+            return $this->render('register', ['messages' => $validationErrors, 'canBootstrapFirstUser' => $isFirstUser]);
         }
 
-        $userRepository = new UsersRepository();
         if ($userRepository->getUserByEmail($email)) {
             http_response_code(409);
-            return $this->render('register', ['messages' => ['Email already in use.']]);
+            return $this->render('register', [
+                'messages' => [LocaleService::translate('auth.register.error.email_used', $this->currentLocale())],
+                'canBootstrapFirstUser' => $isFirstUser,
+            ]);
         }
         if ($userRepository->getUserByUsername($username)) {
             http_response_code(409);
-            return $this->render('register', ['messages' => ['Username already taken.']]);
+            return $this->render('register', [
+                'messages' => [LocaleService::translate('auth.register.error.username_taken', $this->currentLocale())],
+                'canBootstrapFirstUser' => $isFirstUser,
+            ]);
         }
 
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+        $makeAdmin = $isFirstUser && (!empty($_POST['bootstrap_admin']) || !empty($_POST['bootstrap_offline']));
+        $makeOffline = $isFirstUser && !empty($_POST['bootstrap_offline']);
 
-        $userRepository->createUser($email, $hashedPassword, $firstName, $lastName, $username);
+        $newUserId = $userRepository->createUser(
+            $email,
+            $hashedPassword,
+            $firstName,
+            $lastName,
+            $username,
+            '',
+            LocaleService::normalize($_COOKIE['oc_locale'] ?? $_SESSION['locale'] ?? null),
+            $makeAdmin ? 1 : 0
+        );
+
+        if ($makeOffline) {
+            $settings = new SocialFeatureSettingsRepository();
+            $settings->setInteger('auth.offline_user_id', $newUserId, $newUserId);
+            $settings->setBoolean('auth.login.enabled', false, $newUserId);
+            $newUser = $userRepository->getUserById($newUserId);
+            if ($newUser) {
+                session_regenerate_id(true);
+                $this->storeUserSession($newUser);
+                $this->applyLocaleCookie($newUser->getLocale());
+                http_response_code(303);
+                header('Location: /dashboard');
+                return;
+            }
+        }
 
         http_response_code(201);
-        return $this->render('login', ['messages' => ['Registration successful! Please log in.']]);
+        return $this->render('login', [
+            'messages' => [LocaleService::translate('auth.register.success', $this->currentLocale())],
+        ]);
     }
 
     public function forgotPassword()
@@ -243,6 +293,15 @@ class SecurityController extends AppController{
         ]);
     }
 
+    private function applyLocaleCookie(string $locale): void
+    {
+        setcookie('oc_locale', LocaleService::normalize($locale), [
+            'expires' => time() + 60 * 60 * 24 * 365,
+            'path' => '/',
+            'samesite' => 'Lax',
+        ]);
+    }
+
     private function isLoginInputValid(string $loginInput, string $password): bool
     {
         return $loginInput !== ''
@@ -259,23 +318,23 @@ class SecurityController extends AppController{
         $errors = [];
 
         if ($email === '' || $password === '' || $username === '') {
-            $errors[] = 'Email, password and username are required.';
+            $errors[] = LocaleService::translate('auth.register.error.required', $this->currentLocale());
         }
 
         if (strlen($email) > self::MAX_EMAIL_LENGTH || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Email is invalid or too long.';
+            $errors[] = LocaleService::translate('auth.register.error.email_invalid', $this->currentLocale());
         }
 
         if (strlen($username) < 3 || strlen($username) > self::MAX_NAME_LENGTH) {
-            $errors[] = 'Username must be between 3 and 50 characters.';
+            $errors[] = LocaleService::translate('auth.register.error.username_length', $this->currentLocale());
         }
 
         if (!preg_match('/^[a-zA-Z0-9_-]+$/', $username)) {
-            $errors[] = 'Username can only contain letters, numbers, underscores, and hyphens.';
+            $errors[] = LocaleService::translate('auth.register.error.username_chars', $this->currentLocale());
         }
 
         if (!$this->isPasswordComplex($password)) {
-            $errors[] = 'Password must have at least 8 characters, uppercase and lowercase letters, and a digit.';
+            $errors[] = LocaleService::translate('auth.register.error.password_complexity', $this->currentLocale());
         }
 
         return $errors;

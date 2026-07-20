@@ -45,7 +45,10 @@ class RelationController extends AppController
         $boardParam = trim((string)($_GET['board'] ?? ''));
         $focusCharacterId = isset($_GET['focusCharacter']) ? (int)$_GET['focusCharacter'] : null;
         $returnUrl = $this->safeReturnUrl($_GET['return_url'] ?? '', '/relations');
-        $returnLabel = strpos($returnUrl, '/characters/') === 0 ? 'Wroc do folderu' : 'Wroc do listy relacji';
+        $locale = $this->currentLocale();
+        $returnLabel = strpos($returnUrl, '/characters/') === 0
+            ? LocaleService::translate('characters.back_to_folder', $locale)
+            : LocaleService::translate('relations.editor.back_to_list', $locale);
 
         $board = $boardParam !== ''
             ? (ctype_digit($boardParam)

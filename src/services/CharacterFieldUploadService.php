@@ -9,6 +9,7 @@ class CharacterFieldUploadService
     private ImageRepository $imageRepository;
     private FilterRepository $filterRepository;
     private ImageUploadService $imageUploadService;
+    private bool $uploadsEnabled = true;
 
     public function __construct(
         ?ImageRepository $imageRepository = null,
@@ -20,9 +21,17 @@ class CharacterFieldUploadService
         $this->imageUploadService = $imageUploadService ?? new ImageUploadService();
     }
 
+    public function setUploadsEnabled(bool $enabled): void
+    {
+        $this->uploadsEnabled = $enabled;
+    }
+
     public function uploadCharacterImage(int $userId, string $fallback, array $post, array $files): string
     {
         $fallback = $fallback !== '' ? $fallback : 'default.png';
+        if (!$this->uploadsEnabled) {
+            return $fallback;
+        }
 
         $selectedImageId = (int)($post['character_image_id'] ?? 0);
         if ($selectedImageId > 0) {
@@ -49,6 +58,10 @@ class CharacterFieldUploadService
 
     public function processCharacterFieldUploads(int $userId, array $fieldValues, array $post, array $files): array
     {
+        if (!$this->uploadsEnabled) {
+            return $fieldValues;
+        }
+
         foreach ((array)($files['field_image_files']['name'] ?? []) as $fieldId => $_unused) {
             $file = $this->nestedFile($files, 'field_image_files', [$fieldId]);
             if (!$this->hasUploadedFile($file)) {
@@ -127,7 +140,7 @@ class CharacterFieldUploadService
             }
 
             $image = $variant['existing_image'] ?? null;
-            $selectedImageId = (int)($variant['existing_image_id'] ?? 0);
+            $selectedImageId = $this->uploadsEnabled ? (int)($variant['existing_image_id'] ?? 0) : 0;
             if ($selectedImageId > 0) {
                 $asset = $this->imageRepository->getAsset($userId, $selectedImageId);
                 if ($asset) {
@@ -136,7 +149,7 @@ class CharacterFieldUploadService
             }
 
             $file = $this->variantUploadFile($files, (string)$key);
-            if ($this->hasUploadedFile($file)) {
+            if ($this->uploadsEnabled && $this->hasUploadedFile($file)) {
                 $uploaded = $this->imageUploadService->upload($file, $userId, []);
                 $image = $uploaded['filename'];
             }
@@ -166,6 +179,10 @@ class CharacterFieldUploadService
 
     private function processVariantFieldImages(int $userId, string|int $key, array &$values, array $post, array $files): void
     {
+        if (!$this->uploadsEnabled) {
+            return;
+        }
+
         foreach ((array)($files['variant_field_image_files']['name'][$key] ?? []) as $fieldId => $_unused) {
             $file = $this->nestedFile($files, 'variant_field_image_files', [$key, $fieldId]);
             if (!$this->hasUploadedFile($file)) {
@@ -178,6 +195,10 @@ class CharacterFieldUploadService
 
     private function processVariantFieldGalleries(int $userId, string|int $key, array &$values, array $post, array $files): void
     {
+        if (!$this->uploadsEnabled) {
+            return;
+        }
+
         foreach ((array)($files['variant_field_gallery_files']['name'][$key] ?? []) as $fieldId => $galleryFiles) {
             if (!is_array($galleryFiles)) {
                 continue;

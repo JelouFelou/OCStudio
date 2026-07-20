@@ -701,11 +701,12 @@ class CharacterController extends AppController
     {
         $this->requireLogin();
         $returnUrl = $this->safeReturnUrl($_GET['return_url'] ?? ($_SERVER['HTTP_REFERER'] ?? ''), '/dashboard');
-        $returnLabel = 'Wroc do dashboarda';
+        $locale = $this->currentLocale();
+        $returnLabel = LocaleService::translate('characters.back_to_dashboard', $locale);
         if (strpos($returnUrl, '/characters/') === 0) {
-            $returnLabel = 'Wroc do folderu';
+            $returnLabel = LocaleService::translate('characters.back_to_folder', $locale);
         } elseif ($returnUrl === '/characters') {
-            $returnLabel = 'Wroc do postaci';
+            $returnLabel = LocaleService::translate('characters.back_to_characters', $locale);
         }
 
         $character = $this->characterFromPublicOrLegacyId($_GET['id'] ?? '', (int)$_SESSION['user_id']);
@@ -1163,12 +1164,30 @@ class CharacterController extends AppController
          * Pomocnicza zamiana obiektu Character na tablicę dla JSON.
          * Dołącza statusName i statusColor jeśli postać ma przypisany status.
          */
-        $charToArray = function ($c) use ($statuses): array {
+        $statusLabel = function ($status): string {
+            if (!$status) {
+                return '';
+            }
+
+            return match ((int)$status->getId()) {
+                1 => LocaleService::translate('characters.status.todo', $this->currentLocale()),
+                2 => LocaleService::translate('characters.status.progress', $this->currentLocale()),
+                3 => LocaleService::translate('characters.status.done', $this->currentLocale()),
+                default => match (mb_strtolower(trim($status->getName()))) {
+                    'do zrobienia' => LocaleService::translate('characters.status.todo', $this->currentLocale()),
+                    'w trakcie' => LocaleService::translate('characters.status.progress', $this->currentLocale()),
+                    'gotowa' => LocaleService::translate('characters.status.done', $this->currentLocale()),
+                    default => $status->getName(),
+                },
+            };
+        };
+
+        $charToArray = function ($c) use ($statuses, $statusLabel): array {
             $statusName  = null;
             $statusColor = null;
             foreach ($statuses as $s) {
                 if ($s->getId() === $c->getIdStatus()) {
-                    $statusName  = $s->getName();
+                    $statusName  = $statusLabel($s);
                     $statusColor = $s->getColorHex();
                     break;
                 }

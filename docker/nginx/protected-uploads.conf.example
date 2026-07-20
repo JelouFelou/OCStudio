@@ -1,0 +1,21 @@
+# Future protected media setup.
+#
+# Current transition state:
+# - Existing files still live in /app/public/uploads for compatibility.
+# - Application-generated URLs use /media/{filename}, which checks PHP access rules.
+# - Direct /public/uploads access is denied in docker/nginx/nginx.conf.
+#
+# Later target:
+# 1. Move user uploads to /app/storage/uploads.
+# 2. Let PHP authorize access and respond with:
+#      X-Accel-Redirect: /protected-uploads/{filename}
+# 3. Enable this internal location in the server block:
+#
+# location /protected-uploads/ {
+#     internal;
+#     alias /app/storage/uploads/;
+# }
+#
+# location ^~ /public/uploads/ {
+#     return 404;
+# }

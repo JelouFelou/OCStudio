@@ -1,0 +1,3 @@
+ALTER TABLE templates
+    ADD COLUMN IF NOT EXISTS txt_export_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS txt_export_template TEXT NOT NULL DEFAULT '';

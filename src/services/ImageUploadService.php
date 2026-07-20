@@ -55,6 +55,10 @@ class ImageUploadService
             }
         }
 
+        if ($userId !== null) {
+            $this->assertUserStorageLimit($userId, (int)($file['size'] ?? 0));
+        }
+
         $uploadDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
         if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
             throw new RuntimeException('Nie udalo sie utworzyc katalogu uploads.', 500);
@@ -83,7 +87,7 @@ class ImageUploadService
         }
 
         return [
-            'url' => '/public/uploads/' . $filename,
+            'url' => '/media/' . rawurlencode($filename),
             'filename' => $filename,
             'imageId' => $asset['id'] ?? null,
             'imageAsset' => $asset,
@@ -107,6 +111,41 @@ class ImageUploadService
         fclose($handle);
 
         return [$filename, $destination];
+    }
+
+    private function assertUserStorageLimit(int $userId, int $incomingBytes): void
+    {
+        require_once __DIR__ . '/../repositories/ImageRepository.php';
+        require_once __DIR__ . '/../repositories/SocialFeatureSettingsRepository.php';
+        require_once __DIR__ . '/../repositories/UserRepository.php';
+
+        $user = (new UsersRepository())->getUserById($userId);
+        $accountType = $user ? $user->getAccountType() : 0;
+        $quotaMb = (new SocialFeatureSettingsRepository())->storageQuotaMbForAccountType($accountType);
+        $quotaBytes = $quotaMb * 1024 * 1024;
+        $usedBytes = (new ImageRepository())->getStorageBytes($userId);
+
+        if ($quotaBytes > 0 && $usedBytes + $incomingBytes > $quotaBytes) {
+            throw new InvalidArgumentException(
+                'Limit miejsca na zdjecia zostal przekroczony. Uzyte: '
+                . $this->formatBytes($usedBytes)
+                . ', limit: '
+                . $quotaMb
+                . ' MB.',
+                413
+            );
+        }
+    }
+
+    private function formatBytes(int $bytes): string
+    {
+        $megabytes = $bytes / 1024 / 1024;
+
+        if ($megabytes >= 10) {
+            return number_format($megabytes, 0, '.', '') . ' MB';
+        }
+
+        return number_format($megabytes, 1, '.', '') . ' MB';
     }
 
     private function uploadFileExists(string $filename): bool

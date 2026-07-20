@@ -39,4 +39,20 @@ class AdminActivityLogRepository extends Repository
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    public function latestAction(string $action): ?array
+    {
+        $stmt = $this->database->connect()->prepare(
+            'SELECT l.*, u.username, u.email
+             FROM admin_activity_logs l
+             LEFT JOIN users u ON u.id = l.admin_user_id
+             WHERE l.action = :action
+             ORDER BY l.created_at DESC, l.id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([':action' => $action]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row ?: null;
+    }
 }

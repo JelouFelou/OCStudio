@@ -313,6 +313,316 @@ class FilterRepository extends Repository
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
+    public function adminFilterRows(array $locales = ['pl', 'en']): array
+    {
+        $db = $this->database->connect();
+        $stmt = $db->query(
+            "SELECT
+                f.id,
+                f.slug,
+                f.name,
+                f.label,
+                f.is_active,
+                f.is_public,
+                COALESCE(string_agg(DISTINCT fa.alias || ' [' || fa.language || ']', ', '), '') AS aliases,
+                (
+                    (SELECT COUNT(*) FROM character_filters cf WHERE cf.id_filter = f.id) +
+                    (SELECT COUNT(*) FROM world_filters wf WHERE wf.id_filter = f.id) +
+                    (SELECT COUNT(*) FROM user_blocked_filters ubf WHERE ubf.id_filter = f.id) +
+                    (SELECT COUNT(*) FROM image_asset_filters iaf WHERE iaf.id_filter = f.id) +
+                    (SELECT COUNT(*) FROM content_filters cof WHERE cof.id_filter = f.id) +
+                    (SELECT COUNT(*) FROM publication_filters pf WHERE pf.id_filter = f.id)
+                ) AS usage_count
+             FROM filters f
+             LEFT JOIN filter_aliases fa ON fa.id_filter = f.id
+             GROUP BY f.id
+             ORDER BY f.label ASC, f.name ASC"
+        );
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $ids = array_map(fn($row) => (int)$row['id'], $rows);
+        if (empty($ids)) {
+            return $rows;
+        }
+
+        $aliasStmt = $db->query(
+            'SELECT id_filter, alias, language
+             FROM filter_aliases
+             WHERE id_filter IN (' . implode(',', $ids) . ')
+             ORDER BY language ASC, alias ASC'
+        );
+        $aliasesByFilter = [];
+        foreach ($aliasStmt->fetchAll(PDO::FETCH_ASSOC) as $aliasRow) {
+            $filterId = (int)$aliasRow['id_filter'];
+            $language = (string)$aliasRow['language'];
+            $aliasesByFilter[$filterId][$language][] = (string)$aliasRow['alias'];
+        }
+
+        foreach ($rows as &$row) {
+            $filterId = (int)$row['id'];
+            $row['aliasesByLanguage'] = [];
+            foreach ($locales as $locale) {
+                $row['aliasesByLanguage'][$locale] = $aliasesByFilter[$filterId][$locale] ?? [];
+            }
+        }
+
+        return $rows;
+    }
+
+    public function addAlias(int $filterId, string $alias, string $language): void
+    {
+        $filterId = max(0, $filterId);
+        $alias = trim($alias);
+        $language = in_array($language, ['pl', 'en'], true) ? $language : $this->detectLanguage($alias);
+
+        if ($filterId <= 0 || $alias === '') {
+            throw new InvalidArgumentException('Wybierz filtr i podaj alias.');
+        }
+
+        if (!$this->getFilterById($filterId)) {
+            throw new InvalidArgumentException('Filtr nie istnieje.');
+        }
+
+        $existing = $this->database->connect()->prepare(
+            'SELECT id_filter FROM filter_aliases
+             WHERE LOWER(alias) = LOWER(:alias) AND language = :language
+             LIMIT 1'
+        );
+        $existing->execute([':alias' => $alias, ':language' => $language]);
+        $existingFilterId = $existing->fetchColumn();
+        if ($existingFilterId !== false && (int)$existingFilterId !== $filterId) {
+            throw new InvalidArgumentException('Ten alias w tym jezyku nalezy juz do innego filtra. Najpierw scal filtry.');
+        }
+
+        $this->insertAlias($filterId, $alias, $language);
+    }
+
+    public function setAdminCell(int $filterId, string $column, string $value, array $locales = ['pl', 'en']): void
+    {
+        $filterId = max(0, $filterId);
+        $column = strtolower(trim($column));
+        $locales = array_values(array_filter(array_map(
+            fn($locale) => strtolower(trim((string)$locale)),
+            $locales
+        )));
+        $values = $this->parseAdminCellValues($value);
+
+        if ($filterId <= 0) {
+            throw new InvalidArgumentException('Wybierz filtr i podaj wartosc.');
+        }
+
+        if ($column === 'base') {
+            if (empty($values)) {
+                throw new InvalidArgumentException('Nazwa filtra jest wymagana.');
+            }
+            $this->renameFilter($filterId, $values[0]);
+            return;
+        }
+
+        if ($column === 'all') {
+            if (empty($values)) {
+                throw new InvalidArgumentException('Podaj wartosc dla wszystkich jezykow.');
+            }
+            foreach ($locales as $locale) {
+                foreach ($values as $alias) {
+                    $existingFilterId = $this->findFilterIdByTerm($alias);
+                    if ($existingFilterId > 0 && $existingFilterId !== $filterId) {
+                        $this->mergeFilters($existingFilterId, $filterId);
+                    }
+
+                    $this->addAlias($filterId, $alias, $locale);
+                }
+            }
+            return;
+        }
+
+        if (!in_array($column, $locales, true)) {
+            throw new InvalidArgumentException('Nieznany jezyk filtra.');
+        }
+
+        foreach ($values as $alias) {
+            $existingFilterId = $this->findFilterIdByTerm($alias);
+            if ($existingFilterId > 0 && $existingFilterId !== $filterId) {
+                $this->mergeFilters($existingFilterId, $filterId);
+            }
+        }
+
+        $this->replaceAliasesForLanguage($filterId, $column, $values);
+    }
+
+    private function parseAdminCellValues(string $value): array
+    {
+        $values = [];
+        $seen = [];
+        foreach (preg_split('/[,;]/', $value) ?: [] as $token) {
+            $alias = trim((string)$token);
+            $key = mb_strtolower($alias);
+            if ($alias === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $values[] = $alias;
+        }
+
+        return $values;
+    }
+
+    private function replaceAliasesForLanguage(int $filterId, string $language, array $aliases): void
+    {
+        $db = $this->database->connect();
+        $db->beginTransaction();
+        try {
+            $exists = $db->prepare('SELECT COUNT(*) FROM filters WHERE id = :id');
+            $exists->execute([':id' => $filterId]);
+            if ((int)$exists->fetchColumn() !== 1) {
+                throw new InvalidArgumentException('Filtr nie istnieje.');
+            }
+
+            $conflict = $db->prepare(
+                'SELECT id_filter FROM filter_aliases
+                 WHERE LOWER(alias) = LOWER(:alias) AND language = :language
+                 LIMIT 1'
+            );
+            foreach ($aliases as $alias) {
+                $conflict->execute([':alias' => $alias, ':language' => $language]);
+                $existingFilterId = $conflict->fetchColumn();
+                if ($existingFilterId !== false && (int)$existingFilterId !== $filterId) {
+                    throw new InvalidArgumentException('Ten alias w tym jezyku nalezy juz do innego filtra. Najpierw scal filtry.');
+                }
+            }
+
+            $delete = $db->prepare('DELETE FROM filter_aliases WHERE id_filter = :filterId AND language = :language');
+            $delete->execute([':filterId' => $filterId, ':language' => $language]);
+
+            $insert = $db->prepare(
+                'INSERT INTO filter_aliases (id_filter, alias, language)
+                 VALUES (:filterId, :alias, :language)
+                 ON CONFLICT (alias, language) DO NOTHING'
+            );
+            foreach ($aliases as $alias) {
+                $insert->execute([':filterId' => $filterId, ':alias' => $alias, ':language' => $language]);
+            }
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    private function renameFilter(int $filterId, string $label): void
+    {
+        $label = trim($label);
+        if ($label === '') {
+            throw new InvalidArgumentException('Nazwa filtra jest wymagana.');
+        }
+
+        $existingFilterId = $this->findFilterIdByTerm($label);
+        if ($existingFilterId > 0 && $existingFilterId !== $filterId) {
+            $this->mergeFilters($existingFilterId, $filterId);
+        }
+
+        $slug = $this->slugify($label);
+        $stmt = $this->database->connect()->prepare(
+            'UPDATE filters
+             SET label = :label,
+                 name = CASE WHEN id_user IS NOT NULL THEN :slug ELSE name END
+             WHERE id = :id'
+        );
+        $stmt->execute([':label' => $label, ':slug' => $slug, ':id' => $filterId]);
+        $this->insertAlias($filterId, $label, $this->detectLanguage($label));
+    }
+
+    private function findFilterIdByTerm(string $term): int
+    {
+        $term = mb_strtolower(trim($term));
+        if ($term === '') {
+            return 0;
+        }
+
+        $stmt = $this->database->connect()->prepare(
+            'SELECT f.id
+             FROM filters f
+             LEFT JOIN filter_aliases fa ON fa.id_filter = f.id
+             WHERE LOWER(f.slug) = :term
+                OR LOWER(f.name) = :term
+                OR LOWER(f.label) = :term
+                OR LOWER(fa.alias) = :term
+             ORDER BY f.id ASC
+             LIMIT 1'
+        );
+        $stmt->execute([':term' => $term]);
+
+        return (int)($stmt->fetchColumn() ?: 0);
+    }
+
+    public function mergeFilters(int $sourceFilterId, int $targetFilterId): void
+    {
+        $sourceFilterId = max(0, $sourceFilterId);
+        $targetFilterId = max(0, $targetFilterId);
+        if ($sourceFilterId <= 0 || $targetFilterId <= 0 || $sourceFilterId === $targetFilterId) {
+            throw new InvalidArgumentException('Wybierz dwa rozne filtry do scalenia.');
+        }
+
+        $db = $this->database->connect();
+        try {
+            $db->beginTransaction();
+
+            $exists = $db->prepare('SELECT COUNT(*) FROM filters WHERE id IN (:source, :target)');
+            $exists->execute([':source' => $sourceFilterId, ':target' => $targetFilterId]);
+            if ((int)$exists->fetchColumn() !== 2) {
+                throw new InvalidArgumentException('Filtr zrodlowy albo docelowy nie istnieje.');
+            }
+
+            $this->mergeFilterTable($db, 'character_filters', ['id_character', 'is_inherited'], $sourceFilterId, $targetFilterId);
+            $this->mergeFilterTable($db, 'world_filters', ['id_world'], $sourceFilterId, $targetFilterId);
+            $this->mergeFilterTable($db, 'user_blocked_filters', ['id_user'], $sourceFilterId, $targetFilterId);
+            $this->mergeFilterTable($db, 'image_asset_filters', ['id_image'], $sourceFilterId, $targetFilterId);
+            $this->mergeFilterTable($db, 'content_filters', ['object_type', 'object_id'], $sourceFilterId, $targetFilterId);
+            $this->mergeFilterTable($db, 'publication_filters', ['revision_id', 'label_snapshot'], $sourceFilterId, $targetFilterId);
+
+            $aliases = $db->prepare(
+                'INSERT INTO filter_aliases (id_filter, alias, language)
+                 SELECT :target, alias, language
+                 FROM filter_aliases
+                 WHERE id_filter = :source
+                 ON CONFLICT (alias, language) DO NOTHING'
+            );
+            $aliases->execute([':target' => $targetFilterId, ':source' => $sourceFilterId]);
+            $db->prepare('DELETE FROM filter_aliases WHERE id_filter = :source')->execute([':source' => $sourceFilterId]);
+            $db->prepare('DELETE FROM filters WHERE id = :source')->execute([':source' => $sourceFilterId]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    private function mergeFilterTable(PDO $db, string $table, array $copyColumns, int $sourceFilterId, int $targetFilterId): void
+    {
+        $columns = array_merge($copyColumns, ['id_filter']);
+        $columnSql = implode(', ', $columns);
+        $selectColumns = implode(', ', array_map(fn($column) => $column === 'id_filter' ? ':target' : $column, $columns));
+
+        $insert = $db->prepare(
+            "INSERT INTO {$table} ({$columnSql})
+             SELECT {$selectColumns}
+             FROM {$table}
+             WHERE id_filter = :source
+             ON CONFLICT DO NOTHING"
+        );
+        $insert->execute([':target' => $targetFilterId, ':source' => $sourceFilterId]);
+
+        $delete = $db->prepare("DELETE FROM {$table} WHERE id_filter = :source");
+        $delete->execute([':source' => $sourceFilterId]);
+    }
+
     private function resolveTag(string $tag): array
     {
         $label = trim($tag);
@@ -367,7 +677,7 @@ class FilterRepository extends Repository
         $stmt = $this->database->connect()->prepare(
             'INSERT INTO filter_aliases (id_filter, alias, language)
              VALUES (:filterId, :alias, :language)
-             ON CONFLICT (alias) DO NOTHING'
+             ON CONFLICT (alias, language) DO NOTHING'
         );
         $stmt->execute([':filterId' => $filterId, ':alias' => $alias, ':language' => $language]);
     }
