@@ -1,4 +1,20 @@
+<?php
+$adminShouldTranslate = ($locale ?? 'pl') === 'en';
+if ($adminShouldTranslate) {
+    ob_start();
+}
+?>
 <div class="content-view">
+    <?php
+        $backupReminder = is_array($backupReminder ?? null) ? $backupReminder : [
+            'enabled' => true,
+            'intervalDays' => 7,
+            'lastAt' => '',
+            'nextDueAt' => '',
+            'isDue' => false,
+            'lastFilename' => '',
+        ];
+    ?>
     <section class="admin-header">
         <div>
             <h1>Admin</h1>
@@ -7,7 +23,7 @@
     </section>
 
     <section class="admin-backup-panel">
-        <div>
+        <div class="admin-backup-intro">
             <h2>Backup bazy danych</h2>
             <p>
                 Uzywaj tej funkcji wylacznie jako zabezpieczenia danych i awaryjnej kopii systemu.
@@ -26,27 +42,540 @@
             <?php elseif (($_GET['import'] ?? '') === 'error'): ?>
                 <p class="admin-backup-message error">Nie udalo sie zaimportowac backupu. Sprawdz logi aplikacji.</p>
             <?php endif; ?>
+            <?php if (($_GET['backupReminder'] ?? '') === '1'): ?>
+                <p class="admin-backup-message success">Ustawienia przypomnien backupu zapisane.</p>
+            <?php endif; ?>
+            <?php if (empty($backupReminder['enabled'])): ?>
+                <p class="admin-backup-message success">Przypomnienia backupu sa wylaczone.</p>
+            <?php elseif (!empty($backupReminder['isDue'])): ?>
+                <p class="admin-backup-message error">
+                    Warto wykonac backup. <?= empty($backupReminder['lastAt']) ? 'Nie zapisano jeszcze zadnej kopii.' : 'Ostatnia kopia: ' . htmlspecialchars((string)$backupReminder['lastAt'], ENT_QUOTES, 'UTF-8') . '.' ?>
+                </p>
+            <?php else: ?>
+                <p class="admin-backup-message success">
+                    <?= empty($backupReminder['lastAt'])
+                        ? 'Przypomnienie backupu jest aktywne, ale nie ma jeszcze zapisanej kopii.'
+                        : 'Ostatnia kopia: ' . htmlspecialchars((string)$backupReminder['lastAt'], ENT_QUOTES, 'UTF-8') . '. Nastepne przypomnienie: ' . htmlspecialchars((string)$backupReminder['nextDueAt'], ENT_QUOTES, 'UTF-8') . '.' ?>
+                </p>
+            <?php endif; ?>
         </div>
-        <div class="admin-backup-actions">
-            <form method="POST" action="/admin/backup">
+        <div class="admin-backup-actions" aria-label="Akcje backupu">
+            <article class="admin-backup-action-card">
+                <div>
+                    <h3>Zapis kopii</h3>
+                    <p>Pobierz aktualny zrzut bazy danych do pliku.</p>
+                </div>
+                <form method="POST" action="/admin/backup">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                    <button class="btn-secondary" type="submit">
+                        <i class="fa-solid fa-database"></i>
+                        Zapisz kopie
+                    </button>
+                </form>
+            </article>
+            <article class="admin-backup-action-card is-danger">
+                <div>
+                    <h3>Odtwarzanie</h3>
+                    <p>Import globalny nadpisuje dane systemu. Uzywaj tylko awaryjnie.</p>
+                </div>
+                <form method="POST" action="/admin/import" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                    <label>
+                        Plik backupu
+                        <input type="file" name="database_import" accept=".sql,.zip,application/sql,application/zip">
+                    </label>
+                    <button class="btn-secondary danger" type="submit">
+                        <i class="fa-solid fa-file-import"></i>
+                        Odtworz globalnie
+                    </button>
+                </form>
+            </article>
+            <article class="admin-backup-action-card">
+                <div>
+                    <h3>Przypomnienia</h3>
+                    <p>Panel admina podpowie, kiedy warto wykonac kolejna kopie.</p>
+                </div>
+                <form method="POST" action="/admin/backup-reminder" class="admin-backup-reminder-form">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                    <label class="admin-inline-check">
+                        <input type="checkbox" name="backup_reminder_enabled" value="1" <?= !empty($backupReminder['enabled']) ? 'checked' : '' ?>>
+                        Przypominaj o backupie
+                    </label>
+                    <label>
+                        Co ile dni
+                        <input type="number" name="backup_reminder_interval_days" min="1" max="365" value="<?= (int)($backupReminder['intervalDays'] ?? 7) ?>">
+                    </label>
+                    <button class="btn-secondary" type="submit">
+                        <i class="fa-solid fa-bell"></i>
+                        Zapisz
+                    </button>
+                </form>
+            </article>
+        </div>
+    </section>
+
+    <section class="admin-social-panel">
+        <div>
+            <h2>Funkcje spolecznosciowe</h2>
+            <p>
+                Wylaczenie funkcji blokuje nowe akcje, ale nie usuwa istniejacych danych. Uzywaj tego do szybkiego
+                ograniczania hejtu, spamu albo funkcji, ktore wymagaja chwilowego zatrzymania.
+            </p>
+            <?php if (($_GET['social'] ?? '') === '1'): ?>
+                <p class="admin-backup-message success">Ustawienia spolecznosci zapisane.</p>
+            <?php elseif (($_GET['social'] ?? '') === 'password'): ?>
+                <p class="admin-backup-message error">Podaj poprawne haslo administratora, aby zmienic tryb logowania.</p>
+            <?php elseif (($_GET['social'] ?? '') === 'offline_user'): ?>
+                <p class="admin-backup-message error">Wybierz istniejace konto administratora dla trybu offline.</p>
+            <?php endif; ?>
+        </div>
+        <?php $socialFeatureSettings = $socialFeatureSettings ?? []; ?>
+        <?php $adminUserOptions = $adminUserOptions ?? []; ?>
+        <?php
+            $loginFeature = $socialFeatureSettings['auth.login.enabled'] ?? ['enabled' => true];
+            $loginEnabled = !empty($loginFeature['enabled']);
+            $offlineForcedFeatureKeys = [
+                'community.enabled',
+                'publications.enabled',
+                'comments.enabled',
+                'reactions.enabled',
+                'follows.enabled',
+                'messages.enabled',
+                'reports.enabled',
+                'copying.enabled',
+                'public_search.enabled',
+            ];
+        ?>
+        <form method="POST" action="/admin/social-features" class="admin-social-form">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="enabled_keys[]" value="auth.offline_user_id">
+            <?php foreach (['backup.reminder.enabled', 'backup.reminder_interval_days'] as $backupFeatureKey): ?>
+                <?php if (!empty($socialFeatureSettings[$backupFeatureKey]['enabled'])): ?>
+                    <input type="hidden" name="enabled_keys[]" value="<?= htmlspecialchars($backupFeatureKey, ENT_QUOTES, 'UTF-8') ?>">
+                <?php endif; ?>
+                <input type="hidden"
+                       name="value[<?= htmlspecialchars(str_replace('.', '__', $backupFeatureKey), ENT_QUOTES, 'UTF-8') ?>]"
+                       value="<?= htmlspecialchars((string)($socialFeatureSettings[$backupFeatureKey]['value'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+            <?php endforeach; ?>
+            <div class="admin-social-grid">
+                <?php foreach ($socialFeatureSettings as $feature): ?>
+                    <?php if (in_array(($feature['key'] ?? ''), ['auth.offline_user_id', 'auth.login.enabled', 'backup.reminder.enabled', 'backup.reminder_interval_days'], true)) { continue; } ?>
+                    <?php
+                        $featureKey = (string)($feature['key'] ?? '');
+                        $featureValueKey = str_replace('.', '__', $featureKey);
+                        $forcedOffByOffline = !$loginEnabled && in_array($featureKey, $offlineForcedFeatureKeys, true);
+                    ?>
+                    <label class="admin-social-toggle <?= $forcedOffByOffline ? 'is-forced-off' : '' ?>">
+                        <?php if ($forcedOffByOffline): ?>
+                            <input type="hidden" name="enabled_keys[]" value="<?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?>">
+                        <?php endif; ?>
+                        <input
+                            type="checkbox"
+                            name="enabled_keys[]"
+                            value="<?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?>"
+                            <?= !$forcedOffByOffline && !empty($feature['enabled']) ? 'checked' : '' ?>
+                            <?= $forcedOffByOffline ? 'disabled' : '' ?>
+                        >
+                        <span>
+                            <strong><?= htmlspecialchars($feature['label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                            <small><?= htmlspecialchars($feature['description'], ENT_QUOTES, 'UTF-8') ?></small>
+                            <em><?= $forcedOffByOffline ? 'Wymuszone przez tryb offline' : htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?></em>
+                        </span>
+                        <?php if (($feature['type'] ?? '') === 'integer'): ?>
+                            <input
+                                type="number"
+                                name="value[<?= htmlspecialchars($featureValueKey, ENT_QUOTES, 'UTF-8') ?>]"
+                                min="0"
+                                max="8760"
+                                value="<?= htmlspecialchars((string)($feature['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>"
+                            >
+                        <?php endif; ?>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <div class="admin-social-offline">
+                <div class="admin-offline-status <?= !$loginEnabled ? 'is-active' : '' ?>">
+                    <strong><?= !$loginEnabled ? 'Tryb offline jest wlaczony' : 'Tryb online jest wlaczony' ?></strong>
+                    <span>
+                        <?= !$loginEnabled
+                            ? 'Strona automatycznie uzywa wskazanego konta. Spolecznosc, profil, powiadomienia, wylogowanie i chat sa ukryte.'
+                            : 'Klasyczne logowanie jest aktywne. Wylacz je, aby uruchomic tryb offline na wskazanym koncie.' ?>
+                    </span>
+                </div>
+                <label class="admin-social-toggle admin-login-toggle">
+                    <input
+                        type="checkbox"
+                        name="enabled_keys[]"
+                        value="auth.login.enabled"
+                        <?= $loginEnabled ? 'checked' : '' ?>
+                    >
+                    <span>
+                        <strong><?= $loginEnabled ? 'Logowanie wlaczone' : 'Anuluj tryb offline i wlacz logowanie' ?></strong>
+                        <small><?= $loginEnabled ? 'Odznaczenie wlaczy tryb offline po podaniu konta i hasla.' : 'Zaznaczenie przywraca normalny tryb online po potwierdzeniu haslem.' ?></small>
+                        <em>auth.login.enabled</em>
+                    </span>
+                </label>
+                <label>
+                    Konto trybu offline
+                    <select name="offline_user_id">
+                        <option value="0">Nie wybrano</option>
+                        <?php foreach ($adminUserOptions as $option): ?>
+                            <?php
+                                $optionId = (int)($option['id'] ?? 0);
+                                $optionLabel = trim((string)($option['username'] ?? ''));
+                                if ($optionLabel === '') {
+                                    $optionLabel = trim((string)($option['firstname'] ?? '') . ' ' . (string)($option['lastname'] ?? ''));
+                                }
+                                $optionLabel = $optionLabel !== '' ? $optionLabel : (string)($option['email'] ?? ('User #' . $optionId));
+                                if ((int)($option['account_type'] ?? 0) === 1) {
+                                    $optionLabel .= ' (Admin)';
+                                }
+                            ?>
+                            <option value="<?= $optionId ?>" <?= (int)($offlineUserId ?? 0) === $optionId ? 'selected' : '' ?>>
+                                #<?= $optionId ?> - <?= htmlspecialchars($optionLabel, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small>Uzywane automatycznie, gdy przelacznik "Logowanie" jest wylaczony.</small>
+                </label>
+                <label>
+                    Potwierdz haslem admina
+                    <input type="password" name="admin_password_confirm" autocomplete="current-password" placeholder="Wymagane przy zmianie logowania">
+                    <small>Chroni przed przypadkowym zablokowaniem dostepu do strony.</small>
+                </label>
+            </div>
+            <button class="btn-primary" type="submit">Zapisz funkcje strony</button>
+        </form>
+    </section>
+
+    <section class="admin-account-types-panel">
+        <div>
+            <h2>Typy kont i limity</h2>
+            <p>
+                Dodawaj typy kont, ustawiaj limity MB i wylaczaj konkretne funkcje wybranym typom.
+                Nowy typ konta od razu pojawia sie przy przypisywaniu uzytkownikow.
+            </p>
+            <?php if (($_GET['accountTypes'] ?? '') === 'created'): ?>
+                <p class="admin-backup-message success">Typ konta dodany.</p>
+            <?php elseif (($_GET['accountTypes'] ?? '') === 'updated'): ?>
+                <p class="admin-backup-message success">Typ konta zapisany.</p>
+            <?php elseif (($_GET['accountTypes'] ?? '') === '1'): ?>
+                <p class="admin-backup-message success">Limity miejsca zapisane.</p>
+            <?php elseif (($_GET['accountTypes'] ?? '') === 'error'): ?>
+                <p class="admin-backup-message error">Nie udalo sie zapisac typu konta. Sprawdz nazwe, limit i ochrone ostatniego admina.</p>
+            <?php endif; ?>
+        </div>
+        <?php
+            $accountTypes = is_array($accountTypes ?? null) ? $accountTypes : [];
+            $accountTypeFeatureDefinitions = is_array($accountTypeFeatureDefinitions ?? null) ? $accountTypeFeatureDefinitions : [];
+        ?>
+        <div class="admin-account-types-workspace">
+            <form method="POST" action="/admin/account-types/create" class="admin-account-type-create">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-                <button class="btn-secondary" type="submit">
-                    <i class="fa-solid fa-database"></i>
-                    Zapisz kopie bazy
-                </button>
+                <h3>Dodaj typ konta</h3>
+                <div class="admin-account-type-fields">
+                    <label>
+                        Nazwa typu
+                        <input type="text" name="name" maxlength="80" placeholder="np. Premium" required>
+                    </label>
+                    <label>
+                        Limit zdjec w MB
+                        <input type="number" name="storage_quota_mb" min="1" max="1048576" step="1" value="500">
+                    </label>
+                    <label class="admin-account-type-check">
+                        <input type="checkbox" name="is_admin" value="1">
+                        Typ z dostepem admina
+                    </label>
+                </div>
+                <div class="admin-account-type-features">
+                    <?php foreach ($accountTypeFeatureDefinitions as $featureKey => $definition): ?>
+                        <label>
+                            <input type="checkbox" name="features[]" value="<?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?>" checked>
+                            <span>
+                                <strong><?= htmlspecialchars($definition['label'] ?? $featureKey, ENT_QUOTES, 'UTF-8') ?></strong>
+                                <small><?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?></small>
+                            </span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button class="btn-primary" type="submit">Dodaj typ konta</button>
             </form>
-            <form method="POST" action="/admin/import" enctype="multipart/form-data">
+
+            <div class="admin-account-type-list">
+                <?php foreach ($accountTypes as $type): ?>
+                    <?php
+                        $typeId = (int)($type['id'] ?? 0);
+                        $typePermissions = is_array($type['permissions'] ?? null) ? $type['permissions'] : [];
+                    ?>
+                    <form method="POST" action="/admin/account-types/update" class="admin-account-type-card">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="account_type_id" value="<?= $typeId ?>">
+                        <div class="admin-account-type-head">
+                            <label>
+                                Typ konta
+                                <input type="text" name="name" maxlength="80" value="<?= htmlspecialchars((string)($type['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required>
+                            </label>
+                            <label>
+                                MB na zdjecia
+                                <input type="number" name="storage_quota_mb" min="1" max="1048576" step="1" value="<?= (int)($type['storageQuotaMb'] ?? 500) ?>">
+                            </label>
+                            <label class="admin-account-type-check">
+                                <input type="checkbox" name="is_admin" value="1" <?= !empty($type['isAdmin']) ? 'checked' : '' ?>>
+                                Admin
+                            </label>
+                            <label class="admin-account-type-check">
+                                <input type="checkbox" name="is_active" value="1" <?= !empty($type['isActive']) ? 'checked' : '' ?> <?= !empty($type['isBuiltin']) ? 'disabled' : '' ?>>
+                                Aktywny
+                            </label>
+                            <?php if (!empty($type['isBuiltin'])): ?>
+                                <input type="hidden" name="is_active" value="1">
+                            <?php endif; ?>
+                        </div>
+                        <div class="admin-account-type-features">
+                            <?php foreach ($accountTypeFeatureDefinitions as $featureKey => $definition): ?>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        name="features[]"
+                                        value="<?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?>"
+                                        <?= !array_key_exists($featureKey, $typePermissions) || !empty($typePermissions[$featureKey]) ? 'checked' : '' ?>
+                                    >
+                                    <span>
+                                        <strong><?= htmlspecialchars($definition['label'] ?? $featureKey, ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <small><?= htmlspecialchars($featureKey, ENT_QUOTES, 'UTF-8') ?></small>
+                                    </span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <button class="btn-secondary" type="submit">Zapisz typ</button>
+                    </form>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-filter-panel">
+        <div>
+            <h2>Filtry i aliasy</h2>
+            <p>
+                Alias oznacza to samo znaczenie w innym jezyku albo zapisie. Scalanie przenosi uzycia filtra zrodlowego
+                do filtra docelowego, np. gdy `facet` i `male` powinny byc jedna rodzina.
+            </p>
+            <?php if (($_GET['filters'] ?? '') === 'alias'): ?>
+                <p class="admin-backup-message success">Alias filtra zapisany.</p>
+            <?php elseif (($_GET['filters'] ?? '') === 'merge'): ?>
+                <p class="admin-backup-message success">Filtry zostaly scalone.</p>
+            <?php elseif (($_GET['filters'] ?? '') === 'error'): ?>
+                <p class="admin-backup-message error">Nie udalo sie zapisac filtrow. Sprawdz, czy alias nie nalezy juz do innego filtra.</p>
+            <?php endif; ?>
+        </div>
+
+        <?php
+            $adminFilters = is_array($adminFilters ?? null) ? $adminFilters : [];
+            $filterLocales = array_values($filterLocales ?? ['pl', 'en']);
+            $filterGridColumns = 'minmax(220px, 1fr) ' . str_repeat('minmax(180px, 1fr) ', count($filterLocales)) . '90px';
+            $renderFilterCell = static function (int $filterId, string $column, string $value, array $chips = []): void {
+                $chips = array_values(array_unique(array_filter(array_map('strval', $chips))));
+                ?>
+                <div class="admin-filter-cell"
+                     data-filter-drop-cell
+                     data-filter-id="<?= $filterId ?>"
+                     data-column="<?= htmlspecialchars($column, ENT_QUOTES, 'UTF-8') ?>">
+                    <div class="admin-filter-chip-row">
+                        <?php foreach ($chips as $chip): ?>
+                            <span class="admin-filter-chip"
+                                  draggable="true"
+                                  data-filter-term="<?= htmlspecialchars($chip, ENT_QUOTES, 'UTF-8') ?>">
+                                <?= htmlspecialchars($chip, ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                        <?php endforeach; ?>
+                    </div>
+                    <input
+                        type="text"
+                        value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>"
+                        data-filter-cell-input
+                        data-filter-id="<?= $filterId ?>"
+                        data-column="<?= htmlspecialchars($column, ENT_QUOTES, 'UTF-8') ?>"
+                        placeholder="<?= $column === 'base' ? 'nazwa bazowa' : 'aliasy po przecinku' ?>">
+                </div>
+                <?php
+            };
+        ?>
+
+        <div class="admin-filter-matrix"
+             data-admin-filter-table
+             data-csrf-token="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>"
+             style="--admin-filter-grid: <?= htmlspecialchars($filterGridColumns, ENT_QUOTES, 'UTF-8') ?>;">
+            <div class="admin-filter-head">Nieokreslone</div>
+            <?php foreach ($filterLocales as $language): ?>
+                <div class="admin-filter-head"><?= htmlspecialchars(strtoupper((string)$language), ENT_QUOTES, 'UTF-8') ?></div>
+            <?php endforeach; ?>
+            <div class="admin-filter-head">Uzycia</div>
+
+            <?php foreach ($adminFilters as $filter): ?>
+                <?php
+                    $filterId = (int)$filter['id'];
+                    $baseValue = (string)($filter['label'] ?? $filter['name'] ?? '');
+                    $baseValueLower = mb_strtolower($baseValue);
+                    $sameAllLanguages = $baseValue !== '';
+                    foreach ($filterLocales as $languageForCheck) {
+                        $languageAliases = array_map('mb_strtolower', $filter['aliasesByLanguage'][$languageForCheck] ?? []);
+                        if (!in_array($baseValueLower, $languageAliases, true)) {
+                            $sameAllLanguages = false;
+                            break;
+                        }
+                    }
+                ?>
+                <div class="admin-filter-row-meta">
+                    <?php $renderFilterCell($filterId, 'base', $baseValue, [$baseValue]); ?>
+                    <label class="admin-filter-same-all">
+                        <input
+                            type="checkbox"
+                            data-filter-all-locales
+                            data-filter-id="<?= $filterId ?>"
+                            data-value="<?= htmlspecialchars($baseValue, ENT_QUOTES, 'UTF-8') ?>"
+                            <?= $sameAllLanguages ? 'checked' : '' ?>
+                        >
+                        Ten sam we wszystkich jezykach
+                    </label>
+                    <small>#<?= $filterId ?> · slug: <?= htmlspecialchars((string)$filter['slug'], ENT_QUOTES, 'UTF-8') ?></small>
+                </div>
+                <?php foreach ($filterLocales as $language): ?>
+                    <?php
+                        $aliases = $filter['aliasesByLanguage'][$language] ?? [];
+                        $aliasValue = implode(', ', $aliases);
+                    ?>
+                    <?php $renderFilterCell($filterId, (string)$language, $aliasValue, $aliases); ?>
+                <?php endforeach; ?>
+                <div class="admin-filter-usage"><?= (int)$filter['usage_count'] ?></div>
+            <?php endforeach; ?>
+        </div>
+
+        <?php $adminFilters = is_array($adminFilters ?? null) ? $adminFilters : []; ?>
+        <div class="admin-filter-actions">
+            <form method="POST" action="/admin/filters/alias">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                 <label>
-                    Globalny import backupu
-                    <input type="file" name="database_import" accept=".sql,.zip,application/sql,application/zip">
+                    Filtr
+                    <select name="filter_id" required>
+                        <?php foreach ($adminFilters as $filter): ?>
+                            <option value="<?= (int)$filter['id'] ?>">
+                                #<?= (int)$filter['id'] ?> - <?= htmlspecialchars((string)$filter['label'], ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </label>
-                <button class="btn-secondary danger" type="submit">
-                    <i class="fa-solid fa-file-import"></i>
-                    Odtworz globalnie
-                </button>
+                <label>
+                    Alias / tlumaczenie
+                    <input type="text" name="alias" maxlength="100" placeholder="np. male, mezczyzna" required>
+                </label>
+                <label>
+                    Jezyk
+                    <select name="language">
+                        <option value="pl">PL</option>
+                        <option value="en">EN</option>
+                    </select>
+                </label>
+                <button class="btn-secondary" type="submit">Dodaj alias</button>
+            </form>
+
+            <form method="POST" action="/admin/filters/merge">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                <label>
+                    Filtr zrodlowy
+                    <select name="source_filter_id" required>
+                        <?php foreach ($adminFilters as $filter): ?>
+                            <option value="<?= (int)$filter['id'] ?>">
+                                #<?= (int)$filter['id'] ?> - <?= htmlspecialchars((string)$filter['label'], ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <label>
+                    Filtr docelowy
+                    <select name="target_filter_id" required>
+                        <?php foreach ($adminFilters as $filter): ?>
+                            <option value="<?= (int)$filter['id'] ?>">
+                                #<?= (int)$filter['id'] ?> - <?= htmlspecialchars((string)$filter['label'], ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <button class="btn-secondary danger" type="submit">Scal filtry</button>
             </form>
         </div>
+
+        <div class="admin-filter-table">
+            <?php foreach ($adminFilters as $filter): ?>
+                <article class="admin-filter-row">
+                    <div>
+                        <strong><?= htmlspecialchars((string)$filter['label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        <small>
+                            slug: <?= htmlspecialchars((string)$filter['slug'], ENT_QUOTES, 'UTF-8') ?>
+                            · uzycia: <?= (int)$filter['usage_count'] ?>
+                        </small>
+                    </div>
+                    <span><?= htmlspecialchars((string)($filter['aliases'] ?: 'Brak aliasow'), ENT_QUOTES, 'UTF-8') ?></span>
+                </article>
+            <?php endforeach; ?>
+        </div>
+    </section>
+
+    <section class="admin-reports-panel">
+        <div class="admin-reports-header">
+            <div>
+                <h2>Zgloszenia publikacji</h2>
+                <p>Otwarta kolejka tresci wymagajacych decyzji moderacji.</p>
+                <?php if (($_GET['moderation'] ?? '') === '1'): ?>
+                    <p class="admin-backup-message success">Akcja moderacji zapisana.</p>
+                <?php elseif (($_GET['moderation'] ?? '') === 'error'): ?>
+                    <p class="admin-backup-message error">Nie udalo sie zapisac akcji moderacji.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <?php if (!empty($adminPublicationReports)): ?>
+            <div class="admin-reports-list">
+                <?php foreach ($adminPublicationReports as $report): ?>
+                    <article class="admin-report-card">
+                        <div class="admin-report-main">
+                            <div>
+                                <h3><?= htmlspecialchars($report['title'] ?? 'Publikacja', ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p><?= htmlspecialchars($report['description'] ?? '', ENT_QUOTES, 'UTF-8') ?></p>
+                                <small>
+                                    Autor: <?= htmlspecialchars($report['owner'] ?? 'Uzytkownik', ENT_QUOTES, 'UTF-8') ?>
+                                    · <?= (int)($report['reportCount'] ?? 0) ?> zgl.
+                                    · <?= htmlspecialchars($report['reasons'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                </small>
+                            </div>
+                            <div class="admin-report-badges">
+                                <span><?= htmlspecialchars($report['ageRating'] ?? 'general', ENT_QUOTES, 'UTF-8') ?></span>
+                                <span><?= htmlspecialchars($report['moderationState'] ?? 'visible', ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                        </div>
+                        <div class="admin-report-actions">
+                            <a class="btn-secondary" href="/p/<?= htmlspecialchars($report['publicId'] ?? '', ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener">Podglad</a>
+                            <?php foreach ([
+                                'mark_adult' => 'Oznacz +18',
+                                'mark_general' => 'Odkryj +18',
+                                'hide' => 'Ukryj',
+                                'show' => 'Pokaz',
+                                'resolve_reports' => 'Zamknij zgloszenia',
+                            ] as $action => $label): ?>
+                                <form method="POST" action="/admin/publications/moderate">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="publication_id" value="<?= (int)($report['publicationId'] ?? 0) ?>">
+                                    <input type="hidden" name="moderation_action" value="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8') ?>">
+                                    <button class="btn-secondary <?= $action === 'hide' ? 'danger' : '' ?>" type="submit"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></button>
+                                </form>
+                            <?php endforeach; ?>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p class="admin-empty">Brak otwartych zgloszen.</p>
+        <?php endif; ?>
     </section>
 
     <section class="admin-effects-panel">
@@ -202,24 +731,10 @@
         });
     </script>
 
-    <form class="admin-search" method="GET" action="/admin">
-        <input
-            type="search"
-            name="q"
-            value="<?= htmlspecialchars($adminSearch ?? '', ENT_QUOTES, 'UTF-8') ?>"
-            placeholder="Szukaj po ID, emailu lub nazwie"
-            maxlength="254"
-        >
-        <button class="btn-secondary" type="submit">Szukaj</button>
-        <?php if (!empty($adminSearch)): ?>
-            <a class="btn-secondary" href="/admin">Wyczysc</a>
-        <?php endif; ?>
-    </form>
-
     <section class="admin-activity-panel">
         <div class="admin-activity-header">
-            <h2>Ostatnie działania admina</h2>
-            <span>Audyt prywatności i bezpieczeństwa</span>
+            <h2>Ostatnie dzialania admina</h2>
+            <span>Audyt prywatnosci i bezpieczenstwa</span>
         </div>
         <?php if (!empty($adminActivityLogs)): ?>
             <div class="admin-activity-list">
@@ -240,9 +755,23 @@
                 <?php endforeach; ?>
             </div>
         <?php else: ?>
-            <p class="admin-empty">Brak zapisanych działań.</p>
+            <p class="admin-empty">Brak zapisanych dzialan.</p>
         <?php endif; ?>
     </section>
+
+    <form class="admin-search" method="GET" action="/admin" aria-label="Szukaj uzytkownikow">
+        <input
+            type="search"
+            name="q"
+            value="<?= htmlspecialchars($adminSearch ?? '', ENT_QUOTES, 'UTF-8') ?>"
+            placeholder="Szukaj po ID, emailu lub nazwie"
+            maxlength="254"
+        >
+        <button class="btn-secondary" type="submit">Szukaj</button>
+        <?php if (!empty($adminSearch)): ?>
+            <a class="btn-secondary" href="/admin">Wyczysc</a>
+        <?php endif; ?>
+    </form>
 
     <div class="admin-users">
         <?php if (!empty($adminUsers)): ?>
@@ -259,7 +788,7 @@
                     <div class="admin-user-meta">
                         <span><?= (int)$user['character_count'] ?> postaci</span>
                         <span><?= htmlspecialchars($user['storage_used'], ENT_QUOTES, 'UTF-8') ?> (<?= (int)$user['storage_percent'] ?>%)</span>
-                        <span><?= (int)$user['account_type'] === 1 ? 'Admin' : 'User' ?></span>
+                        <span><?= htmlspecialchars((string)($user['account_type_name'] ?? ((int)$user['account_type'] === 1 ? 'Admin' : 'User')), ENT_QUOTES, 'UTF-8') ?></span>
                     </div>
                 </div>
 
@@ -291,6 +820,22 @@
                 </details>
 
                 <div class="admin-actions">
+                    <form method="POST" action="/admin/users/account-type" class="admin-account-type-assign">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
+                        <select name="account_type" <?= !empty($user['is_current_admin']) ? 'disabled' : '' ?>>
+                            <?php foreach (($accountTypeOptions ?? []) as $typeOption): ?>
+                                <option
+                                    value="<?= (int)$typeOption['id'] ?>"
+                                    <?= (int)($user['account_type'] ?? 0) === (int)$typeOption['id'] ? 'selected' : '' ?>
+                                >
+                                    <?= htmlspecialchars((string)$typeOption['name'], ENT_QUOTES, 'UTF-8') ?>
+                                    <?= !empty($typeOption['isAdmin']) ? ' (Admin)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button class="btn-secondary" type="submit" <?= !empty($user['is_current_admin']) ? 'disabled' : '' ?>>Zmien typ</button>
+                    </form>
                     <form method="POST" action="/admin/ban">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
@@ -324,3 +869,484 @@
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+(function () {
+    const params = new URLSearchParams(window.location.search);
+    const adminCollapseText = <?= json_encode([
+        'expand' => $adminShouldTranslate ? 'Expand' : 'Rozwin',
+        'collapse' => $adminShouldTranslate ? 'Collapse' : 'Zwin',
+        'backup' => $adminShouldTranslate ? 'Database backup' : 'Backup bazy danych',
+        'social' => $adminShouldTranslate ? 'Community features' : 'Funkcje spolecznosciowe',
+        'accountTypes' => $adminShouldTranslate ? 'Account types and limits' : 'Typy kont i limity',
+        'filters' => $adminShouldTranslate ? 'Filters and aliases' : 'Filtry i aliasy',
+        'reports' => $adminShouldTranslate ? 'Publication reports' : 'Zgloszenia publikacji',
+        'effects' => $adminShouldTranslate ? 'Site effects' : 'Efekty strony',
+        'actions' => $adminShouldTranslate ? 'Recent admin actions' : 'Ostatnie dzialania admina',
+        'users' => $adminShouldTranslate ? 'Users' : 'Uzytkownicy',
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const sections = [
+        { selector: '.admin-backup-panel', key: 'backup', title: adminCollapseText.backup, openWhen: ['backup', 'import', 'backupReminder'] },
+        { selector: '.admin-social-panel', key: 'social', title: adminCollapseText.social, openWhen: ['social'] },
+        { selector: '.admin-account-types-panel', key: 'accountTypes', title: adminCollapseText.accountTypes, openWhen: ['accountTypes'] },
+        { selector: '.admin-filter-panel', key: 'filters', title: adminCollapseText.filters, openWhen: ['filters'] },
+        { selector: '.admin-reports-panel', key: 'reports', title: adminCollapseText.reports, openWhen: ['moderation'] },
+        { selector: '.admin-effects-panel', key: 'effects', title: adminCollapseText.effects, openWhen: ['effects'] },
+        { selector: '.admin-activity-panel', key: 'actions', title: adminCollapseText.actions, openWhen: ['actions'] },
+        { selector: '.admin-users', key: 'users', title: adminCollapseText.users, openWhen: ['q'] }
+    ];
+
+    sections.forEach(config => {
+        const panel = document.querySelector(config.selector);
+        if (!panel || panel.dataset.adminCollapsible) return;
+        panel.dataset.adminCollapsible = '1';
+        panel.classList.add('admin-collapsible');
+
+        const shouldOpenFromQuery = config.openWhen.some(key => params.has(key));
+        const isOpen = shouldOpenFromQuery;
+        panel.classList.toggle('is-open', isOpen);
+        panel.classList.toggle('is-collapsed', !isOpen);
+
+        const summary = document.createElement('button');
+        summary.type = 'button';
+        summary.className = 'admin-collapse-summary';
+        summary.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        summary.innerHTML = `
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                <strong>${config.title}</strong>
+            </span>
+            <em>${isOpen ? adminCollapseText.collapse : adminCollapseText.expand}</em>
+        `;
+        panel.insertBefore(summary, panel.firstChild);
+
+        summary.addEventListener('click', () => {
+            const nextOpen = !panel.classList.contains('is-open');
+            panel.classList.toggle('is-open', nextOpen);
+            panel.classList.toggle('is-collapsed', !nextOpen);
+            summary.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+            summary.querySelector('em').textContent = nextOpen ? adminCollapseText.collapse : adminCollapseText.expand;
+        });
+    });
+})();
+</script>
+
+<?php
+if ($adminShouldTranslate) {
+    $adminHtml = ob_get_clean();
+    echo strtr($adminHtml, [
+        'Podglad kont i storage bez wgladu w prywatna tresc postaci uzytkownikow.' => 'Account and storage overview without reading users private character content.',
+        'Backup bazy danych' => 'Database backup',
+        'Uzywaj tej funkcji wylacznie jako zabezpieczenia danych i awaryjnej kopii systemu.' => 'Use this feature only as data protection and an emergency system copy.',
+        'Backup moze zawierac prywatne tresci uzytkownikow, dlatego nie naduzywaj dostepu' => 'A backup can contain private user content, so do not abuse access',
+        'i nie przegladaj danych bez uzasadnionej potrzeby administracyjnej.' => 'and do not browse data without a justified administrative reason.',
+        'Utworzono backup:' => 'Backup created:',
+        'Nie udalo sie utworzyc backupu. Sprawdz logi aplikacji.' => 'Could not create the backup. Check application logs.',
+        'Import globalnego backupu zakonczony.' => 'Global backup import completed.',
+        'Wybierz plik backupu do importu.' => 'Choose a backup file to import.',
+        'Nie udalo sie zaimportowac backupu. Sprawdz logi aplikacji.' => 'Could not import the backup. Check application logs.',
+        'Ustawienia przypomnien backupu zapisane.' => 'Backup reminder settings saved.',
+        'Przypomnienia backupu sa wylaczone.' => 'Backup reminders are disabled.',
+        'Warto wykonac backup.' => 'It is worth creating a backup.',
+        'Nie zapisano jeszcze zadnej kopii.' => 'No copy has been saved yet.',
+        'Ostatnia kopia:' => 'Last copy:',
+        'Nastepne przypomnienie:' => 'Next reminder:',
+        'Akcje backupu' => 'Backup actions',
+        'Zapis kopii' => 'Save copy',
+        'Pobierz aktualny zrzut bazy danych do pliku.' => 'Download the current database dump to a file.',
+        'Zapisz kopie' => 'Save copy',
+        'Odtwarzanie' => 'Restore',
+        'Import globalny nadpisuje dane systemu. Uzywaj tylko awaryjnie.' => 'Global import overwrites system data. Use only in emergencies.',
+        'Plik backupu' => 'Backup file',
+        'Odtworz globalnie' => 'Restore globally',
+        'Przypomnienia' => 'Reminders',
+        'Panel admina podpowie, kiedy warto wykonac kolejna kopie.' => 'The admin panel will suggest when another copy is worth creating.',
+        'Przypominaj o backupie' => 'Remind me about backups',
+        'Co ile dni' => 'Every how many days',
+        'Zapisz' => 'Save',
+        'Funkcje spolecznosciowe' => 'Community features',
+        'Wylaczenie funkcji blokuje nowe akcje, ale nie usuwa istniejacych danych.' => 'Disabling a feature blocks new actions but does not delete existing data.',
+        'Uzywaj tego do szybkiego' => 'Use it to quickly',
+        'ograniczania hejtu, spamu albo funkcji, ktore wymagaja chwilowego zatrzymania.' => 'limit hate, spam, or features that need a temporary pause.',
+        'Ustawienia spolecznosci zapisane.' => 'Community settings saved.',
+        'Podaj poprawne haslo administratora, aby zmienic tryb logowania.' => 'Enter the correct administrator password to change login mode.',
+        'Wybierz istniejace konto administratora dla trybu offline.' => 'Choose an existing administrator account for offline mode.',
+        'Wymuszone przez tryb offline' => 'Forced by offline mode',
+        'Tryb offline jest wlaczony' => 'Offline mode is enabled',
+        'Tryb online jest wlaczony' => 'Online mode is enabled',
+        'Strona automatycznie uzywa wskazanego konta. Spolecznosc, profil, powiadomienia, wylogowanie i chat sa ukryte.' => 'The site automatically uses the selected account. Community, profile, notifications, sign out, and chat are hidden.',
+        'Klasyczne logowanie jest aktywne. Wylacz je, aby uruchomic tryb offline na wskazanym koncie.' => 'Classic login is active. Disable it to start offline mode on the selected account.',
+        'Logowanie wlaczone' => 'Login enabled',
+        'Anuluj tryb offline i wlacz logowanie' => 'Cancel offline mode and enable login',
+        'Odznaczenie wlaczy tryb offline po podaniu konta i hasla.' => 'Unchecking enables offline mode after account and password confirmation.',
+        'Zaznaczenie przywraca normalny tryb online po potwierdzeniu haslem.' => 'Checking restores normal online mode after password confirmation.',
+        'Konto trybu offline' => 'Offline mode account',
+        'Nie wybrano' => 'Not selected',
+        'Uzywane automatycznie, gdy przelacznik "Logowanie" jest wylaczony.' => 'Used automatically when the "Login" switch is disabled.',
+        'Potwierdz haslem admina' => 'Confirm admin password',
+        'Wymagane przy zmianie logowania' => 'Required when changing login mode',
+        'Chroni przed przypadkowym zablokowaniem dostepu do strony.' => 'Protects against accidentally locking yourself out of the site.',
+        'Zapisz funkcje strony' => 'Save site features',
+        'Spolecznosc' => 'Community',
+        'Glowny przelacznik funkcji spolecznosciowych.' => 'Main switch for community features.',
+        'Postacie i szablony' => 'Characters and templates',
+        'Tworzenie oraz edycja postaci, folderow i szablonow postaci.' => 'Creating and editing characters, folders, and character templates.',
+        'Relacje' => 'Relations',
+        'Tworzenie oraz edycja tablic relacji.' => 'Creating and editing relation boards.',
+        'Historie' => 'Stories',
+        'Tworzenie oraz edycja historii.' => 'Creating and editing stories.',
+        'Galeria i uploady' => 'Gallery and uploads',
+        'Galeria oraz przesylanie zdjec z komputera lub biblioteki.' => 'Gallery and uploading images from the computer or library.',
+        'Logowanie' => 'Login',
+        'Klasyczne logowanie uzytkownikow. Po wylaczeniu strona uzywa konta trybu offline.' => 'Classic user login. When disabled, the site uses the offline mode account.',
+        'Konto trybu offline' => 'Offline mode account',
+        'ID konta uzywanego automatycznie, gdy logowanie jest wylaczone.' => 'ID of the account used automatically when login is disabled.',
+        'Publikacje' => 'Publications',
+        'Publikowanie i aktualizowanie publicznych tresci.' => 'Publishing and updating public content.',
+        'Komentarze' => 'Comments',
+        'Komentarze pod publikacjami.' => 'Comments under publications.',
+        'Reakcje' => 'Reactions',
+        'Reakcje emoji pod publikacjami.' => 'Emoji reactions under publications.',
+        'Follow' => 'Following',
+        'Obserwowanie uzytkownikow.' => 'Following users.',
+        'Wiadomosci' => 'Messages',
+        'Wiadomosci prywatne.' => 'Private messages.',
+        'Zgloszenia' => 'Reports',
+        'Zgloszenia tresci i uzytkownikow.' => 'Content and user reports.',
+        'Kopiowanie' => 'Copying',
+        'Kopiowanie publicznych snapshotow.' => 'Copying public snapshots.',
+        'Publiczne wyszukiwanie' => 'Public search',
+        'Wyszukiwanie publicznych tresci innych uzytkownikow.' => 'Searching public content from other users.',
+        'Akceptacja nowych publikacji' => 'New publication review',
+        'Nowe publikacje wymagaja recznej akceptacji administracji.' => 'New publications require manual admin approval.',
+        'Cooldown nowych kont' => 'New account cooldown',
+        'Liczba godzin ograniczen spolecznosciowych dla nowych kont.' => 'Number of hours of community restrictions for new accounts.',
+        'Prog automatycznego +18' => 'Automatic +18 threshold',
+        'Liczba otwartych zgloszen publikacji wymagana do automatycznego oznaczenia +18.' => 'Number of open publication reports required for automatic +18 marking.',
+        'Limit miejsca uzytkownika' => 'User storage limit',
+        'Maksymalna suma prywatnych zdjec zwyklego uzytkownika w megabajtach.' => 'Maximum total private images for a regular user in megabytes.',
+        'Limit miejsca admina' => 'Admin storage limit',
+        'Maksymalna suma prywatnych zdjec administratora w megabajtach.' => 'Maximum total private images for an administrator in megabytes.',
+        'Przypomnienia backupu' => 'Backup reminders',
+        'Pokazuje adminowi przypomnienie, gdy od ostatniego backupu minie ustawiony czas.' => 'Shows the admin a reminder after the configured time passes since the last backup.',
+        'Interwal przypomnien backupu' => 'Backup reminder interval',
+        'Liczba dni po ostatnim backupie, po ktorej panel admina przypomina o kopii.' => 'Number of days after the last backup before the admin panel reminds about another copy.',
+        'Typy kont i limity' => 'Account types and limits',
+        'Dodawaj typy kont, ustawiaj limity MB i wylaczaj konkretne funkcje wybranym typom.' => 'Add account types, set MB limits, and disable selected features for chosen types.',
+        'Nowy typ konta od razu pojawia sie przy przypisywaniu uzytkownikow.' => 'A new account type appears immediately when assigning users.',
+        'Typ konta dodany.' => 'Account type added.',
+        'Typ konta zapisany.' => 'Account type saved.',
+        'Limity miejsca zapisane.' => 'Storage limits saved.',
+        'Nie udalo sie zapisac typu konta. Sprawdz nazwe, limit i ochrone ostatniego admina.' => 'Could not save the account type. Check the name, limit, and last admin protection.',
+        'Dodaj typ konta' => 'Add account type',
+        'Nazwa typu' => 'Type name',
+        'Limit zdjec w MB' => 'Image limit in MB',
+        'Typ z dostepem admina' => 'Type with admin access',
+        'Typ konta' => 'Account type',
+        'MB na zdjecia' => 'MB for images',
+        'Aktywny' => 'Active',
+        'Zapisz typ' => 'Save type',
+        'Filtry i aliasy' => 'Filters and aliases',
+        'Alias oznacza to samo znaczenie w innym jezyku albo zapisie.' => 'An alias means the same concept in another language or spelling.',
+        'Scalanie przenosi uzycia filtra zrodlowego' => 'Merging transfers uses of the source filter',
+        'do filtra docelowego, np. gdy `facet` i `male` powinny byc jedna rodzina.' => 'to the target filter, for example when `facet` and `male` should be one family.',
+        'Alias filtra zapisany.' => 'Filter alias saved.',
+        'Filtry zostaly scalone.' => 'Filters were merged.',
+        'Nie udalo sie zapisac filtrow. Sprawdz, czy alias nie nalezy juz do innego filtra.' => 'Could not save filters. Check whether the alias already belongs to another filter.',
+        'Nieokreslone' => 'Unspecified',
+        'Uzycia' => 'Uses',
+        'Ten sam we wszystkich jezykach' => 'Same in all languages',
+        'nazwa bazowa' => 'base name',
+        'aliasy po przecinku' => 'comma-separated aliases',
+        'Filtr' => 'Filter',
+        'Alias / tlumaczenie' => 'Alias / translation',
+        'Jezyk' => 'Language',
+        'Dodaj alias' => 'Add alias',
+        'Filtr zrodlowy' => 'Source filter',
+        'Filtr docelowy' => 'Target filter',
+        'Scal filtry' => 'Merge filters',
+        'Brak aliasow' => 'No aliases',
+        'Zgloszenia publikacji' => 'Publication reports',
+        'Otwarta kolejka tresci wymagajacych decyzji moderacji.' => 'Open queue of content waiting for moderation decisions.',
+        'Akcja moderacji zapisana.' => 'Moderation action saved.',
+        'Nie udalo sie zapisac akcji moderacji.' => 'Could not save the moderation action.',
+        'Podglad' => 'Preview',
+        'Oznacz +18' => 'Mark +18',
+        'Odkryj +18' => 'Remove +18',
+        'Ukryj' => 'Hide',
+        'Pokaz' => 'Show',
+        'Zamknij zgloszenia' => 'Close reports',
+        'Brak otwartych zgloszen.' => 'No open reports.',
+        'Efekty strony' => 'Site effects',
+        'Auto: snieg w grudniu, konfetti 31.12 i 01.01, serduszka 14.02. Reczne ustawienie nadpisuje kalendarz.' => 'Auto: snow in December, confetti on 12/31 and 01/01, hearts on 02/14. Manual selection overrides the calendar.',
+        'Efekt globalny' => 'Global effect',
+        'Automatyczny kalendarz' => 'Automatic calendar',
+        'Wylaczony' => 'Disabled',
+        'Snieg' => 'Snow',
+        'Konfetti' => 'Confetti',
+        'Serduszka' => 'Hearts',
+        'Gwiazdy' => 'Stars',
+        'Promienie slonca' => 'Sun rays',
+        'Sakura' => 'Sakura',
+        'Wlasne symbole' => 'Custom symbols',
+        'Intensywnosc' => 'Intensity',
+        'Niska' => 'Low',
+        'Srednia' => 'Medium',
+        'Wysoka' => 'High',
+        'Wielkosc' => 'Size',
+        'Mala' => 'Small',
+        'Duza' => 'Large',
+        'Warstwa' => 'Layer',
+        'Pod trescia' => 'Under content',
+        'Nad trescia' => 'Over content',
+        'Zapisz efekty' => 'Save effects',
+        'Podglad efektu' => 'Preview effect',
+        'Aktywny:' => 'Active:',
+        'Kalendarz automatyczny' => 'Automatic calendar',
+        'Dodaj date' => 'Add date',
+        'Format: MM-DD co roku albo YYYY-MM-DD dla konkretnego roku. Pole "do" moze zostac puste dla pojedynczej daty.' => 'Format: MM-DD every year or YYYY-MM-DD for a specific year. The "to" field can stay empty for a single date.',
+        'Od: MM-DD lub YYYY-MM-DD' => 'From: MM-DD or YYYY-MM-DD',
+        'Do: puste = jeden dzien' => 'To: empty = one day',
+        'Symbole custom' => 'Custom symbols',
+        'Usun' => 'Delete',
+        'Ostatnie dzialania admina' => 'Recent admin actions',
+        'Audyt prywatnosci i bezpieczenstwa' => 'Privacy and security audit',
+        'Brak zapisanych dzialan.' => 'No saved actions.',
+        'Szukaj uzytkownikow' => 'Search users',
+        'Szukaj użytkowników' => 'Search users',
+        'Szukaj uĹĽytkownikĂłw' => 'Search users',
+        'Szukaj po ID, emailu lub nazwie' => 'Search by ID, email, or name',
+        'Szukaj' => 'Search',
+        'Wyczysc' => 'Clear',
+        'Brak nazwy' => 'No name',
+        'Miejsce:' => 'Storage:',
+        'Ban do:' => 'Banned until:',
+        'Powod:' => 'Reason:',
+        'Planowane usuniecie:' => 'Scheduled deletion:',
+        'Zmien typ' => 'Change type',
+        'Powod blokady' => 'Ban reason',
+        'Zablokuj' => 'Ban',
+        'Odblokuj' => 'Unban',
+        'Cofnij usuniecie' => 'Cancel deletion',
+        'Usun za 14 dni' => 'Delete in 14 days',
+        'ROZWIN' => 'EXPAND',
+        'ZWIN' => 'COLLAPSE',
+        'Nie udalo sie zapisac filtra.' => 'Could not save the filter.',
+    ]);
+}
+?>
+
+<script>
+(function () {
+    const table = document.querySelector('[data-admin-filter-table]');
+    if (!table) return;
+    const csrfToken = table.dataset.csrfToken || '';
+    const adminFilterText = <?= json_encode([
+        'baseName' => $adminShouldTranslate ? 'base name' : 'nazwa bazowa',
+        'aliasesComma' => $adminShouldTranslate ? 'comma-separated aliases' : 'aliasy po przecinku',
+        'unspecified' => $adminShouldTranslate ? 'Unspecified' : 'Nieokreslone',
+        'uses' => $adminShouldTranslate ? 'Uses' : 'Uzycia',
+        'sameAll' => $adminShouldTranslate ? 'Same in all languages' : 'Ten sam we wszystkich jezykach',
+        'saveError' => $adminShouldTranslate ? 'Could not save the filter.' : 'Nie udalo sie zapisac filtra.',
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char]));
+    }
+
+    function uniqueValues(values) {
+        const seen = new Set();
+        return values.map(value => String(value || '').trim()).filter(value => {
+            if (!value || seen.has(value)) return false;
+            seen.add(value);
+            return true;
+        });
+    }
+
+    function aliasesFor(filter, locale) {
+        const aliases = filter?.aliasesByLanguage?.[locale] || [];
+        return Array.isArray(aliases) ? aliases.map(alias => String(alias || '').trim()).filter(Boolean) : [];
+    }
+
+    function isSameInAllLanguages(filter, locales) {
+        const base = String(filter?.label || filter?.name || '').trim().toLocaleLowerCase();
+        if (!base) return false;
+
+        return locales.every(locale => aliasesFor(filter, locale)
+            .map(alias => alias.toLocaleLowerCase())
+            .includes(base));
+    }
+
+    function renderFilterCell(filterId, column, value, chips) {
+        const cleanChips = uniqueValues(chips || []);
+        const chipHtml = cleanChips.map(chip => `
+            <span class="admin-filter-chip"
+                  draggable="true"
+                  data-filter-term="${escapeHtml(chip)}">
+                ${escapeHtml(chip)}
+            </span>
+        `).join('');
+
+        return `
+            <div class="admin-filter-cell"
+                 data-filter-drop-cell
+                 data-filter-id="${escapeHtml(filterId)}"
+                 data-column="${escapeHtml(column)}">
+                <div class="admin-filter-chip-row">${chipHtml}</div>
+                <input
+                    type="text"
+                    value="${escapeHtml(value)}"
+                    data-filter-cell-input
+                    data-filter-id="${escapeHtml(filterId)}"
+                    data-column="${escapeHtml(column)}"
+                    placeholder="${column === 'base' ? escapeHtml(adminFilterText.baseName) : escapeHtml(adminFilterText.aliasesComma)}">
+            </div>
+        `;
+    }
+
+    function renderFilterMatrix(filters, locales) {
+        const cleanLocales = Array.isArray(locales) && locales.length ? locales.map(String) : ['pl', 'en'];
+        table.style.setProperty('--admin-filter-grid', `minmax(220px, 1fr) ${cleanLocales.map(() => 'minmax(180px, 1fr)').join(' ')} 90px`);
+
+        let html = `<div class="admin-filter-head">${escapeHtml(adminFilterText.unspecified)}</div>`;
+        cleanLocales.forEach(locale => {
+            html += `<div class="admin-filter-head">${escapeHtml(locale.toUpperCase())}</div>`;
+        });
+        html += `<div class="admin-filter-head">${escapeHtml(adminFilterText.uses)}</div>`;
+
+        (Array.isArray(filters) ? filters : []).forEach(filter => {
+            const filterId = Number(filter?.id || 0);
+            const baseValue = String(filter?.label || filter?.name || '').trim();
+            html += `
+                <div class="admin-filter-row-meta">
+                    ${renderFilterCell(filterId, 'base', baseValue, [baseValue])}
+                    <label class="admin-filter-same-all">
+                        <input
+                            type="checkbox"
+                            data-filter-all-locales
+                            data-filter-id="${escapeHtml(filterId)}"
+                            data-value="${escapeHtml(baseValue)}"
+                            ${isSameInAllLanguages(filter, cleanLocales) ? 'checked' : ''}>
+                        ${escapeHtml(adminFilterText.sameAll)}
+                    </label>
+                    <small>#${escapeHtml(filterId)} &middot; slug: ${escapeHtml(filter?.slug || '')}</small>
+                </div>
+            `;
+
+            cleanLocales.forEach(locale => {
+                const aliases = aliasesFor(filter, locale);
+                html += renderFilterCell(filterId, locale, aliases.join(', '), aliases);
+            });
+
+            html += `<div class="admin-filter-usage">${escapeHtml(filter?.usage_count || 0)}</div>`;
+        });
+
+        table.innerHTML = html;
+        bindFilterControls();
+    }
+
+    async function saveFilterValue(filterId, column, value, control) {
+        const cell = control?.closest('[data-filter-drop-cell]');
+        if (control) control.disabled = true;
+        cell?.classList.add('is-saving');
+        try {
+            const body = new URLSearchParams({
+                csrf_token: csrfToken,
+                filter_id: filterId || '',
+                column: column || '',
+                value
+            });
+            const res = await fetch('/admin/filters/cell', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRF-Token': csrfToken
+                },
+                body
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || adminFilterText.saveError);
+            }
+            renderFilterMatrix(data.filters || [], data.locales || []);
+        } catch (error) {
+            alert(error.message);
+            if (control) control.disabled = false;
+            cell?.classList.remove('is-saving');
+        }
+    }
+
+    async function saveCell(input) {
+        const value = String(input.value || '').trim();
+        return saveFilterValue(input.dataset.filterId || '', input.dataset.column || '', value, input);
+    }
+
+    function bindFilterControls() {
+        table.querySelectorAll('[data-filter-cell-input]').forEach(input => {
+            input.dataset.lastValue = input.value;
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    saveCell(input);
+                }
+            });
+            input.addEventListener('blur', () => {
+                if (input.value !== input.dataset.lastValue) {
+                    saveCell(input);
+                }
+            });
+        });
+
+        table.querySelectorAll('[data-filter-term]').forEach(chip => {
+            chip.addEventListener('dragstart', event => {
+                event.dataTransfer?.setData('text/plain', chip.dataset.filterTerm || chip.textContent || '');
+            });
+        });
+
+        table.querySelectorAll('[data-filter-drop-cell]').forEach(cell => {
+            cell.addEventListener('dragover', event => {
+                event.preventDefault();
+                cell.classList.add('is-drop-target');
+            });
+            cell.addEventListener('dragleave', () => {
+                cell.classList.remove('is-drop-target');
+            });
+            cell.addEventListener('drop', event => {
+                event.preventDefault();
+                cell.classList.remove('is-drop-target');
+                const term = String(event.dataTransfer?.getData('text/plain') || '').trim();
+                const input = cell.querySelector('[data-filter-cell-input]');
+                if (!term || !input) return;
+
+                if (input.dataset.column === 'base') {
+                    input.value = term;
+                } else {
+                    const values = input.value.split(',').map(value => value.trim()).filter(Boolean);
+                    if (!values.some(value => value.toLocaleLowerCase() === term.toLocaleLowerCase())) {
+                        values.push(term);
+                    }
+                    input.value = values.join(', ');
+                }
+                saveCell(input);
+            });
+        });
+
+        table.querySelectorAll('[data-filter-all-locales]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                if (!checkbox.checked) {
+                    checkbox.checked = true;
+                    return;
+                }
+                saveFilterValue(checkbox.dataset.filterId || '', 'all', String(checkbox.dataset.value || '').trim(), checkbox);
+            });
+        });
+    }
+
+    bindFilterControls();
+})();
+</script>

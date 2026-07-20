@@ -24,6 +24,11 @@ if (!function_exists('oc_upload_attrs')) {
 
 if (!function_exists('oc_render_image_upload_controls')) {
     function oc_render_image_upload_controls(array $options): void {
+        global $siteFeatures;
+        if (isset($siteFeatures['gallery']) && !$siteFeatures['gallery']) {
+            return;
+        }
+
         $class = trim('image-actions-row ' . (string)($options['class'] ?? ''));
         $buttonClass = trim('upload-label ' . (string)($options['buttonClass'] ?? ''));
         $label = (string)($options['label'] ?? 'Wybierz zdjęcie');

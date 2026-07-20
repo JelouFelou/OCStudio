@@ -1105,3 +1105,72 @@ body[data-theme="dark"] .character-relations-strip {
         grid-template-columns: 1fr;
     }
 }
+
+.public-detail-view--relation_board .public-detail-hero-card {
+    display: none;
+}
+
+.public-detail-view--relation_board .public-detail-stage {
+    min-height: calc(100vh - 136px);
+}
+
+.public-detail-view .public-relation-board-window.relations-shell {
+    grid-template-columns: minmax(0, 1fr);
+    height: min(720px, calc(100vh - 150px));
+    min-height: 520px;
+    background-size: 32px 32px;
+}
+
+.public-relation-board-window .relations-workspace {
+    height: 100%;
+    min-height: 0;
+    cursor: grab;
+}
+
+.public-relation-board-window .relations-toolbar {
+    max-width: calc(100% - 28px);
+}
+
+.public-relation-board-window .relations-lines,
+.public-relation-board-window .relation-link,
+.public-relation-board-window .relation-line-hit,
+.public-relation-board-window .relation-label-bg,
+.public-relation-board-window .relation-label-text {
+    pointer-events: auto;
+}
+
+.public-relation-board-window .relation-link,
+.public-relation-board-window .relation-line-hit,
+.public-relation-board-window .relation-label-bg,
+.public-relation-board-window .relation-label-text {
+    cursor: help;
+}
+
+.public-relation-board-window .relation-node {
+    cursor: grab;
+}
+
+.public-relation-board-window .relation-node.is-redacted {
+    opacity: .74;
+}
+
+.public-relation-board-window .relation-node.is-redacted strong {
+    color: var(--text-muted, #777);
+}
+
+@media (max-width: 1180px) {
+    .public-detail-view .public-relation-board-window.relations-shell {
+        min-height: 500px;
+    }
+}
+
+@media (max-width: 760px) {
+    .public-detail-view .public-relation-board-window.relations-shell {
+        height: 560px;
+        min-height: 420px;
+    }
+
+    .public-relation-board-window .relations-toolbar {
+        max-width: calc(100% - 20px);
+    }
+}

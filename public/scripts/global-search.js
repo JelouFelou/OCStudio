@@ -21,6 +21,15 @@
 
     const input    = document.getElementById('header-search-input');
     const dropdown = document.getElementById('header-search-dropdown');
+    const i18n = window.OCI18n || {};
+    const text = (key, fallback) => i18n[key] || fallback;
+    const publicationTypeText = (publication) => ({
+        character: text('character', 'Character'),
+        story: text('story', 'Story'),
+        image: text('image', 'Image'),
+        relation_board: text('relationBoard', 'Relations'),
+        template: text('template', 'Template')
+    }[publication?.contentType] || text('publication', 'Publication'));
 
     if (!input || !dropdown) return;   // brak elementów – nic nie rób
 
@@ -81,7 +90,7 @@
             const data = await res.json();
             render(data);
         } catch {
-            dropdown.innerHTML = '<p class="search-empty">Błąd połączenia</p>';
+            dropdown.innerHTML = `<p class="search-empty">${esc(text('connectionError', 'Connection error'))}</p>`;
             showDropdown();
         }
     }
@@ -98,7 +107,7 @@
 
         // Sekcja: bezpośrednie wyniki postaci
         if (characters.length > 0) {
-            dropdown.appendChild(sectionLabel('Postacie'));
+            dropdown.appendChild(sectionLabel(text('characters', 'Characters')));
             characters.forEach(c => {
                 shownIds.add(c.id);
                 dropdown.appendChild(charRow(c));
@@ -116,7 +125,7 @@
             folderRow.innerHTML =
                 folderVisual(world) +
                 '<span class="search-folder-name">' + esc(world.name) + '</span>' +
-                '<span class="search-folder-count">' + world.characters.length + ' postaci</span>';
+                '<span class="search-folder-count">' + esc(text('characterCount', ':count characters').replace(':count', world.characters.length)) + '</span>';
             folderRow.setAttribute('tabindex', '0');
             folderRow.addEventListener('click', () => navigate(folderRow.dataset.href));
             folderRow.addEventListener('keydown', (e) => { if (e.key === 'Enter') navigate(folderRow.dataset.href); });
@@ -135,28 +144,28 @@
 
         // Brak wyników
         if (stories.length > 0) {
-            dropdown.appendChild(sectionLabel('Historie'));
+            dropdown.appendChild(sectionLabel(text('stories', 'Stories')));
             stories.forEach(story => dropdown.appendChild(storyRow(story)));
         }
 
         if (templates.length > 0) {
-            dropdown.appendChild(sectionLabel('Szablony'));
+            dropdown.appendChild(sectionLabel(text('templates', 'Templates')));
             templates.forEach(template => dropdown.appendChild(templateRow(template)));
         }
 
         if (publications.length > 0) {
-            dropdown.appendChild(sectionLabel('Publikacje publiczne'));
+            dropdown.appendChild(sectionLabel(text('publicPublications', 'Public publications')));
             publications.forEach(publication => dropdown.appendChild(publicationRow(publication)));
         }
 
         if (filters.length > 0) {
-            dropdown.appendChild(sectionLabel('Filtry'));
+            dropdown.appendChild(sectionLabel(text('filters', 'Filters')));
             filters.slice(0, 8).forEach(filter => dropdown.appendChild(filterRow(filter)));
         }
 
         if (characters.length === 0 && worlds.length === 0 && stories.length === 0 && templates.length === 0 && filters.length === 0 && publications.length === 0) {
             const empty = makeEl('p', 'search-empty');
-            empty.textContent = 'Brak wyników dla „' + input.value.trim() + '"';
+            empty.textContent = text('noResultsFor', 'No results for ":query"').replace(':query', input.value.trim());
             dropdown.appendChild(empty);
         }
 
@@ -239,7 +248,7 @@
             image: storyImageSrc(story.image),
             icon: 'fa-book-open',
             title: story.date ? story.date + ' - ' + story.title : story.title,
-            description: story.description || 'Historia',
+            description: story.description || text('story', 'Story'),
             badge: story.status || ''
         });
     }
@@ -249,7 +258,7 @@
             href: '/templates/' + encodeURIComponent(template.publicId || template.id) + '/edit',
             icon: 'fa-file-code',
             title: template.name,
-            description: template.description || 'Szablon'
+            description: template.description || text('template', 'Template')
         });
     }
 
@@ -258,7 +267,7 @@
             href: '/characters?q=' + encodeURIComponent(filter.name || filter.slug || ''),
             icon: 'fa-filter',
             title: filter.name || filter.slug,
-            description: filter.slug ? '#' + filter.slug : 'Filtr'
+            description: filter.slug ? '#' + filter.slug : text('filter', 'Filter')
         });
     }
 
@@ -269,10 +278,10 @@
                 ? window.OCDefaults.characterImageSrc(publication.image)
                 : '/media/' + (publication.image || 'default.png'),
             icon: 'fa-share-nodes',
-            title: publication.title || 'Publikacja',
+            title: publication.title || text('publication', 'Publication'),
             description: [
-                publication.isOwn ? 'Twoja publikacja' : 'Autor: ' + (publication.authorName || 'Uzytkownik'),
-                publication.typeLabel || 'Publikacja'
+                publication.isOwn ? text('yourPublication', 'Your publication') : text('author', 'Author') + ': ' + (publication.authorName || text('user', 'User')),
+                publicationTypeText(publication)
             ].filter(Boolean).join(' - '),
             badge: publication.ageRating === 'adult' ? '+18' : ''
         });

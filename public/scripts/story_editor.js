@@ -2,12 +2,21 @@ let nextFieldId = 0;
 let activeStoryFieldItem = null;
 let storyQuickSaveTimer = null;
 
+const storyI18n = () => window.OCI18n?.storyEditor || {};
+const storyText = (key, fallback, replacements = {}) => {
+    let value = storyI18n()[key] || fallback || key;
+    Object.entries(replacements).forEach(([name, replacement]) => {
+        value = value.replaceAll(`:${name}`, String(replacement));
+    });
+    return value;
+};
+
 const STORY_FIELD_TYPES = {
-    text: { icon: 'fa-font', label: 'Tekst', hint: 'Krotka pojedyncza wartosc.' },
-    textarea: { icon: 'fa-align-left', label: 'Dlugi tekst', hint: 'Wiekszy fragment narracji.' },
-    image: { icon: 'fa-image', label: 'Zdjecie', hint: 'Ilustracja albo scena.' },
-    dialog: { icon: 'fa-comments', label: 'Dialog', hint: 'Wypowiedz w stylu sceny.' },
-    section: { icon: 'fa-heading', label: 'Sekcja', hint: 'Naglowek rozdzialu lub aktu.' },
+    text: { icon: 'fa-font', label: storyText('text', 'Tekst'), hint: storyText('textHint', 'Krotka pojedyncza wartosc.') },
+    textarea: { icon: 'fa-align-left', label: storyText('textarea', 'Dlugi tekst'), hint: storyText('textareaHint', 'Wiekszy fragment narracji.') },
+    image: { icon: 'fa-image', label: storyText('image', 'Zdjecie'), hint: storyText('imageHint', 'Ilustracja albo scena.') },
+    dialog: { icon: 'fa-comments', label: storyText('dialog', 'Dialog'), hint: storyText('dialogHint', 'Wypowiedz w stylu sceny.') },
+    section: { icon: 'fa-heading', label: storyText('section', 'Sekcja'), hint: storyText('sectionHint', 'Naglowek rozdzialu lub aktu.') },
 };
 
 function storyDefaultCharacterImage() {
@@ -17,7 +26,7 @@ function storyDefaultCharacterImage() {
 function storyUploadSrc(filename, fallback = storyDefaultCharacterImage()) {
     const clean = String(filename || '').split('/').pop();
     const resolved = !clean || ['default.png', 'default.jpg', 'default_dark.png'].includes(clean) ? fallback : clean;
-    return '/public/uploads/' + resolved;
+    return '/media/' + resolved;
 }
 
 function storyCharacterImageVars(character = {}) {
@@ -31,12 +40,12 @@ function storyCharacterImageVars(character = {}) {
 function storyPseudonymSourceSelect(characterId, selectedFieldId = '', variantId = 0) {
     const sources = (window.storyPseudonymSources || {})[characterId] || [];
     if (!sources.length) {
-        return '<div class="story-pseudonym-source-empty">Brak pola pseudonimow</div>';
+        return `<div class="story-pseudonym-source-empty">${escapeHtml(window.OCI18n?.common?.noData || 'Brak danych')}</div>`;
     }
 
     return `
         <select class="story-pseudonym-source-select" onchange="updateStoryCharacterPseudonymSource(${Number(characterId)}, this.value, ${Number(variantId) || 0})">
-            <option value="">Nazwa postaci</option>
+            <option value="">${escapeHtml(storyText('characterName', 'Nazwa postaci'))}</option>
             ${sources.map(source => {
                 const preview = Array.isArray(source.pseudonyms) && source.pseudonyms.length
                     ? ' - ' + source.pseudonyms.slice(0, 3).join(', ')
@@ -69,14 +78,14 @@ function setStoryQuickSaveState(state, message = '') {
     if (!button) return;
     button.classList.remove('is-saving', 'is-saved', 'is-error');
     if (state) button.classList.add(`is-${state}`);
-    button.title = message || 'Szybki zapis';
-    button.setAttribute('aria-label', message || 'Szybki zapis historii');
+    button.title = message || storyText('quickSave', 'Szybki zapis');
+    button.setAttribute('aria-label', message || storyText('quickSaveAria', 'Szybki zapis historii'));
     window.clearTimeout(storyQuickSaveTimer);
     if (state === 'saved' || state === 'error') {
         storyQuickSaveTimer = window.setTimeout(() => {
             button.classList.remove('is-saved', 'is-error');
-            button.title = 'Szybki zapis';
-            button.setAttribute('aria-label', 'Szybki zapis historii');
+            button.title = storyText('quickSave', 'Szybki zapis');
+            button.setAttribute('aria-label', storyText('quickSaveAria', 'Szybki zapis historii'));
         }, 1800);
     }
 }
@@ -86,7 +95,7 @@ async function quickSaveStory() {
     if (!form || form.dataset.quickSaving === '1') return;
 
     form.dataset.quickSaving = '1';
-    setStoryQuickSaveState('saving', 'Zapisywanie...');
+    setStoryQuickSaveState('saving', storyText('saving', 'Zapisywanie...'));
 
     const data = new FormData(form);
     data.set('quick_save', '1');
@@ -99,11 +108,11 @@ async function quickSaveStory() {
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.success === false) {
-            throw new Error(payload.message || 'Nie udalo sie zapisac historii.');
+            throw new Error(storyText('errorSave', 'Nie udalo sie zapisac historii.'));
         }
-        setStoryQuickSaveState('saved', 'Zapisano');
+        setStoryQuickSaveState('saved', storyText('saved', 'Zapisano'));
     } catch (error) {
-        setStoryQuickSaveState('error', error.message || 'Nie udalo sie zapisac');
+        setStoryQuickSaveState('error', error.message || storyText('errorSaveShort', 'Nie udalo sie zapisac'));
     } finally {
         form.dataset.quickSaving = '0';
     }
@@ -235,6 +244,10 @@ function autosizeStoryTextareas(root = document) {
 
 function bindStoryImagePickers(root = document) {
     root.querySelectorAll('.story-field-image-row button, [data-story-image-picker]').forEach(button => {
+        if (window.OCFeatures?.gallery === false) {
+            button.remove();
+            return;
+        }
         if (button.dataset.boundStoryImagePicker) return;
         const row = button.closest('.story-field-image-row');
         const input = row?.querySelector('input.story-field-input[type="hidden"]');
@@ -250,7 +263,7 @@ function bindStoryImagePickers(root = document) {
                 previewImage.src = asset.url;
                 preview.hidden = false;
             }
-            button.textContent = asset.filename ? `Zdjecie: ${asset.filename}` : 'Wybierz zdjecie';
+            button.textContent = asset.filename ? storyText('imagePrefix', 'Zdjecie: :name', { name: asset.filename }) : storyText('chooseImage', 'Wybierz zdjecie');
         });
     });
 }
@@ -263,15 +276,19 @@ function syncStoryImagePreviewFromInput(input) {
     const previewImage = preview?.querySelector('img');
     const button = row.querySelector('[data-story-image-picker]');
     if (preview && previewImage && value) {
-        previewImage.src = `/public/uploads/${value}`;
+        previewImage.src = `/media/${value}`;
         preview.hidden = false;
     }
-    if (button) button.textContent = value ? `Zdjecie: ${value}` : 'Wybierz zdjecie';
+    if (button) button.textContent = value ? storyText('imagePrefix', 'Zdjecie: :name', { name: value }) : storyText('chooseImage', 'Wybierz zdjecie');
 }
 
 function storyImageEditorHTML(fieldId, value = '') {
-    const label = value ? `Zdjecie: ${escapeHtml(String(value).split('/').pop())}` : 'Wybierz zdjecie';
-    const src = value ? `/public/uploads/${escapeHtml(String(value).split('/').pop())}` : '';
+    if (window.OCFeatures?.gallery === false) {
+        return `<input type="hidden" name="story_fields[${fieldId}]" class="story-field-input" value="">`;
+    }
+
+    const label = value ? storyText('imagePrefix', 'Zdjecie: :name', { name: String(value).split('/').pop() }) : storyText('chooseImage', 'Wybierz zdjecie');
+    const src = value ? `/media/${escapeHtml(String(value).split('/').pop())}` : '';
     return `<div class="story-field-image-row">
             <div class="story-field-image-preview"${src ? '' : ' hidden'}>
                 <img src="${src}" alt="">
@@ -286,17 +303,17 @@ function createFieldHTML(fieldId, label, fieldType) {
     let editorHTML = '';
 
     if (fieldType === 'text') {
-        editorHTML = `<input type="text" name="story_fields[${fieldId}]" class="story-field-input" placeholder="Tekst...">`;
+        editorHTML = `<input type="text" name="story_fields[${fieldId}]" class="story-field-input" placeholder="${escapeHtml(storyText('textPlaceholder', 'Tekst...'))}">`;
     } else if (fieldType === 'textarea') {
         editorHTML = `<textarea name="story_fields[${fieldId}]" class="story-field-input" placeholder="Dlugi tekst..." rows="5"></textarea>`;
     } else if (fieldType === 'image') {
         editorHTML = storyImageEditorHTML(fieldId);
     } else if (fieldType === 'dialog') {
         editorHTML = `<div class="story-dialog-editor">
-            <textarea name="story_fields[${fieldId}]" class="story-field-input" placeholder="Dialog postaci..." rows="5"></textarea>
+            <textarea name="story_fields[${fieldId}]" class="story-field-input" placeholder="${escapeHtml(storyText('dialogPlaceholder', 'Dialog...'))}" rows="5"></textarea>
         </div>`;
     } else if (fieldType === 'section') {
-        editorHTML = `<input type="text" name="story_fields[${fieldId}]" class="story-field-input story-section-input" placeholder="Nazwa sekcji...">`;
+        editorHTML = `<input type="text" name="story_fields[${fieldId}]" class="story-field-input story-section-input" placeholder="${escapeHtml(storyText('sectionPlaceholder', 'Sekcja...'))}">`;
     }
 
     return `
@@ -306,7 +323,7 @@ function createFieldHTML(fieldId, label, fieldType) {
                 <input type="text" class="story-field-label-input" name="story_field_labels[${fieldId}]" value="${escapeHtml(label)}" placeholder="Naglowek/etykieta pola">
                 <input type="hidden" name="story_field_types[${fieldId}]" value="${escapeHtml(fieldType)}">
                 <div class="type-preview-tag story-type-preview-tag">
-                    <small><i class="fa-solid ${meta.icon}"></i> Typ: ${meta.label}</small>
+                    <small><i class="fa-solid ${meta.icon}"></i> ${escapeHtml(storyText('typePrefix', 'Typ: :type', { type: meta.label }))}</small>
                 </div>
                 <div class="story-field-editor">${editorHTML}</div>
             </div>
@@ -339,7 +356,7 @@ function storyFieldSummary(item) {
     const value = storyFieldValue(item).replace(/\s+/g, ' ').trim();
     const type = detectExistingFieldType(item);
     if (type === 'image') {
-        return value ? `Zdjecie: ${value.split('/').pop()}` : 'Puste zdjecie';
+        return value ? storyText('imagePrefix', 'Zdjecie: :name', { name: value.split('/').pop() }) : storyText('chooseImage', 'Wybierz zdjecie');
     }
     return value ? value.slice(0, 140) : 'Puste pole';
 }
@@ -446,7 +463,7 @@ function createStoryInsertPoint(index) {
     const point = document.createElement('div');
     point.className = 'story-field-insert-point';
     point.innerHTML = `
-        <button type="button" class="story-field-insert-btn" data-story-insert-index="${index}" title="Dodaj pole w tym miejscu">
+        <button type="button" class="story-field-insert-btn" data-story-insert-index="${index}" title="${escapeHtml(storyText('addFieldHere', 'Dodaj pole historii'))}">
             <i class="fa-solid fa-plus"></i>
         </button>`;
     return point;
@@ -493,7 +510,7 @@ function removeStoryField(btn) {
     const container = document.getElementById('story-fields-container');
     container?.querySelectorAll('.story-field-insert-point').forEach(point => point.remove());
     if (container && storyFieldItems(container).length === 0) {
-        container.innerHTML = '<p class="story-empty-note">Brak pol. Dodaj pierwsze pole aby zaczac pisanie historii.</p>';
+        container.innerHTML = `<p class="story-empty-note">${escapeHtml(storyText('emptyFields', 'Brak pol. Dodaj pierwsze pole aby zaczac pisanie historii.'))}</p>`;
     }
     refreshStoryFieldMoveButtons(container);
     refreshStoryInsertPoints(container);
@@ -536,7 +553,7 @@ function enhanceExistingStoryFields() {
                 <input type="text" class="story-field-label-input" name="story_field_labels[${fieldId}]" value="${escapeHtml(label)}" placeholder="Naglowek/etykieta pola">
                 <input type="hidden" name="story_field_types[${fieldId}]" value="${escapeHtml(type)}">
                 <div class="type-preview-tag story-type-preview-tag">
-                    <small><i class="fa-solid ${meta.icon}"></i> Typ: ${meta.label}</small>
+                    <small><i class="fa-solid ${meta.icon}"></i> ${escapeHtml(storyText('typePrefix', 'Typ: :type', { type: meta.label }))}</small>
                 </div>
                 <div class="story-field-editor">${editorHtml}</div>
             </div>
@@ -722,7 +739,7 @@ function openCharacterSelector() {
             const choices = [{ id: '', name: character.name || 'Postac', image: character.image, meta: character }]
                 .concat((character.variants || []).map(variant => ({
                     id: String(variant.id),
-                    name: variant.name || 'Wariant',
+                    name: variant.name || storyText('variant', 'Wariant'),
                     image: variant.image || character.image,
                     meta: { ...character, ...variant, image: variant.image || character.image }
                 })));
@@ -741,7 +758,7 @@ function openCharacterSelector() {
                 </button>`;
             }).join('');
         }).join('')
-        : '<p class="story-empty-note">Brak dostepnych postaci.</p>';
+        : `<p class="story-empty-note">${escapeHtml(storyText('noAvailableCharacters', 'Brak dostepnych postaci.'))}</p>`;
 
     modal.style.display = 'flex';
 }
@@ -758,7 +775,7 @@ function selectCharacter(characterId, characterName, variantId = 0) {
     const variantKey = Number(variantId) || '';
 
     if (container.querySelector(`[data-character-id="${characterId}"][data-variant-id="${variantKey}"]`)) {
-        alert('Ta wersja postaci jest juz w historii!');
+        alert(storyText('duplicateCharacterVariant', 'Ta wersja postaci jest juz w historii.'));
         return;
     }
 
@@ -777,7 +794,7 @@ function selectCharacter(characterId, characterName, variantId = 0) {
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
-            alert('Blad: ' + (data.message || 'Nie udalo sie dodac postaci'));
+            alert(`${storyText('errorPrefix', 'Blad:')} ${storyText('errorAddCharacter', 'Nie udalo sie dodac postaci.')}`);
             return;
         }
 
@@ -785,7 +802,7 @@ function selectCharacter(characterId, characterName, variantId = 0) {
         container.appendChild(buildStoryCharacterChip(characterId, characterName, variantId));
         closeCharacterSelector();
     })
-    .catch(e => alert('Blad: ' + e.message));
+    .catch(e => alert(`${storyText('errorPrefix', 'Blad:')} ${e.message}`));
 }
 
 function buildStoryCharacterChip(characterId, characterName, variantId = 0) {
@@ -799,7 +816,7 @@ function buildStoryCharacterChip(characterId, characterName, variantId = 0) {
     chip.dataset.characterId = characterId;
     chip.dataset.variantId = variant ? String(variant.id) : '';
     chip.dataset.characterPublicId = character.publicId || '';
-    chip.title = 'Podglad postaci';
+    chip.title = storyText('previewCharacter', 'Podglad postaci');
     chip.style.cssText = storyCharacterImageVars(display);
     chip.innerHTML = `
         ${window.storyId ? '' : `<input type="hidden" name="story_character_ids[]" value="${entryKey}">
@@ -825,7 +842,7 @@ function enhanceExistingStoryCharacters() {
         const entryKey = `${characterId}:${variantKey}`;
         const variant = (available.variants || []).find(item => Number(item.id) === variantKey) || null;
         const name = storyCharacter.character_name
-            || (variant ? `${available.name || 'Postac'} - ${variant.name || 'Wariant'}` : '')
+            || (variant ? `${available.name || storyText('characterFallback', 'Postac')} - ${variant.name || storyText('variant', 'Wariant')}` : '')
             || available.name
             || item.querySelector('div div')?.textContent?.trim()
             || item.querySelector('span')?.textContent?.trim()
@@ -844,7 +861,7 @@ function enhanceExistingStoryCharacters() {
         item.className = 'story-character-item story-character-chip';
         item.dataset.variantId = variantKey ? String(variantKey) : '';
         item.dataset.characterPublicId = storyCharacter.character_public_id || available.publicId || item.dataset.characterPublicId || '';
-        item.title = 'Podglad postaci';
+        item.title = storyText('previewCharacter', 'Podglad postaci');
         item.style.cssText = storyCharacterImageVars(display);
         item.innerHTML = `
             ${window.storyId ? '' : `<input type="hidden" name="story_character_ids[]" value="${entryKey}">
@@ -904,10 +921,10 @@ function updateStoryCharacterPseudonymSource(characterId, fieldId, variantId = 0
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
-            alert('Blad: ' + (data.message || 'Nie udalo sie zapisac zrodla pseudonimow'));
+            alert(`${storyText('errorPrefix', 'Blad:')} ${storyText('errorPseudonymSource', 'Nie udalo sie zapisac zrodla pseudonimow.')}`);
         }
     })
-    .catch(e => alert('Blad: ' + e.message));
+    .catch(e => alert(`${storyText('errorPrefix', 'Blad:')} ${e.message}`));
 }
 
 function removeStoryCharacter(characterId, variantId = 0) {
@@ -917,7 +934,7 @@ function removeStoryCharacter(characterId, variantId = 0) {
         document.querySelector(selector)?.remove();
         const container = document.getElementById('story-characters-container');
         if (container && !container.querySelector('[data-character-id]')) {
-            container.innerHTML = '<p class="story-empty-note">Brak postaci. Dodaj postacie, ktore maja pojawic sie w historii.</p>';
+            container.innerHTML = `<p class="story-empty-note">${escapeHtml(storyText('noCharacters', 'Brak postaci. Dodaj postacie, ktore maja pojawic sie w historii.'))}</p>`;
         }
         return;
     }
@@ -930,17 +947,17 @@ function removeStoryCharacter(characterId, variantId = 0) {
     .then(r => r.json())
     .then(data => {
         if (!data.success) {
-            alert('Blad: ' + (data.message || 'Nie udalo sie usunac postaci'));
+            alert(`${storyText('errorPrefix', 'Blad:')} ${storyText('errorRemoveCharacter', 'Nie udalo sie usunac postaci.')}`);
             return;
         }
 
         document.querySelector(selector)?.remove();
         const container = document.getElementById('story-characters-container');
         if (container && container.children.length === 0) {
-            container.innerHTML = '<p class="story-empty-note">Brak postaci. Dodaj postacie aby pojawily sie w historii.</p>';
+            container.innerHTML = `<p class="story-empty-note">${escapeHtml(storyText('noCharacters', 'Brak postaci. Dodaj postacie, ktore maja pojawic sie w historii.'))}</p>`;
         }
     })
-    .catch(e => alert('Blad: ' + e.message));
+    .catch(e => alert(`${storyText('errorPrefix', 'Blad:')} ${e.message}`));
 }
 
 function escapeHtml(text) {
@@ -977,7 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const type = tag.dataset.storyFieldType;
         const meta = STORY_FIELD_TYPES[type];
         if (meta) {
-            tag.innerHTML = `<small><i class="fa-solid ${meta.icon}"></i> Typ: ${meta.label}</small>`;
+            tag.innerHTML = `<small><i class="fa-solid ${meta.icon}"></i> ${escapeHtml(storyText('typePrefix', 'Typ: :type', { type: meta.label }))}</small>`;
         }
     });
 });

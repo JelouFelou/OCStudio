@@ -25,14 +25,24 @@ $resolveDefaultImage = static function (string $image) use ($defaultCharacterIma
     $image = basename($image) ?: 'default.png';
     return in_array($image, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $image;
 };
+$publicationTypeLabel = static function (array $publication) use ($t): string {
+    return match ((string)($publication['contentType'] ?? '')) {
+        'character' => $t('content.type.character_one'),
+        'story' => $t('content.type.story_one'),
+        'image' => $t('content.type.image_one'),
+        'relation_board' => $t('content.type.relation_board_one'),
+        'template' => $t('content.type.template_one'),
+        default => $t('common.publication'),
+    };
+};
 
 $typeOptions = [
-    'all' => 'Wszystkie typy',
-    'character' => 'Postacie',
-    'story' => 'Historie',
-    'image' => 'Zdjecia',
-    'relation_board' => 'Relacje',
-    'template' => 'Szablony',
+    'all' => $t('content.type.all'),
+    'character' => $t('content.type.character'),
+    'story' => $t('content.type.story'),
+    'image' => $t('content.type.image'),
+    'relation_board' => $t('content.type.relation_board'),
+    'template' => $t('content.type.template'),
 ];
 $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
 $username = (string)($profile['username'] ?? '');
@@ -43,24 +53,24 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
 <?php if ($communityDisabled): ?>
     <div class="public-profile-shell">
         <header class="public-publication-top">
-            <a href="<?= $viewerLoggedIn ? '/community' : '/login' ?>" class="wiki-back-link"><i class="fa-solid fa-arrow-left"></i> <?= $viewerLoggedIn ? 'Spolecznosc' : 'OCStudio' ?></a>
+            <a href="<?= $viewerLoggedIn ? '/community' : '/login' ?>" class="wiki-back-link"><i class="fa-solid fa-arrow-left"></i> <?= $profile_escape($viewerLoggedIn ? $t('nav.community') : $t('app.name')) ?></a>
         </header>
         <section class="wiki-view">
             <article class="wiki-article">
-                <h1>Profil niedostepny</h1>
-                <p class="wiki-empty">Funkcje spolecznosciowe sa aktualnie wylaczone.</p>
+                <h1><?= $profile_escape($t('profile.not_available.title')) ?></h1>
+                <p class="wiki-empty"><?= $profile_escape($t('profile.not_available.body')) ?></p>
             </article>
         </section>
     </div>
 <?php elseif (!$profile): ?>
     <div class="public-profile-shell">
         <header class="public-publication-top">
-            <a href="<?= $viewerLoggedIn ? '/community' : '/login' ?>" class="wiki-back-link"><i class="fa-solid fa-arrow-left"></i> <?= $viewerLoggedIn ? 'Spolecznosc' : 'OCStudio' ?></a>
+            <a href="<?= $viewerLoggedIn ? '/community' : '/login' ?>" class="wiki-back-link"><i class="fa-solid fa-arrow-left"></i> <?= $profile_escape($viewerLoggedIn ? $t('nav.community') : $t('app.name')) ?></a>
         </header>
         <section class="wiki-view">
             <article class="wiki-article">
-                <h1>Profil nie znaleziony</h1>
-                <p class="wiki-empty">Ten uzytkownik nie istnieje albo profil nie jest dostepny.</p>
+                <h1><?= $profile_escape($t('profile.not_found.title')) ?></h1>
+                <p class="wiki-empty"><?= $profile_escape($t('profile.not_found.body')) ?></p>
             </article>
         </section>
     </div>
@@ -73,15 +83,15 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
             </div>
 
             <div class="profile-header-main public-profile-summary">
-                <h1><?= $profile_escape($username !== '' ? $username : 'Uzytkownik') ?></h1>
-                <p><?= trim((string)($profile['bio'] ?? '')) !== '' ? nl2br($profile_escape($profile['bio'])) : 'Brak opisu profilu.' ?></p>
+                <h1><?= $profile_escape($username !== '' ? $username : $t('common.user')) ?></h1>
+                <p><?= trim((string)($profile['bio'] ?? '')) !== '' ? nl2br($profile_escape($profile['bio'])) : $profile_escape($t('profile.no_bio')) ?></p>
             </div>
 
             <div class="profile-action-stack">
                 <?php if ($isOwnProfile): ?>
                     <a class="btn-primary profile-public-preview" href="/profile">
                         <i class="fa-solid fa-pen"></i>
-                        Edytuj profil
+                        <?= $profile_escape($t('profile.edit')) ?>
                     </a>
                 <?php endif; ?>
 
@@ -92,7 +102,7 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
                             data-user-id="<?= (int)$profile['id'] ?>"
                             data-following="<?= $isFollowing ? '1' : '0' ?>">
                         <i class="fa-solid <?= $isFollowing ? 'fa-user-check' : 'fa-user-plus' ?>"></i>
-                        <span><?= $isFollowing ? 'Obserwujesz' : 'Obserwuj' ?></span>
+                        <span><?= $profile_escape($isFollowing ? $t('profile.following') : $t('profile.follow')) ?></span>
                     </button>
                 <?php endif; ?>
 
@@ -103,14 +113,14 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
                             data-user-id="<?= (int)$profile['id'] ?>"
                             data-blocked="<?= $viewerBlocksTarget ? '1' : '0' ?>">
                         <i class="fa-solid <?= $viewerBlocksTarget ? 'fa-ban' : 'fa-user-slash' ?>"></i>
-                        <span><?= $viewerBlocksTarget ? 'Odblokuj' : 'Zablokuj' ?></span>
+                        <span><?= $profile_escape($viewerBlocksTarget ? $t('profile.unblock') : $t('profile.block')) ?></span>
                     </button>
                 <?php endif; ?>
 
                 <?php if ($viewerLoggedIn && !$isOwnProfile): ?>
                     <a class="btn-secondary profile-public-preview" href="/community">
                         <i class="fa-solid fa-compass"></i>
-                        Spolecznosc
+                        <?= $profile_escape($t('nav.community')) ?>
                     </a>
                 <?php endif; ?>
             </div>
@@ -118,22 +128,22 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
             <?php if ($viewerBlocksTarget || $targetBlocksViewer): ?>
                 <section class="public-profile-block-notice">
                     <i class="fa-solid fa-ban"></i>
-                    <span><?= $viewerBlocksTarget ? 'Blokujesz tego uzytkownika. Interakcje i follow sa wylaczone.' : 'Ten uzytkownik zablokowal interakcje z Toba.' ?></span>
+                    <span><?= $profile_escape($viewerBlocksTarget ? $t('profile.blocking_notice') : $t('profile.blocked_by_notice')) ?></span>
                 </section>
             <?php endif; ?>
 
             <div class="profile-stat-list">
                 <div>
                     <strong><?= $publicationTotal ?></strong>
-                    <span>publikacji</span>
+                    <span><?= $profile_escape($t('common.publication_count')) ?></span>
                 </div>
                 <div data-follower-count-wrap>
                     <strong data-follower-count><?= $followerCount ?></strong>
-                    <span>obserwujacych</span>
+                    <span><?= $profile_escape($t('common.followers')) ?></span>
                 </div>
                 <div>
                     <strong><?= $followingCount ?></strong>
-                    <span>obserwowanych</span>
+                    <span><?= $profile_escape($t('common.following')) ?></span>
                 </div>
             </div>
         </aside>
@@ -141,19 +151,19 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
         <main class="profile-main">
             <form class="community-search-panel profile-search-panel" method="GET" action="<?= $profile_escape($profileAction) ?>">
                 <label class="community-query">
-                    <span>Szukaj</span>
-                    <input type="search" name="q" value="<?= $profile_escape($query) ?>" placeholder="Nazwa postaci, filtr..." autocomplete="off">
+                    <span><?= $profile_escape($t('common.search')) ?></span>
+                    <input type="search" name="q" value="<?= $profile_escape($query) ?>" placeholder="<?= $profile_escape($t('profile.search_placeholder')) ?>" autocomplete="off">
                 </label>
 
                 <label>
-                    <span>Zakres</span>
+                    <span><?= $profile_escape($t('common.scope')) ?></span>
                     <select disabled>
-                        <option>Ten profil</option>
+                        <option><?= $profile_escape($t('common.this_profile')) ?></option>
                     </select>
                 </label>
 
                 <label>
-                    <span>Typ tresci</span>
+                    <span><?= $profile_escape($t('common.type')) ?></span>
                     <select name="type">
                         <?php foreach ($typeOptions as $value => $label): ?>
                             <option value="<?= $profile_escape($value) ?>" <?= $type === $value ? 'selected' : '' ?>>
@@ -165,29 +175,29 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
 
                 <label class="community-checkbox">
                     <input type="checkbox" name="adult" value="1" <?= $includeAdult ? 'checked' : '' ?>>
-                    <span>Pokaz +18</span>
+                    <span><?= $profile_escape($t('common.show_adult')) ?></span>
                 </label>
 
                 <button type="submit" class="btn-primary">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    Szukaj
+                    <?= $profile_escape($t('common.search')) ?>
                 </button>
             </form>
 
             <section class="profile-publications-panel">
                 <div class="dashboard-section-header">
-                    <h2>Udostepnione tresci</h2>
+                    <h2><?= $profile_escape($t('common.shared_content')) ?></h2>
                     <?php if ($isOwnProfile): ?>
                         <a class="btn-secondary" href="/profile">
                             <i class="fa-solid fa-id-badge"></i>
-                            Moje publiczne
+                            <?= $profile_escape($t('common.my_public')) ?>
                         </a>
                     <?php endif; ?>
                 </div>
 
                 <?php if (empty($publications)): ?>
                     <div class="public-profile-empty">
-                        <p><?= $hasProfileFilters ? 'Brak wynikow dla wybranych filtrow.' : 'Ten uzytkownik nie ma jeszcze publicznych publikacji.' ?></p>
+                        <p><?= $profile_escape($hasProfileFilters ? $t('profile.empty_filtered') : $t('profile.empty_other')) ?></p>
                     </div>
                 <?php else: ?>
                     <div class="public-profile-grid profile-publication-grid">
@@ -204,8 +214,8 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
                             $copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
                             $copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
                             $copyOriginTooltip = $copyOriginIsOwn
-                                ? 'Skopiowano od Ciebie'
-                                : 'Kopia z zachowanym pochodzeniem';
+                                ? $t('community.copy_origin.own')
+                                : $t('community.copy_origin.other');
                             if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
                                 $copyOriginTooltip .= ': ' . $copyOriginAuthor;
                             }
@@ -217,7 +227,7 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
                             <a class="<?= $profile_escape($publicationCardClass) ?>" href="/p/<?= $profile_escape($publication['publicId'] ?? '') ?>">
                                 <div class="public-profile-card-media">
                                     <img src="/media/<?= $profile_escape(rawurlencode($image)) ?>"
-                                         alt="<?= $profile_escape($card['title'] ?? 'Publikacja') ?>"
+                                         alt="<?= $profile_escape($card['title'] ?? $t('common.publication')) ?>"
                                          style="object-fit: <?= $profile_escape($card['fit'] ?? 'cover') ?>; object-position: <?= (int)($card['focusX'] ?? 50) ?>% <?= (int)($card['focusY'] ?? 50) ?>%;">
                                     <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
                                         <span class="public-profile-age-badge">+18</span>
@@ -229,8 +239,8 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
                                     <?php endif; ?>
                                 </div>
                                 <div class="public-profile-card-body">
-                                    <span class="public-profile-card-type"><?= $profile_escape($card['typeLabel'] ?? 'Publikacja') ?></span>
-                                    <h3><?= $profile_escape($card['title'] ?? 'Publikacja') ?></h3>
+                                    <span class="public-profile-card-type"><?= $profile_escape($publicationTypeLabel($publication)) ?></span>
+                                    <h3><?= $profile_escape($card['title'] ?? $t('common.publication')) ?></h3>
                                     <p><?= $profile_escape($card['description'] ?? '') ?></p>
                                     <?php if (!empty($filters)): ?>
                                         <div class="public-profile-filter-row">
@@ -262,7 +272,9 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
         if (!button) return;
         button.dataset.following = following ? '1' : '0';
         button.classList.toggle('is-following', following);
-        if (label) label.textContent = following ? 'Obserwujesz' : 'Obserwuj';
+        if (label) label.textContent = following
+            ? <?= json_encode($t('profile.following'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+            : <?= json_encode($t('profile.follow'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         if (icon) {
             icon.className = 'fa-solid ' + (following ? 'fa-user-check' : 'fa-user-plus');
         }
@@ -281,11 +293,11 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Nie udalo sie zmienic obserwowania.');
+                throw new Error(data.error || <?= json_encode($t('chat.generic_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
             }
             setState(Boolean(data.following), data.followerCount);
         } catch (error) {
-            alert(error.message || 'Nie udalo sie zmienic obserwowania.');
+            alert(error.message || <?= json_encode($t('chat.generic_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
         } finally {
             button.disabled = false;
         }
@@ -299,7 +311,9 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
         if (!blockButton) return;
         blockButton.dataset.blocked = blocked ? '1' : '0';
         blockButton.classList.toggle('is-blocked', blocked);
-        if (blockLabel) blockLabel.textContent = blocked ? 'Odblokuj' : 'Zablokuj';
+        if (blockLabel) blockLabel.textContent = blocked
+            ? <?= json_encode($t('profile.unblock'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+            : <?= json_encode($t('profile.block'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         if (blockIcon) {
             blockIcon.className = 'fa-solid ' + (blocked ? 'fa-ban' : 'fa-user-slash');
         }
@@ -319,14 +333,14 @@ $profileAction = $username !== '' ? '/u/' . rawurlencode($username) : '/communit
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Nie udalo sie zmienic blokady.');
+                throw new Error(data.error || <?= json_encode($t('chat.generic_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
             }
             setBlockState(Boolean(data.viewerBlocksTarget));
             if (button && data.viewerBlocksTarget) {
                 setState(false, data.followerCount);
             }
         } catch (error) {
-            alert(error.message || 'Nie udalo sie zmienic blokady.');
+            alert(error.message || <?= json_encode($t('chat.generic_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
         } finally {
             blockButton.disabled = false;
         }

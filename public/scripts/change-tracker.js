@@ -75,7 +75,7 @@
             src = decoded?.url || '';
         } catch (e) {
             const filename = String(value || '').split('/').pop();
-            src = filename ? '/public/uploads/' + filename : '';
+            src = filename ? '/media/' + filename : '';
         }
 
         if (src) {

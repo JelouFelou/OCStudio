@@ -1,5 +1,5 @@
 (function () {
-    const uploadBase = '/public/uploads/';
+    const uploadBase = '/media/';
     const imageAccept = 'image/jpeg,image/png,image/gif,image/webp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.avif';
     const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
     let activeGalleryController = null;
@@ -7,6 +7,13 @@
     let galleryCardObserver = null;
     let pageFlowObserver = null;
     let pageFlowMutationObserver = null;
+    const i18n = window.OCI18n || {};
+    const commonText = i18n.common || {};
+    const galleryText = i18n.gallery || {};
+
+    function tr(source, key, fallback) {
+        return source?.[key] || fallback;
+    }
 
     function splitTags(value) {
         return String(value || '')
@@ -292,7 +299,7 @@
 
     async function fetchImages(query = '') {
         const res = await fetch('/api/images?q=' + encodeURIComponent(query));
-        if (!res.ok) throw new Error('Nie udalo sie pobrac galerii.');
+        if (!res.ok) throw new Error(tr(galleryText, 'errorFetch', 'Nie udalo sie pobrac galerii.'));
         return (await res.json()).images || [];
     }
 
@@ -307,7 +314,7 @@
         form.append('visibility', normalizeVisibility(visibility));
         const res = await fetch('/api/images/upload', { method: 'POST', body: form });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Nie udalo sie wgrac zdjecia.');
+        if (!res.ok) throw new Error(data.error || tr(galleryText, 'errorUpload', 'Nie udalo sie wgrac zdjecia.'));
         return data.imageAsset;
     }
 
@@ -318,7 +325,7 @@
             body: JSON.stringify(body)
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Nie udalo sie wykonac operacji.');
+        if (!res.ok) throw new Error(data.error || tr(galleryText, 'errorOperation', 'Nie udalo sie wykonac operacji.'));
         return data;
     }
 
@@ -328,15 +335,15 @@
         modal.hidden = true;
         modal.innerHTML = `
             <div class="image-picker-card">
-                <h2>Wybierz zdjecie</h2>
+                <h2>${escapeHtml(tr(galleryText, 'chooseImage', 'Wybierz zdjecie'))}</h2>
                 <div class="image-picker-tabs">
-                    <button type="button" data-tab="gallery" class="active">Z galerii</button>
-                    <button type="button" data-tab="upload">Z komputera</button>
+                    <button type="button" data-tab="gallery" class="active">${escapeHtml(tr(galleryText, 'fromGallery', 'Z galerii'))}</button>
+                    <button type="button" data-tab="upload">${escapeHtml(tr(galleryText, 'fromComputer', 'Z komputera'))}</button>
                 </div>
                 <div data-panel="gallery">
                     <div class="gallery-search" style="margin-bottom:12px;">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="search" data-image-search placeholder="Szukaj zdjec...">
+                        <input type="search" data-image-search placeholder="${escapeHtml(tr(galleryText, 'searchImages', 'Szukaj zdjec...'))}">
                     </div>
                     <div class="image-picker-grid" data-image-grid></div>
                 </div>
@@ -349,25 +356,25 @@
                         </div>
                     </div>
                     <label class="gallery-field">
-                        <span>Plik</span>
+                        <span>${escapeHtml(tr(galleryText, 'file', 'Plik'))}</span>
                         <input type="file" accept="${imageAccept}" data-upload-file>
                     </label>
                     <label class="gallery-field">
-                        <span>Filtry zdjecia, minimum 5</span>
-                        <input type="text" class="tag-input" data-upload-tags placeholder="sfw, facet, mlody, plaza, morze">
+                        <span>${escapeHtml(tr(galleryText, 'filtersMin', 'Filtry zdjecia, minimum 5'))}</span>
+                        <input type="text" class="tag-input" data-upload-tags placeholder="${escapeHtml(tr(galleryText, 'tagsPlaceholder', 'e.g. sfw, male, young, beach, sea'))}">
                     </label>
                     <label class="gallery-field">
-                        <span>Widocznosc</span>
+                        <span>${escapeHtml(tr(galleryText, 'visibility', 'Widocznosc'))}</span>
                         <select data-upload-visibility>
-                            <option value="normal">Zwykle</option>
-                            <option value="hidden">Ukryte</option>
+                            <option value="normal">${escapeHtml(tr(commonText, 'normal', 'Zwykle'))}</option>
+                            <option value="hidden">${escapeHtml(tr(commonText, 'hidden', 'Ukryte'))}</option>
                             <option value="adult">+18</option>
                         </select>
                     </label>
                 </div>
                 <div class="image-picker-actions">
-                    <button type="button" data-cancel>Anuluj</button>
-                    <button type="button" class="primary" data-confirm>Wybierz</button>
+                    <button type="button" data-cancel>${escapeHtml(tr(commonText, 'cancel', 'Anuluj'))}</button>
+                    <button type="button" class="primary" data-confirm>${escapeHtml(tr(commonText, 'choose', 'Wybierz'))}</button>
                 </div>
             </div>`;
         document.body.appendChild(modal);
@@ -403,7 +410,7 @@
 
         async function renderImages(query = '') {
             if (!grid) return;
-            grid.innerHTML = '<span>Ladowanie...</span>';
+            grid.innerHTML = `<span>${escapeHtml(tr(commonText, 'loading', 'Ladowanie...'))}</span>`;
             const images = await fetchImages(query);
             grid.innerHTML = '';
             images.forEach(image => {
@@ -418,7 +425,7 @@
                 });
                 grid.appendChild(btn);
             });
-            if (!images.length) grid.innerHTML = '<span>Brak zdjec.</span>';
+            if (!images.length) grid.innerHTML = `<span>${escapeHtml(tr(galleryText, 'noImages', 'Brak zdjec.'))}</span>`;
         }
 
         modal.querySelectorAll('[data-tab]').forEach(tab => {
@@ -483,14 +490,14 @@
                 try {
                     if (activeTab === 'upload') {
                         const file = uploadFileInput.files[0];
-                        if (!file) throw new Error('Wybierz plik.');
+                        if (!file) throw new Error(tr(galleryText, 'selectFile', 'Wybierz plik.'));
                         if (splitTags(uploadTagsInput.value).length < 5) {
-                            throw new Error('Podaj minimum 5 filtrow dla zdjecia.');
+                            throw new Error(tr(galleryText, 'minFilters', 'Podaj minimum 5 filtrow dla zdjecia.'));
                         }
                         selected = await uploadImage(file, uploadTagsInput.value, uploadVisibilityInput?.value || 'normal');
                         updateAdultImageRegistry(selected);
                     }
-                    if (!selected) throw new Error('Wybierz zdjecie.');
+                    if (!selected) throw new Error(tr(galleryText, 'selectImage', 'Wybierz zdjecie.'));
                     clearUploadPreview();
                     modal.remove();
                     resolve(selected);
@@ -520,12 +527,15 @@
         if (preview) {
             const previewImage = preview.matches('img') ? preview : preview.querySelector('img');
             if (previewImage) {
+                previewImage.removeAttribute('hidden');
                 previewImage.src = asset.url;
                 previewImage.style.display = '';
             }
             if (preview.matches('img')) {
+                preview.removeAttribute('hidden');
                 preview.style.display = '';
             } else {
+                preview.removeAttribute('hidden');
                 preview.hidden = false;
                 preview.style.display = '';
             }
@@ -549,6 +559,10 @@
 
     function bindImagePickerButtons(root = document) {
         root.querySelectorAll('[data-open-image-picker]').forEach(btn => {
+            if (window.OCFeatures?.gallery === false) {
+                btn.remove();
+                return;
+            }
             if (btn.dataset.boundPicker) return;
             btn.dataset.boundPicker = '1';
             btn.addEventListener('click', async () => {
@@ -583,25 +597,27 @@
                 </button>
                 ${galleryHiddenBadge(image)}
                 <div class="gallery-card-actions">
-                    <button type="button" class="gallery-delete-image" data-delete-image title="Usuń zdjęcie">
+                    ${galleryPublishButton(image, true)}
+                    <button type="button" class="gallery-delete-image" data-delete-image title="${escapeHtml(tr(galleryText, 'deleteImage', 'Usun zdjecie'))}">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
                 <div class="gallery-card-details">
                     <label>
-                        <span>Filtry</span>
+                        <span>${escapeHtml(tr(i18n, 'filters', 'Filtry'))}</span>
                         <textarea data-gallery-tags-input rows="3">${tagsToText(image.tags || [])}</textarea>
                     </label>
                     <label>
-                        <span>Widocznosc</span>
+                        <span>${escapeHtml(tr(galleryText, 'visibility', 'Widocznosc'))}</span>
                         <select data-gallery-visibility>
-                            <option value="normal" ${normalizeVisibility(image.visibility) === 'normal' ? 'selected' : ''}>Zwykle</option>
-                            <option value="hidden" ${normalizeVisibility(image.visibility) === 'hidden' ? 'selected' : ''}>Ukryte</option>
+                            <option value="normal" ${normalizeVisibility(image.visibility) === 'normal' ? 'selected' : ''}>${escapeHtml(tr(commonText, 'normal', 'Zwykle'))}</option>
+                            <option value="hidden" ${normalizeVisibility(image.visibility) === 'hidden' ? 'selected' : ''}>${escapeHtml(tr(commonText, 'hidden', 'Ukryte'))}</option>
                             <option value="adult" ${normalizeVisibility(image.visibility) === 'adult' ? 'selected' : ''}>+18</option>
                         </select>
                     </label>
-                    <button type="button" class="gallery-save-tags" data-save-card-tags>Zapisz</button>
-                    <button type="button" class="gallery-delete-image" data-delete-image>Usuń zdjęcie</button>
+                    <button type="button" class="gallery-save-tags" data-save-card-tags>${escapeHtml(tr(commonText, 'save', 'Zapisz'))}</button>
+                    ${galleryPublishButton(image, false)}
+                    <button type="button" class="gallery-delete-image" data-delete-image>${escapeHtml(tr(galleryText, 'deleteImage', 'Usun zdjecie'))}</button>
                 </div>`;
             grid.appendChild(card);
         });
@@ -623,7 +639,17 @@
     function galleryHiddenBadge(image) {
         if (!image?.hasHiddenReferences) return '';
         if (normalizeVisibility(image.visibility) === 'adult') return '<span class="gallery-hidden-badge">+18</span>';
-        return `<span class="gallery-hidden-badge">${image.hiddenWithoutOwnFilters ? 'Ukryte bez filtrow' : 'Ukryte'}</span>`;
+        return `<span class="gallery-hidden-badge">${escapeHtml(image.hiddenWithoutOwnFilters ? tr(galleryText, 'hiddenWithoutFilters', 'Ukryte bez filtrow') : tr(commonText, 'hidden', 'Ukryte'))}</span>`;
+    }
+
+    function galleryPublishButton(image, iconOnly) {
+        if (window.OCFeatures?.offlineMode || window.OCFeatures?.community === false || window.OCFeatures?.publications === false) {
+            return '';
+        }
+        const disabled = normalizeVisibility(image?.visibility) === 'hidden';
+        const title = disabled ? tr(galleryText, 'hiddenPublishDisabled', 'Ukrytego zdjecia nie mozna opublikowac') : tr(galleryText, 'publishImage', 'Udostepnij zdjecie');
+        const label = iconOnly ? '<i class="fa-solid fa-share-nodes"></i>' : escapeHtml(tr(commonText, 'publish', 'Udostepnij'));
+        return `<button type="button" class="gallery-publish-image" data-publish-image title="${escapeHtml(title)}" ${disabled ? 'disabled' : ''}>${label}</button>`;
     }
 
     function imageFromCard(card) {
@@ -677,14 +703,14 @@
             if (inspector.content) inspector.content.hidden = false;
             if (inspector.usage) {
                 const count = Number(image.usageCount || 0);
-                inspector.usage.textContent = `${count} ${count === 1 ? 'uzycie' : 'uzyc'}`;
+                inspector.usage.textContent = `${count} ${count === 1 ? tr(galleryText, 'usageOne', 'uzycie') : tr(galleryText, 'usageMany', 'uzyc')}`;
             }
             renderUsageList(image).catch(console.error);
             if (inspector.tags) {
                 const tags = image.tags || [];
                 inspector.tags.innerHTML = tags.length
                     ? tags.map(tag => `<span>${escapeHtml(tag.name || tag.label || tag.slug || tag)}</span>`).join('')
-                    : '<em>Brak filtrow</em>';
+                    : `<em>${escapeHtml(tr(galleryText, 'noFilters', 'Brak filtrow'))}</em>`;
             }
             if (inspector.visibilityOptions) {
                 const currentVisibility = normalizeVisibility(image.visibility);
@@ -696,13 +722,13 @@
                 const ownVisibility = normalizeVisibility(image.visibility);
                 let text = '';
                 if (ownVisibility === 'adult') {
-                    text = 'Oznaczone jako +18';
+                    text = tr(galleryText, 'markedAdult', 'Oznaczone jako +18');
                 } else if (ownVisibility === 'hidden') {
-                    text = 'Oznaczone jako ukryte';
+                    text = tr(galleryText, 'markedHidden', 'Oznaczone jako ukryte');
                 } else if (image.hiddenWithoutOwnFilters) {
-                    text = 'Ukryte bez wlasnych filtrow';
+                    text = tr(galleryText, 'hiddenWithoutOwnFilters', 'Ukryte bez wlasnych filtrow');
                 } else if (image.hasHiddenReferences) {
-                    text = 'Powiazane z ukryta trescia';
+                    text = tr(galleryText, 'relatedHidden', 'Powiazane z ukryta trescia');
                 }
                 inspector.warning.textContent = text;
                 inspector.warning.hidden = text === '';
@@ -712,26 +738,26 @@
 
         async function renderUsageList(image) {
             if (!inspector.usageList) return;
-            inspector.usageList.innerHTML = '<em>Ladowanie...</em>';
+            inspector.usageList.innerHTML = `<em>${escapeHtml(tr(commonText, 'loading', 'Ladowanie...'))}</em>`;
             if (!image?.id) {
-                inspector.usageList.innerHTML = '<em>Brak danych</em>';
+                inspector.usageList.innerHTML = `<em>${escapeHtml(tr(galleryText, 'noUsageData', 'Brak danych'))}</em>`;
                 return;
             }
 
             const res = await fetch('/api/images/usage?imageId=' + encodeURIComponent(image.id));
             const data = await res.json();
             if (!res.ok) {
-                throw new Error(data.error || 'Nie udalo sie pobrac uzyc zdjecia.');
+                throw new Error(data.error || tr(galleryText, 'errorUsage', 'Nie udalo sie pobrac uzyc zdjecia.'));
             }
             const usage = Array.isArray(data.usage) ? data.usage : [];
             if (!usage.length) {
-                inspector.usageList.innerHTML = '<em>Nigdzie nie jest uzywane</em>';
+                inspector.usageList.innerHTML = `<em>${escapeHtml(tr(galleryText, 'noUsage', 'Nigdzie nie jest uzywane'))}</em>`;
                 return;
             }
 
             inspector.usageList.innerHTML = usage.map(item => `
                 <a href="${escapeHtml(item.href || '#')}">
-                    <strong>${escapeHtml(item.title || 'Bez nazwy')}</strong>
+                    <strong>${escapeHtml(item.title || tr(galleryText, 'untitled', 'Bez nazwy'))}</strong>
                     <span>${escapeHtml([item.type, item.context].filter(Boolean).join(' - '))}</span>
                 </a>
             `).join('');
@@ -753,8 +779,14 @@
         }
 
         async function deleteGalleryImage(imageId, card = null) {
-            if (!confirm('Usunac to zdjecie z galerii?')) return;
-            const data = await postJson('/api/images/delete', { imageId, forceMissing: true });
+            const confirmation = prompt(tr(galleryText, 'deletePrompt', 'Aby usunac zdjecie, wpisz kod 123456:'), '');
+            if (confirmation === null) return;
+            if (confirmation !== '123456') {
+                alert(tr(galleryText, 'deleteMismatch', 'Kod potwierdzenia nie zgadza sie.'));
+                return;
+            }
+
+            const data = await postJson('/api/images/delete', { imageId, forceMissing: true, confirmation });
             const targetCard = card || document.querySelector(`.gallery-card[data-image-id="${imageId}"]`);
             targetCard?.remove();
             if (selectedImage && Number(selectedImage.id) === Number(imageId)) {
@@ -772,8 +804,8 @@
             document.body.classList.toggle('gallery-filters-open', enabled);
             toggleFilters.classList.toggle('active', enabled);
             toggleFilters.innerHTML = enabled
-                ? '<i class="fa-solid fa-tags"></i> Ukryj filtry'
-                : '<i class="fa-solid fa-tags"></i> Edytuj filtry';
+                ? `<i class="fa-solid fa-tags"></i> ${escapeHtml(tr(galleryText, 'hideFilters', 'Ukryj filtry'))}`
+                : `<i class="fa-solid fa-tags"></i> ${escapeHtml(tr(galleryText, 'editFilters', 'Edytuj filtry'))}`;
         });
         document.getElementById('gallery-dialog-cancel')?.addEventListener('click', () => {
             dialog.hidden = true;
@@ -790,7 +822,7 @@
                         body: JSON.stringify({ imageId: currentImageId, tags: splitTags(tagsInput.value), visibility: 'normal' })
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'Nie udalo sie zapisac filtrow.');
+                    if (!res.ok) throw new Error(data.error || tr(galleryText, 'errorTags', 'Nie udalo sie zapisac filtrow.'));
                 }
                 dialog.hidden = true;
                 await refresh();
@@ -803,7 +835,7 @@
             mode = nextMode;
             currentImageId = imageId;
             tagsInput.value = tags || '';
-            title.textContent = 'Filtry zdjecia';
+            title.textContent = tr(galleryText, 'filtersImage', 'Filtry zdjecia');
             dialog.hidden = false;
         };
 
@@ -888,7 +920,10 @@
             fill.style.width = `${storage.barPercent}%`;
             fill.style.background = storage.color;
         }
-        if (detail) detail.textContent = `Used ${storage.usedMb} of ${storage.limitMb} MB`;
+        if (detail) {
+            const template = window.OCI18n?.storageUsed || 'Uzyto :used z :limit MB';
+            detail.textContent = template.replace(':used', storage.usedMb).replace(':limit', storage.limitMb);
+        }
     }
 
     function bindGalleryActions() {
@@ -914,13 +949,45 @@
                         })
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'Nie udalo sie zapisac filtrow.');
+                    if (!res.ok) throw new Error(data.error || tr(galleryText, 'errorTags', 'Nie udalo sie zapisac filtrow.'));
                     if (input) input.value = tagsToText(data.imageAsset.tags || []);
                     updateAdultImageRegistry(data.imageAsset);
                     renderGalleryCards(await fetchImages(document.getElementById('gallery-search-input')?.value || ''));
                 } catch (error) {
                     alert(error.message);
                 }
+            });
+            card.querySelectorAll('[data-publish-image]').forEach(publishButton => {
+                publishButton.addEventListener('click', async event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (publishButton.disabled) return;
+
+                    publishButton.disabled = true;
+                    try {
+                        const res = await fetch('/api/publications/image/publish', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ imageAssetId: imageId, changeReason: 'refresh' })
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) throw new Error(data.error || tr(galleryText, 'errorPublish', 'Nie udalo sie opublikowac zdjecia.'));
+                        const publicId = data.publication?.publicId || '';
+                        if (publicId) {
+                            const publicationUrl = '/p/' + encodeURIComponent(publicId);
+                            if (window.OCPublicationPreview?.open?.(publicationUrl)) {
+                                publishButton.disabled = false;
+                                return;
+                            }
+                            window.location.href = publicationUrl;
+                            return;
+                        }
+                        alert(tr(galleryText, 'published', 'Zdjecie zostalo opublikowane.'));
+                    } catch (error) {
+                        publishButton.disabled = false;
+                        alert(error.message);
+                    }
+                });
             });
             card.querySelectorAll('[data-delete-image]').forEach(deleteButton => {
                 deleteButton.addEventListener('click', async () => {
@@ -932,15 +999,20 @@
                     }
                     return;
                 }
-                if (!confirm('Usunąć to zdjęcie z galerii?')) return;
+                const confirmation = prompt(tr(galleryText, 'deletePrompt', 'Aby usunac zdjecie, wpisz kod 123456:'), '');
+                if (confirmation === null) return;
+                if (confirmation !== '123456') {
+                    alert(tr(galleryText, 'deleteMismatch', 'Kod potwierdzenia nie zgadza sie.'));
+                    return;
+                }
                 try {
                     const res = await fetch('/api/images/delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageId, forceMissing: true })
+                        body: JSON.stringify({ imageId, forceMissing: true, confirmation })
                     });
                     const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'Nie udalo sie usunac zdjecia.');
+                    if (!res.ok) throw new Error(data.error || tr(galleryText, 'errorDelete', 'Nie udalo sie usunac zdjecia.'));
                     card.remove();
                     updateStorageWidget(data.storage);
                 } catch (error) {

@@ -3,6 +3,11 @@ function vc_escape($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
+function vc_t(string $key, array $replace = []): string {
+    global $t;
+    return is_callable($t ?? null) ? (string)$t($key, $replace) : $key;
+}
+
 function vc_decode_json($value) {
     if ($value === null || $value === '') {
         return null;
@@ -420,23 +425,23 @@ function vc_render_table_cell(array $row, array $rows, array $field, array $rowD
     if ($type === 'age') {
         $source = $row['ageFrom'] ?: $label;
         $age = vc_calculate_age(vc_table_cell_value(vc_table_source_cell($rows, $rowDefs, $source)));
-        return $age !== '' ? vc_escape($age) : '<span class="wiki-empty">Brak danych</span>';
+        return $age !== '' ? vc_escape($age) : '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
     }
 
     if ($type === 'date') {
         $formatted = vc_format_date_value($value);
-        return $formatted !== '' ? vc_escape($formatted) : '<span class="wiki-empty">Brak danych</span>';
+        return $formatted !== '' ? vc_escape($formatted) : '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
     }
 
     if ($type === 'image') {
-        if (!is_array($value) || empty($value['url'])) return '<span class="wiki-empty">Brak zdjecia</span>';
+        if (!is_array($value) || empty($value['url'])) return '<span class="wiki-empty">' . vc_escape(vc_t('characters.editor.no_image')) . '</span>';
         $asset = vc_asset_for_url($value['url'], $imageAssetMap);
-        if (vc_asset_blocked($asset, $blockedFilterIds)) return '<span class="wiki-empty">Zablokowane</span>';
+        if (vc_asset_blocked($asset, $blockedFilterIds)) return '<span class="wiki-empty">' . vc_escape(vc_t('common.hidden')) . '</span>';
         return '<a href="' . vc_escape($value['url']) . '" class="wiki-table-image js-lightbox-image" data-full-src="' . vc_escape($value['url']) . '" data-tags="' . vc_escape(vc_tag_text($asset)) . '"><img src="' . vc_escape($value['url']) . '" alt="' . vc_escape($label) . '"></a>';
     }
 
     if ($type === 'list') {
-        if (!is_array($value) || empty($value)) return '<span class="wiki-empty">Brak danych</span>';
+        if (!is_array($value) || empty($value)) return '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
         $html = '<ul class="wiki-list wiki-table-list">';
         foreach ($value as $item) {
             if ($item === null || $item === '') continue;
@@ -446,7 +451,7 @@ function vc_render_table_cell(array $row, array $rows, array $field, array $rowD
     }
 
     $text = vc_readable_value($value);
-    return $text !== '' ? nl2br(vc_escape($text)) : '<span class="wiki-empty">Brak danych</span>';
+    return $text !== '' ? nl2br(vc_escape($text)) : '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
 }
 
 function vc_render_value(array $field, ?string $rawValue): void {
@@ -456,11 +461,11 @@ function vc_render_value(array $field, ?string $rawValue): void {
 
     if ($type !== 'table' && $type !== 'stats' && vc_field_value_is_empty($field, $rawValue)) {
         if ($type === 'image') {
-            echo '<p class="wiki-empty">Brak zdjecia</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('characters.editor.no_image')) . '</p>';
         } elseif ($type === 'image-gallery') {
-            echo '<p class="wiki-empty">Brak zdjec</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('gallery.no_images')) . '</p>';
         } else {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
         }
         return;
     }
@@ -473,7 +478,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
     if ($type === 'list') {
         $items = vc_list_from_raw($rawValue);
         if (empty($items)) {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
             return;
         }
         echo '<ul class="wiki-list">';
@@ -487,7 +492,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
     if ($type === 'table') {
         $rows = vc_normalize_table_rows(vc_decode_json($rawValue) ?? $rawValue, $field);
         if (!is_array($rows) || empty($rows)) {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
             return;
         }
         $rowDefs = vc_table_rows_config($field);
@@ -508,7 +513,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
             $visibleRows[] = $row;
         }
         if (empty($visibleRows)) {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
             return;
         }
         echo '<table class="wiki-data-table"><tbody>';
@@ -522,7 +527,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
     if ($type === 'stats') {
         $stats = vc_decode_json($rawValue);
         if (!is_array($stats) || empty($stats)) {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
             return;
         }
         $cfg = vc_decode_json($field['placeholder'] ?? '');
@@ -540,7 +545,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
             $visibleStats[$label] = $value;
         }
         if (empty($visibleStats)) {
-            echo '<p class="wiki-empty">Brak danych</p>';
+            echo '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
             return;
         }
         echo '<table class="wiki-data-table wiki-stats-table"><tbody>';
@@ -641,7 +646,7 @@ $imagePanY = ((50 - $imageFocusY) / 50) * $imagePanLimit;
 $mainAsset = $imageAssetMap[$displayImage] ?? null;
 $mainBlocked = vc_asset_blocked($mainAsset, $blockedFilterIds);
 $returnUrl = $returnUrl ?? '/dashboard';
-$returnLabel = $returnLabel ?? 'Dashboard';
+$returnLabel = $returnLabel ?? $t('nav.dashboard');
 $encodedReturnUrl = rawurlencode((string)$returnUrl);
 $characterStories = $characterStories ?? [];
 $publication = is_array($publication ?? null) ? $publication : null;
@@ -651,7 +656,9 @@ $publicationPublicId = (string)($publication['publicId'] ?? '');
 $publicationId = (int)($publication['id'] ?? 0);
 $publicationIsPublished = $publicationStatus === 'published' && $publicationPublicId !== '';
 $publicationIsOutdated = $publicationIsPublished && !empty($publication['isOutdated']);
-$publicationLabel = $publicationIsOutdated ? 'Zmieniona po publikacji' : ($publicationIsPublished ? 'Opublikowana' : ($publication ? 'Cofnieta' : 'Prywatna'));
+$publicationLabel = $publicationIsOutdated
+    ? $t('publication.status.outdated_full')
+    : ($publicationIsPublished ? $t('publication.status.published') : ($publication ? $t('publication.status.unpublished') : $t('publication.status.private')));
 $publicationBadgeClass = $publicationIsOutdated ? 'is-outdated' : ($publicationIsPublished ? 'is-published' : ($publication ? 'is-unpublished' : 'is-private'));
 $publicationTargetLabel = $publicationVariantId ? 'ten wariant' : 'forme podstawowa';
 $siteFeatures = is_array($siteFeatures ?? null) ? $siteFeatures : [];
@@ -659,10 +666,10 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
 $exportCharacterId = rawurlencode($character->getPublicId());
 $exportVariantParam = $publicationVariantId ? '&variant=' . (int)$publicationVariantId : '';
 $storyStatusLabels = [
-    'draft' => 'Do zrobienia',
-    'in_progress' => 'W trakcie',
-    'published' => 'Gotowa',
-    'archived' => 'Archiwum',
+    'draft' => $t('characters.status.todo'),
+    'in_progress' => $t('characters.status.progress'),
+    'published' => $t('characters.status.done'),
+    'archived' => $t('story.status.archived'),
 ];
 $storyStatusColors = [
     'draft' => '#E74C3C',
@@ -794,8 +801,8 @@ $timelineItems[] = [
     'type' => 'current',
     'date' => $timelineCurrentDate,
     'sort' => vc_timeline_sort_key($timelineCurrentDate),
-    'title' => 'Aktualnie',
-    'description' => 'Dzisiejsza data swiata',
+    'title' => $t('characters.view.current'),
+    'description' => $t('characters.view.current_world_date'),
     'href' => '',
     'index' => PHP_INT_MAX,
 ];
@@ -905,17 +912,17 @@ foreach ($rightFields as $field) {
                 </span>
                 <?php if ($publicationIsPublished): ?>
                     <a class="btn-secondary" href="/p/<?= vc_escape($publicationPublicId); ?>" target="_blank" rel="noopener">
-                        <i class="fa-solid fa-eye"></i> Podglad publiczny
+                        <i class="fa-solid fa-eye"></i> <?= vc_escape($t('characters.view.public_preview')); ?>
                     </a>
                     <button type="button" class="btn-secondary" data-publication-action="publish">
-                        <i class="fa-solid fa-rotate"></i> Aktualizuj
+                        <i class="fa-solid fa-rotate"></i> <?= vc_escape($t('characters.view.update_publication')); ?>
                     </button>
                     <button type="button" class="btn-secondary publication-danger" data-publication-action="unpublish">
-                        <i class="fa-solid fa-eye-slash"></i> Cofnij
+                        <i class="fa-solid fa-eye-slash"></i> <?= vc_escape($t('characters.view.unpublish_short')); ?>
                     </button>
                 <?php else: ?>
                     <button type="button" class="btn-secondary" data-publication-action="publish">
-                        <i class="fa-solid fa-share-nodes"></i> Opublikuj <?= vc_escape($publicationTargetLabel); ?>
+                        <i class="fa-solid fa-share-nodes"></i> <?= vc_escape($t('characters.view.publish_target', ['target' => $publicationTargetLabel])); ?>
                     </button>
                 <?php endif; ?>
             </div>
@@ -923,19 +930,19 @@ foreach ($rightFields as $field) {
             <details class="character-export-menu">
                 <summary class="btn-secondary"><i class="fa-solid fa-file-pdf"></i> PDF</summary>
                 <div class="character-export-options">
-                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=current<?= vc_escape($exportVariantParam); ?>">Ten wariant</a>
-                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=all">Cala postac</a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=current<?= vc_escape($exportVariantParam); ?>"><?= vc_escape($t('characters.view.export_current')); ?></a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=pdf&scope=all"><?= vc_escape($t('characters.view.export_all')); ?></a>
                 </div>
             </details>
             <details class="character-export-menu">
                 <summary class="btn-secondary"><i class="fa-solid fa-file-lines"></i> TXT</summary>
                 <div class="character-export-options">
-                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=current<?= vc_escape($exportVariantParam); ?>">Ten wariant</a>
-                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=all">Cala postac</a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=current<?= vc_escape($exportVariantParam); ?>"><?= vc_escape($t('characters.view.export_current')); ?></a>
+                    <a href="/character/export?id=<?= vc_escape($exportCharacterId); ?>&format=txt&scope=all"><?= vc_escape($t('characters.view.export_all')); ?></a>
                 </div>
             </details>
             <a href="/editCharacter/<?= vc_escape($character->getPublicId()); ?>?return_url=<?= vc_escape($encodedReturnUrl); ?><?= vc_escape($editVariantParam); ?>" class="btn-primary">
-                <i class="fa-solid fa-pen"></i> Edytuj
+                <i class="fa-solid fa-pen"></i> <?= vc_escape($t('common.edit')); ?>
             </a>
         </div>
     </header>
@@ -945,7 +952,7 @@ foreach ($rightFields as $field) {
         <?php if(trim($character->getIntro()) !== ''): ?>
             <p><?= nl2br(vc_escape($character->getIntro())); ?></p>
         <?php else: ?>
-            <p class="wiki-empty">Brak wstępu</p>
+            <p class="wiki-empty"><?= vc_escape($t('characters.view.no_intro')); ?></p>
         <?php endif; ?>
     </section>
 
@@ -968,9 +975,9 @@ foreach ($rightFields as $field) {
             <?php if(!empty($variants)): ?>
                 <form class="variant-selector" method="GET" action="/character/<?= vc_escape($character->getPublicId()); ?>">
                     <input type="hidden" name="return_url" value="<?= vc_escape($returnUrl); ?>">
-                    <label for="variant-select">Wariant</label>
+                    <label for="variant-select"><?= vc_escape($t('characters.view.variant')); ?></label>
                     <select id="variant-select" name="variant" onchange="window.ocRememberSelectedCharacterVariant?.(this); this.form.submit()">
-                        <option value="" <?= !empty($baseBlockedByFilters) ? 'disabled' : ''; ?>>Forma podstawowa</option>
+                        <option value="" <?= !empty($baseBlockedByFilters) ? 'disabled' : ''; ?>><?= vc_escape($t('characters.view.base_form')); ?></option>
                         <?php foreach($variants as $variant): ?>
                             <option value="<?= (int)$variant['id']; ?>"
                                 <?= !empty($selectedVariant) && (int)$selectedVariant['id'] === (int)$variant['id'] ? 'selected' : ''; ?>>
@@ -1028,10 +1035,10 @@ foreach ($rightFields as $field) {
             </div>
             <div class="character-timeline-board" data-character-timeline-board>
                 <div class="character-timeline-toolbar">
-                    <button type="button" data-timeline-zoom-out title="Oddal"><i class="fa-solid fa-minus"></i></button>
+                    <button type="button" data-timeline-zoom-out title="<?= vc_escape($t('characters.view.zoom_out')); ?>"><i class="fa-solid fa-minus"></i></button>
                     <span data-timeline-zoom-value>100%</span>
-                    <button type="button" data-timeline-zoom-in title="Przybliz"><i class="fa-solid fa-plus"></i></button>
-                    <button type="button" data-timeline-center title="Wycentruj"><i class="fa-solid fa-crosshairs"></i></button>
+                    <button type="button" data-timeline-zoom-in title="<?= vc_escape($t('characters.view.zoom_in')); ?>"><i class="fa-solid fa-plus"></i></button>
+                    <button type="button" data-timeline-center title="<?= vc_escape($t('characters.view.center')); ?>"><i class="fa-solid fa-crosshairs"></i></button>
                 </div>
                 <div class="character-timeline-stage" data-timeline-stage>
                     <svg class="character-timeline-lines" data-timeline-lines viewBox="0 0 3000 1800" aria-hidden="true"></svg>
@@ -1177,12 +1184,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const publicationId = Number(toolbar.dataset.publicationId || 0);
 
         if (!characterId) {
-            alert('Brak postaci do publikacji.');
+            alert(window.OCI18n?.characterEditor?.characterMissing || 'Brak postaci do publikacji.');
             return;
         }
 
         if (action === 'unpublish' && !publicationId) {
-            alert('Brak aktywnej publikacji.');
+            alert(window.OCI18n?.publicationMissing || 'Brak aktywnej publikacji.');
             return;
         }
 
@@ -1240,7 +1247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         trigger.addEventListener('click', event => {
             event.preventDefault();
             image.src = trigger.dataset.fullSrc || trigger.src || trigger.href;
-            tags.textContent = trigger.dataset.tags ? 'Filtry: ' + trigger.dataset.tags : '';
+            tags.textContent = trigger.dataset.tags ? (window.OCI18n?.filters || 'Filtry') + ': ' + trigger.dataset.tags : '';
             lightbox.classList.add('open');
             lightbox.setAttribute('aria-hidden', 'false');
             setZoom(1);

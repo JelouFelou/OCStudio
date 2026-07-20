@@ -3,6 +3,15 @@ console.log("Character Creator Script Loaded!");
 const OC_IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.avif';
 
 // -------------------------------------------------------
+const ccI18n = () => window.OCI18n?.characterEditor || {};
+const ccText = (key, fallback, replacements = {}) => {
+    let value = ccI18n()[key] || fallback || key;
+    Object.entries(replacements).forEach(([name, replacement]) => {
+        value = value.replaceAll(`:${name}`, String(replacement));
+    });
+    return value;
+};
+
 // Ładowanie pól szablonu
 // -------------------------------------------------------
 async function loadTemplateFields(templateId) {
@@ -29,7 +38,7 @@ async function loadTemplateFields(templateId) {
         }
 
         if (!template.fields || template.fields.length === 0) {
-            leftContainer.innerHTML = '<p style="color:var(--text-muted);">Ten szablon postaci nie zawiera żadnych pól.</p>';
+            leftContainer.innerHTML = `<p style="color:var(--text-muted);">${escapeHtml(ccText('templateEmpty', 'Ten szablon postaci nie zawiera zadnych pol.'))}</p>`;
             rightContainer.innerHTML = '';
             if (document.body) delete document.body.dataset.characterFieldsLoading;
             return;
@@ -117,7 +126,7 @@ function splitDeferredTags(value) {
 function askDeferredImageTags(tagsInput) {
     let tags = tagsInput?.value || window.OCImageTools?.getLastUploadTags?.() || '';
     while (splitDeferredTags(tags).length < 5) {
-        tags = prompt('Podaj minimum 5 filtrów zdjęcia po przecinku:', tags || 'sfw, postać, obraz, galeria, opis') || '';
+        tags = prompt(ccText('imageTagsPrompt', 'Enter at least 5 image filters separated by commas:'), tags || ccText('imageTagsDefault', 'sfw, character, image, gallery, description')) || '';
         if (!tags) return null;
     }
     const normalized = window.OCImageTools?.setLastUploadTags?.(tags) || splitDeferredTags(tags).join(', ');
@@ -141,7 +150,7 @@ async function chooseTemplateImageAsset(defaultTab = 'gallery') {
     } : null;
 }
 
-function createUnifiedImageButton(label = 'Wybierz zdjęcie') {
+function createUnifiedImageButton(label = ccText('chooseImage', 'Wybierz zdjecie')) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'upload-label btn-secondary';
@@ -342,7 +351,7 @@ function createImageTableWidget(saved, onChange, fieldId = '', rowKey = '') {
 
     const chooseBtn = createUnifiedImageButton('Z galerii');
     chooseBtn.classList.add('table-image-action');
-    chooseBtn.title = 'Wybierz zdjęcie z galerii';
+    chooseBtn.title = ccText('chooseFromGallery', 'Wybierz z galerii');
     chooseBtn.innerHTML = '<i class="fa-solid fa-images"></i><span>Z galerii</span>';
     chooseBtn.addEventListener('click', async () => {
         const value = await chooseTemplateImageAsset();
@@ -367,8 +376,8 @@ function createImageTableWidget(saved, onChange, fieldId = '', rowKey = '') {
         const uploadBtn = document.createElement('label');
         uploadBtn.htmlFor = fileInput.id;
         uploadBtn.className = 'upload-label btn-secondary table-image-action';
-        uploadBtn.title = 'Wgraj zdjęcie z dysku';
-        uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i><span>Wgraj</span>';
+        uploadBtn.title = ccText('uploadImage', 'Wgraj zdjecie');
+        uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i><span>${escapeHtml(ccText('uploadImage', 'Wgraj'))}</span>`;
 
         fileInput.addEventListener('change', () => {
             const file = fileInput.files[0];
@@ -388,8 +397,8 @@ function createImageTableWidget(saved, onChange, fieldId = '', rowKey = '') {
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'btn-secondary table-image-action table-image-remove';
-    removeBtn.title = 'Usuń zdjęcie';
-    removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i><span>Usuń</span>';
+    removeBtn.title = ccText('removeImage', 'Usun zdjecie');
+    removeBtn.innerHTML = `<i class="fa-solid fa-trash"></i><span>${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}</span>`;
     removeBtn.addEventListener('click', () => {
         preview.removeAttribute('src');
         onChange('');
@@ -435,7 +444,7 @@ function createListTableWidget(saved, onChange) {
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'character-list-remove';
-        remove.title = 'Usuń element';
+        remove.title = ccText('removeItem', 'Usun element');
         remove.innerHTML = '<i class="fa-solid fa-minus"></i>';
         remove.addEventListener('click', () => {
             row.remove();
@@ -450,7 +459,7 @@ function createListTableWidget(saved, onChange) {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'btn-secondary character-list-add';
-    addBtn.innerHTML = '<i class="fa-solid fa-plus"></i><span>Dodaj element</span>';
+    addBtn.innerHTML = `<i class="fa-solid fa-plus"></i><span>${escapeHtml(ccText('addItem', 'Dodaj element'))}</span>`;
     addBtn.addEventListener('click', () => { addRow(''); sync(); });
 
     if (items.length) items.forEach(addRow);
@@ -507,7 +516,7 @@ function createSelectTableWidget(rowDef, saved, onChange) {
 
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = 'Wybierz...';
+    empty.textContent = ccText('chooseEmpty', '-- Wybierz --');
     select.appendChild(empty);
 
     (rowDef.options || []).forEach(optionValue => {
@@ -640,7 +649,7 @@ function buildFieldWidget(field) {
         case 'text': {
             const inp = document.createElement('input');
             inp.type = 'text';
-            inp.placeholder = variantMode && basePlaceholder ? basePlaceholder : 'Wpisz wartość...';
+            inp.placeholder = variantMode && basePlaceholder ? basePlaceholder : ccText('valuePlaceholder', 'Wpisz wartosc...');
             inp.name = fieldNames.value;
             if (savedRaw !== null) inp.value = savedRaw;
             wrapper.appendChild(inp);
@@ -650,7 +659,7 @@ function buildFieldWidget(field) {
         // ---- DŁUGI TEKST ----
         case 'textarea': {
             const ta = document.createElement('textarea');
-            ta.placeholder = variantMode && basePlaceholder ? basePlaceholder : 'Wpisz tekst...';
+            ta.placeholder = variantMode && basePlaceholder ? basePlaceholder : ccText('valuePlaceholder', 'Wpisz tekst...');
             ta.name = fieldNames.value;
             ta.rows = 5;
             ta.style.resize = 'vertical';
@@ -695,7 +704,7 @@ function buildFieldWidget(field) {
                 inp.type = 'text';
                 inp.className = 'bullet-input character-list-input';
                 inp.value = val;
-                inp.placeholder = variantMode && basePlaceholder ? basePlaceholder : 'Wpisz element...';
+                inp.placeholder = variantMode && basePlaceholder ? basePlaceholder : ccText('valuePlaceholder', 'Wpisz element...');
 
                 inp.addEventListener('keydown', e => {
                     if (e.key === 'Enter') {
@@ -717,7 +726,7 @@ function buildFieldWidget(field) {
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.className = 'character-list-remove';
-                removeBtn.title = 'Usuń element';
+                removeBtn.title = ccText('removeItem', 'Usun element');
                 removeBtn.innerHTML = '<i class="fa-solid fa-minus"></i>';
                 removeBtn.addEventListener('click', () => {
                     const prev = row.previousElementSibling;
@@ -738,7 +747,7 @@ function buildFieldWidget(field) {
             const addBtn = document.createElement('button');
             addBtn.type = 'button';
             addBtn.className = 'btn-secondary character-list-add';
-            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i><span>Dodaj element</span>';
+            addBtn.innerHTML = `<i class="fa-solid fa-plus"></i><span>${escapeHtml(ccText('addItem', 'Dodaj element'))}</span>`;
             addBtn.addEventListener('click', () => {
                 const row = addBulletRow('');
                 row.querySelector('.bullet-input')?.focus();
@@ -781,12 +790,12 @@ function buildFieldWidget(field) {
             const uploadBtn = document.createElement('label');
             uploadBtn.htmlFor = fileInput.id;
             uploadBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;padding:9px 12px;border-radius:8px;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);font-size:0.9rem;font-weight:700;line-height:1.15;flex:1;min-width:0;text-align:center;';
-            uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Wybierz zdjęcie';
+            uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i> ${escapeHtml(ccText('chooseImage', 'Wybierz zdjecie'))}`;
 
             const galleryBtn = document.createElement('button');
             galleryBtn.type = 'button';
             galleryBtn.className = 'upload-label btn-secondary';
-            galleryBtn.textContent = 'Wybierz z galerii';
+            galleryBtn.textContent = ccText('chooseFromGallery', 'Wybierz z galerii');
             galleryBtn.style.cssText = 'flex:1;min-width:0;justify-content:center;text-align:center;line-height:1.15;';
 
             const hiddenInput = document.createElement('input');
@@ -822,7 +831,7 @@ function buildFieldWidget(field) {
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-secondary image-remove-btn';
-            removeBtn.textContent = 'Usuń zdjęcie';
+            removeBtn.textContent = ccText('removeImage', 'Usun zdjecie');
             removeBtn.style.cssText = 'flex:1;min-width:0;justify-content:center;text-align:center;line-height:1.15;';
             removeBtn.addEventListener('click', () => {
                 fileInput.value = '';
@@ -840,9 +849,9 @@ function buildFieldWidget(field) {
             const setCollapsed = (collapsed, persist = true) => {
                 imgWrap.classList.toggle('is-image-field-collapsed', collapsed);
                 preview.hidden = collapsed;
-                hideBtn.textContent = collapsed ? 'Odsłoń zdjęcie' : 'Tymczasowo ukryj';
+                hideBtn.textContent = collapsed ? ccText('revealImage', 'Odslon zdjecie') : ccText('hideImageTemp', 'Tymczasowo ukryj');
                 hideBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                hideBtn.title = collapsed ? 'Odsłoń zdjęcie w edytorze' : 'Tymczasowo ukryj zdjęcie w edytorze';
+                hideBtn.title = collapsed ? ccText('revealImageTitle', 'Odslon zdjecie w edytorze') : ccText('hideImageTitle', 'Tymczasowo ukryj zdjecie w edytorze');
                 if (persist) localStorage.setItem(storageKey(), collapsed ? '1' : '0');
             };
             hideBtn.addEventListener('click', () => {
@@ -923,12 +932,12 @@ function buildFieldWidget(field) {
             const uploadBtn = document.createElement('label');
             uploadBtn.htmlFor = fileInput.id;
             uploadBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);font-size:0.9rem;width:fit-content;';
-            uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Wgraj zdjęcia';
+            uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i> ${escapeHtml(ccText('uploadImages', 'Wgraj zdjecia'))}`;
 
             const galleryBtn = document.createElement('button');
             galleryBtn.type = 'button';
             galleryBtn.className = 'btn-secondary';
-            galleryBtn.textContent = 'Dodaj z galerii';
+            galleryBtn.textContent = ccText('addFromGallery', 'Dodaj z galerii');
 
             fileInput.addEventListener('change', () => {
                 if (!fileInput.files.length) return;
@@ -944,7 +953,7 @@ function buildFieldWidget(field) {
                 }
             });
             galleryBtn.className = 'upload-label btn-secondary';
-            galleryBtn.textContent = 'Dodaj zdjęcie';
+            galleryBtn.textContent = ccText('addImage', 'Dodaj zdjecie');
             galleryBtn.addEventListener('click', async () => {
                 const asset = await chooseTemplateImageAsset();
                 if (!asset) return;
@@ -1057,7 +1066,7 @@ function buildFieldWidget(field) {
                     const inp = document.createElement('input');
                     inp.type = 'text';
                     const rowBase = readableVariantBaseValue(tableFindSourceCell(baseRows, rowDefs, effectiveRowDef.key || effectiveRowDef.label));
-                    inp.placeholder = variantMode && rowBase ? rowBase : 'Wpisz wartość...';
+                    inp.placeholder = variantMode && rowBase ? rowBase : ccText('valuePlaceholder', 'Wpisz wartosc...');
                     inp.dataset.rowKey = effectiveRowDef.key || effectiveRowDef.label;
                     inp.style.cssText = 'width:100%;border:none;outline:none;padding:8px 12px;background:transparent;font-size:0.9rem;color:var(--text,#333);';
                     if (savedValue !== undefined && savedValue !== null) inp.value = savedValue;
@@ -1112,7 +1121,7 @@ function buildFieldWidget(field) {
             monthSel.style.cssText = 'flex:2;min-width:120px;';
             if (months.length === 0) {
                 const opt = document.createElement('option');
-                opt.value = ''; opt.textContent = '— Brak miesięcy —';
+                opt.value = ''; opt.textContent = ccText('emptyMonths', '-- Brak miesiecy --');
                 monthSel.appendChild(opt);
             } else {
                 months.forEach((m, i) => {
@@ -1200,7 +1209,7 @@ function buildFieldWidget(field) {
 
             const defOpt = document.createElement('option');
             defOpt.value = '';
-            defOpt.textContent = variantMode && basePlaceholder ? `Domyślne: ${basePlaceholder}` : '— Wybierz —';
+            defOpt.textContent = variantMode && basePlaceholder ? ccText('defaultValue', 'Domyslne: :value', { value: basePlaceholder }) : ccText('chooseEmpty', '-- Wybierz --');
             if (savedRaw === null || savedRaw === '') defOpt.selected = true;
             sel.appendChild(defOpt);
 
@@ -1230,7 +1239,7 @@ async function uploadFile(file) {
     formData.append('file', file);
     let tags = window.OCImageTools?.getLastUploadTags?.() || '';
     while (tags.split(',').map(t => t.trim()).filter(Boolean).length < 5) {
-        tags = prompt('Podaj minimum 5 filtrów zdjęcia po przecinku:', tags || 'sfw, postać, obraz, galeria, opis') || '';
+        tags = prompt(ccText('imageTagsPrompt', 'Enter at least 5 image filters separated by commas:'), tags || ccText('imageTagsDefault', 'sfw, character, image, gallery, description')) || '';
         if (!tags) return null;
     }
     tags = window.OCImageTools?.setLastUploadTags?.(tags) || tags.split(',').map(t => t.trim()).filter(Boolean).join(', ');
@@ -1242,7 +1251,7 @@ async function uploadFile(file) {
         return await res.json(); // { url, filename }
     } catch(e) {
         console.error('Upload error:', e);
-        alert('Nie udało się przesłać pliku: ' + file.name);
+        alert(ccText('uploadError', 'Nie udalo sie przeslac pliku: :name', { name: file.name }));
         return null;
     }
 }
@@ -1415,7 +1424,7 @@ document.addEventListener('submit', event => {
     if (!invalidStats) return;
     event.preventDefault();
     const counter = invalidStats.querySelector('.stats-points-counter');
-    alert(counter?.textContent ? `Statystyki muszą wykorzystać dokładnie pulę punktów. ${counter.textContent}` : 'Statystyki muszą wykorzystać dokładnie pulę punktów.');
+    alert(counter?.textContent ? `${ccText('statsError', 'Statystyki musza wykorzystac dokladnie pule punktow.')} ${counter.textContent}` : ccText('statsError', 'Statystyki musza wykorzystac dokladnie pule punktow.'));
     invalidStats.scrollIntoView({ behavior: 'smooth', block: 'center' });
 });
 
@@ -1516,7 +1525,7 @@ function buildVariantFieldWidget(fieldWrapper) {
             monthSel.style.cssText = 'flex:2;min-width:120px;';
             if (months.length === 0) {
                 const opt = document.createElement('option');
-                opt.value = ''; opt.textContent = '— Brak miesięcy —';
+                opt.value = ''; opt.textContent = ccText('emptyMonths', '-- Brak miesiecy --');
                 monthSel.appendChild(opt);
             } else {
                 months.forEach((m, i) => {
@@ -1644,12 +1653,12 @@ function buildVariantFieldWidget(fieldWrapper) {
             const uploadBtn = document.createElement('label');
             uploadBtn.htmlFor = fileInput.id;
             uploadBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);font-size:0.9rem;width:fit-content;';
-            uploadBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Wgraj zdjęcia';
+            uploadBtn.innerHTML = `<i class="fa-solid fa-upload"></i> ${escapeHtml(ccText('uploadImages', 'Wgraj zdjecia'))}`;
 
             const galleryBtn = document.createElement('button');
             galleryBtn.type = 'button';
             galleryBtn.className = 'upload-label btn-secondary';
-            galleryBtn.textContent = 'Dodaj z galerii';
+            galleryBtn.textContent = ccText('addFromGallery', 'Dodaj z galerii');
             galleryBtn.addEventListener('click', async () => {
                 const asset = await chooseTemplateImageAsset();
                 if (!asset) return;
@@ -1709,12 +1718,12 @@ function buildVariantFieldWidget(fieldWrapper) {
             const uploadLabel = document.createElement('label');
             uploadLabel.htmlFor = fileInput.id;
             uploadLabel.style.cssText = 'display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);font-size:0.9rem;width:fit-content;';
-            uploadLabel.innerHTML = '<i class="fa-solid fa-upload"></i> Wgraj zdjęcie';
+            uploadLabel.innerHTML = `<i class="fa-solid fa-upload"></i> ${escapeHtml(ccText('uploadImage', 'Wgraj zdjecie'))}`;
 
             const galleryBtn = document.createElement('button');
             galleryBtn.type = 'button';
             galleryBtn.className = 'upload-label btn-secondary';
-            galleryBtn.textContent = 'Wybierz z galerii';
+            galleryBtn.textContent = ccText('chooseFromGallery', 'Wybierz z galerii');
             galleryBtn.addEventListener('click', async () => {
                 const asset = await chooseTemplateImageAsset();
                 if (!asset) return;
@@ -1741,7 +1750,7 @@ function buildVariantFieldWidget(fieldWrapper) {
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'btn-secondary image-remove-btn';
-            removeBtn.textContent = 'Usuń zdjęcie';
+            removeBtn.textContent = ccText('removeImage', 'Usun zdjecie');
             removeBtn.addEventListener('click', () => {
                 fileInput.value = '';
                 tagsInput.value = '';
@@ -1757,9 +1766,9 @@ function buildVariantFieldWidget(fieldWrapper) {
             const setCollapsed = (collapsed, persist = true) => {
                 imgWrap.classList.toggle('is-image-field-collapsed', collapsed);
                 preview.hidden = collapsed;
-                hideBtn.textContent = collapsed ? 'Odsłoń zdjęcie' : 'Tymczasowo ukryj';
+                hideBtn.textContent = collapsed ? ccText('revealImage', 'Odslon zdjecie') : ccText('hideImageTemp', 'Tymczasowo ukryj');
                 hideBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                hideBtn.title = collapsed ? 'Odsłoń zdjęcie w edytorze' : 'Tymczasowo ukryj zdjęcie w edytorze';
+                hideBtn.title = collapsed ? ccText('revealImageTitle', 'Odslon zdjecie w edytorze') : ccText('hideImageTitle', 'Tymczasowo ukryj zdjecie w edytorze');
                 if (persist) localStorage.setItem(storageKey(), collapsed ? '1' : '0');
             };
             hideBtn.addEventListener('click', () => {
@@ -1788,7 +1797,7 @@ function buildVariantFieldWidget(fieldWrapper) {
             
             const defOpt = document.createElement('option');
             defOpt.value = '';
-            defOpt.textContent = basePlaceholder ? `Bazowa: ${basePlaceholder}` : '— Zostaw puste dla bazowej —';
+            defOpt.textContent = basePlaceholder ? ccText('baseValue', 'Bazowa: :value', { value: basePlaceholder }) : ccText('leaveEmptyForBase', 'Zostaw puste, aby uzyc wartosci bazowej');
             if (!hiddenInput.value) defOpt.selected = true;
             sel.appendChild(defOpt);
             
@@ -1850,7 +1859,7 @@ function buildVariantFieldWidget(fieldWrapper) {
                 const removeBtn = document.createElement('button');
                 removeBtn.type = 'button';
                 removeBtn.className = 'character-list-remove';
-                removeBtn.title = 'Usuń element';
+                removeBtn.title = ccText('removeItem', 'Usun element');
                 removeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
                 removeBtn.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -1872,7 +1881,7 @@ function buildVariantFieldWidget(fieldWrapper) {
             const addBtn = document.createElement('button');
             addBtn.type = 'button';
             addBtn.className = 'btn-secondary character-list-add';
-            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i><span>Dodaj element</span>';
+            addBtn.innerHTML = `<i class="fa-solid fa-plus"></i><span>${escapeHtml(ccText('addItem', 'Dodaj element'))}</span>`;
             addBtn.addEventListener('click', () => {
                 const row = addBulletInput('');
                 row.querySelector('input')?.focus();
@@ -1948,7 +1957,7 @@ function buildVariantFieldWidget(fieldWrapper) {
                 } else {
                     const inp = document.createElement('input');
                     inp.type = 'text';
-                    inp.placeholder = readableVariantBaseValue(tableFindSourceCell(parseVariantJsonObject(baseValue), rowDefs, effectiveRowDef.key || effectiveRowDef.label)) || 'Wpisz wartość...';
+                    inp.placeholder = readableVariantBaseValue(tableFindSourceCell(parseVariantJsonObject(baseValue), rowDefs, effectiveRowDef.key || effectiveRowDef.label)) || ccText('valuePlaceholder', 'Wpisz wartosc...');
                     inp.dataset.rowKey = effectiveRowDef.key || effectiveRowDef.label;
                     inp.style.cssText = 'width:100%;border:none;outline:none;padding:8px 12px;background:transparent;font-size:0.9rem;color:var(--text,#333);';
                     if (savedValue !== undefined && savedValue !== null) inp.value = savedValue;
@@ -1972,7 +1981,7 @@ function buildVariantFieldWidget(fieldWrapper) {
             const ta = document.createElement('textarea');
             ta.rows = 2;
             ta.style.cssText = 'width:100%;border:1px solid var(--border,#ddd);border-radius:6px;padding:8px;font-family:inherit;';
-            ta.placeholder = basePlaceholder ? `Bazowa: ${basePlaceholder}` : 'Zostaw puste, aby użyć wartości bazowej';
+            ta.placeholder = basePlaceholder ? ccText('baseValue', 'Bazowa: :value', { value: basePlaceholder }) : ccText('leaveEmptyForBase', 'Zostaw puste, aby uzyc wartosci bazowej');
             ta.value = hiddenInput.value;
             ta.addEventListener('input', () => {
                 hiddenInput.value = ta.value;

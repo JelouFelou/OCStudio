@@ -19,44 +19,54 @@ $resolveDefaultImage = static function (string $image) use ($defaultCharacterIma
     $image = basename($image) ?: 'default.png';
     return in_array($image, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $image;
 };
+$publicationTypeLabel = static function (array $publication) use ($t): string {
+    return match ((string)($publication['contentType'] ?? '')) {
+        'character' => $t('content.type.character_one'),
+        'story' => $t('content.type.story_one'),
+        'image' => $t('content.type.image_one'),
+        'relation_board' => $t('content.type.relation_board_one'),
+        'template' => $t('content.type.template_one'),
+        default => $t('common.publication'),
+    };
+};
 
 $scopeOptions = [
-    'all' => ['label' => 'Wszystko', 'short' => 'Wszystko', 'icon' => 'fa-compass'],
-    'content' => ['label' => 'Tresci', 'short' => 'Tresci', 'icon' => 'fa-share-nodes'],
-    'users' => ['label' => 'Uzytkownicy', 'short' => 'Uzyt.', 'icon' => 'fa-user-group'],
-    'following' => ['label' => 'Obserwowani', 'short' => 'Obs.', 'icon' => 'fa-user-check'],
-    'mine' => ['label' => 'Moje publiczne', 'short' => 'Moje', 'icon' => 'fa-id-badge'],
+    'all' => ['label' => $t('community.scope.all'), 'short' => $t('community.scope.all'), 'icon' => 'fa-compass'],
+    'content' => ['label' => $t('community.scope.content'), 'short' => $t('community.scope.content'), 'icon' => 'fa-share-nodes'],
+    'users' => ['label' => $t('community.scope.users'), 'short' => $t('community.scope.users'), 'icon' => 'fa-user-group'],
+    'following' => ['label' => $t('community.scope.following'), 'short' => $t('community.scope.following'), 'icon' => 'fa-user-check'],
+    'mine' => ['label' => $t('community.scope.mine'), 'short' => $t('common.my_public'), 'icon' => 'fa-id-badge'],
 ];
 
 $typeOptions = [
-    'all' => ['label' => 'Wszystkie typy', 'short' => 'Wszystkie', 'icon' => 'fa-layer-group'],
-    'character' => ['label' => 'Postacie', 'short' => 'Postacie', 'icon' => 'fa-user'],
-    'story' => ['label' => 'Historie', 'short' => 'Historie', 'icon' => 'fa-book-open'],
-    'image' => ['label' => 'Zdjecia', 'short' => 'Zdjecia', 'icon' => 'fa-image'],
-    'relation_board' => ['label' => 'Relacje', 'short' => 'Relacje', 'icon' => 'fa-diagram-project'],
-    'template' => ['label' => 'Szablony', 'short' => 'Szablony', 'icon' => 'fa-file-invoice'],
+    'all' => ['label' => $t('content.type.all'), 'short' => $t('content.type.all'), 'icon' => 'fa-layer-group'],
+    'character' => ['label' => $t('content.type.character'), 'short' => $t('content.type.character'), 'icon' => 'fa-user'],
+    'story' => ['label' => $t('content.type.story'), 'short' => $t('content.type.story'), 'icon' => 'fa-book-open'],
+    'image' => ['label' => $t('content.type.image'), 'short' => $t('content.type.image'), 'icon' => 'fa-image'],
+    'relation_board' => ['label' => $t('content.type.relation_board'), 'short' => $t('content.type.relation_board'), 'icon' => 'fa-diagram-project'],
+    'template' => ['label' => $t('content.type.template'), 'short' => $t('content.type.template'), 'icon' => 'fa-file-invoice'],
 ];
 $sortOptions = [
-    'desc' => ['label' => 'Malejaco', 'short' => 'Malej.', 'icon' => 'fa-arrow-down-wide-short'],
-    'asc' => ['label' => 'Rosnaco', 'short' => 'Rosn.', 'icon' => 'fa-arrow-up-wide-short'],
-    'random' => ['label' => 'Losowo', 'short' => 'Losowo', 'icon' => 'fa-shuffle'],
+    'desc' => ['label' => $t('community.sort.desc'), 'short' => $t('community.sort.desc'), 'icon' => 'fa-arrow-down-wide-short'],
+    'asc' => ['label' => $t('community.sort.asc'), 'short' => $t('community.sort.asc'), 'icon' => 'fa-arrow-up-wide-short'],
+    'random' => ['label' => $t('community.sort.random'), 'short' => $t('community.sort.random'), 'icon' => 'fa-shuffle'],
 ];
 $showTypeFilters = $scope !== 'users';
-$sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'Sortowanie po reakcjach';
+$sortContextLabel = $scope === 'users' ? $t('community.sort.publications') : $t('community.sort.reactions');
 ?>
 
 <div class="content-view community-page">
     <?php if ($communityDisabled): ?>
         <section class="community-empty">
             <i class="fa-solid fa-power-off"></i>
-            <h2>Spolecznosc jest wylaczona</h2>
-            <p>Administrator tymczasowo wylaczyl funkcje spolecznosciowe.</p>
+            <h2><?= $community_escape($t('community.disabled.title')) ?></h2>
+            <p><?= $community_escape($t('community.disabled.body')) ?></p>
         </section>
     <?php elseif ($publicationsDisabled): ?>
         <section class="community-empty">
             <i class="fa-solid fa-eye-slash"></i>
-            <h2>Publiczne wyszukiwanie jest wylaczone</h2>
-            <p>Publikacje albo wyszukiwanie publicznych tresci sa aktualnie niedostepne.</p>
+            <h2><?= $community_escape($t('community.public_search_disabled.title')) ?></h2>
+            <p><?= $community_escape($t('community.public_search_disabled.body')) ?></p>
         </section>
     <?php else: ?>
         <form class="community-search-panel" method="GET" action="/community">
@@ -64,24 +74,24 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
             <input type="hidden" name="type" value="<?= $community_escape($type) ?>">
             <input type="hidden" name="sort" value="<?= $community_escape($sort) ?>">
             <label class="community-query">
-                <span>Szukaj</span>
-                <input type="search" name="q" value="<?= $community_escape($query) ?>" placeholder="Nazwa, filtr, autor..." autocomplete="off">
+                <span><?= $community_escape($t('common.search')) ?></span>
+                <input type="search" name="q" value="<?= $community_escape($query) ?>" placeholder="<?= $community_escape($t('community.search_placeholder')) ?>" autocomplete="off">
             </label>
 
             <label class="community-checkbox">
                 <input type="checkbox" name="adult" value="1" <?= $includeAdult ? 'checked' : '' ?>>
-                <span>Pokaz +18</span>
+                <span><?= $community_escape($t('common.show_adult')) ?></span>
             </label>
 
             <button type="submit" class="btn-primary">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                Szukaj
+                <?= $community_escape($t('common.search')) ?>
             </button>
         </form>
 
-        <section class="community-filter-bar" aria-label="Filtry spolecznosci">
+        <section class="community-filter-bar" aria-label="<?= $community_escape($t('community.filters_label')) ?>">
             <div class="community-filter-group">
-                <span>Pokaz</span>
+                <span><?= $community_escape($t('common.show')) ?></span>
                 <nav class="community-scope-tabs">
                     <?php foreach ($scopeOptions as $value => $option): ?>
                         <?php
@@ -105,7 +115,7 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
             <?php if ($showTypeFilters): ?>
                 <span class="community-filter-separator" aria-hidden="true">|</span>
                 <div class="community-filter-group">
-                    <span>Typ</span>
+                    <span><?= $community_escape($t('common.type')) ?></span>
                     <nav class="community-type-tabs">
                         <?php foreach ($typeOptions as $value => $option): ?>
                             <?php
@@ -129,7 +139,7 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
 
             <span class="community-filter-separator" aria-hidden="true">|</span>
             <div class="community-filter-group">
-                <span><?= $scope === 'users' ? 'Publikacje' : 'Reakcje' ?></span>
+                <span><?= $community_escape($scope === 'users' ? $t('community.sort.publications') : $t('community.sort.reactions')) ?></span>
                 <nav class="community-sort-tabs" aria-label="<?= $community_escape($sortContextLabel) ?>">
                     <?php foreach ($sortOptions as $value => $option): ?>
                         <?php
@@ -155,19 +165,19 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
         <?php if ($scope === 'following' && !$followsReady): ?>
             <section class="community-empty">
                 <i class="fa-solid fa-user-check"></i>
-                <h2>Followy sa wylaczone</h2>
-                <p>Administrator tymczasowo wylaczyl obserwowanie uzytkownikow.</p>
+                <h2><?= $community_escape($t('community.following_disabled.title')) ?></h2>
+                <p><?= $community_escape($t('community.following_disabled.body')) ?></p>
             </section>
         <?php else: ?>
             <?php if ($scope === 'users' || ($scope === 'all' && mb_strlen($query) >= 2)): ?>
                 <section class="community-section">
                     <div class="dashboard-section-header">
-                        <h2>Uzytkownicy</h2>
+                        <h2><?= $community_escape($t('community.users.title')) ?></h2>
                         <span class="community-count"><?= count($users) ?></span>
                     </div>
 
                     <?php if (empty($users)): ?>
-                        <p class="community-muted"><?= $query === '' ? 'Nie ma jeszcze uzytkownikow z publicznymi publikacjami.' : 'Nie znaleziono publicznych profili dla tej frazy.' ?></p>
+                        <p class="community-muted"><?= $community_escape($query === '' ? $t('community.users.empty') : $t('community.users.empty_query')) ?></p>
                     <?php else: ?>
                         <div class="community-user-grid">
                             <?php foreach ($users as $user): ?>
@@ -184,8 +194,8 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                                         <?php endif; ?>
                                     </span>
                                     <span>
-                                        <strong><?= $community_escape($username ?: 'Uzytkownik') ?></strong>
-                                        <small><?= (int)($user['publicationCount'] ?? 0) ?> publikacji</small>
+                                        <strong><?= $community_escape($username ?: $t('common.user')) ?></strong>
+                                        <small><?= (int)($user['publicationCount'] ?? 0) ?> <?= $community_escape($t('common.publication_count')) ?></small>
                                     </span>
                                 </a>
                             <?php endforeach; ?>
@@ -199,11 +209,11 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                     <div class="dashboard-section-header">
                         <h2><?php
                             if ($scope === 'mine') {
-                                echo 'Moje publiczne tresci';
+                                echo $community_escape($t('common.my_public'));
                             } elseif ($scope === 'following') {
-                                echo 'Tresci obserwowanych';
+                                echo $community_escape($t('common.following_content'));
                             } else {
-                                echo 'Publiczne tresci';
+                                echo $community_escape($t('common.public_content'));
                             }
                         ?></h2>
                         <span class="community-count"><?= count($publications) ?></span>
@@ -212,8 +222,8 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                     <?php if (empty($publications)): ?>
                         <section class="community-empty community-empty-inline">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <h2>Brak wynikow</h2>
-                            <p>Zmien zakres, typ tresci albo fraze wyszukiwania.</p>
+                            <h2><?= $community_escape($t('common.no_results')) ?></h2>
+                            <p><?= $community_escape($t('community.results.change_filters')) ?></p>
                         </section>
                     <?php else: ?>
                         <div class="community-publication-grid">
@@ -223,7 +233,7 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                                 $author = is_array($publication['author'] ?? null) ? $publication['author'] : [];
                                 $image = $resolveDefaultImage((string)($card['image'] ?? 'default.png'));
                                 $filters = is_array($card['filters'] ?? null) ? $card['filters'] : [];
-                                $authorName = trim((string)($author['displayName'] ?? '')) ?: 'Uzytkownik';
+                                $authorName = trim((string)($author['displayName'] ?? '')) ?: $t('common.user');
                                 $copyOrigin = is_array($publication['copyOrigin'] ?? null) ? $publication['copyOrigin'] : [];
                                 $isCopiedPublication = !empty($publication['isCopy']) || !empty($copyOrigin);
                                 $copyOriginIsOwn = !empty($publication['copyOriginIsOwn'])
@@ -232,8 +242,8 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                                 $copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
                                 $copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
                                 $copyOriginTooltip = $copyOriginIsOwn
-                                    ? 'Skopiowano od Ciebie'
-                                    : 'Kopia z zachowanym pochodzeniem';
+                                    ? $t('community.copy_origin.own')
+                                    : $t('community.copy_origin.other');
                                 if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
                                     $copyOriginTooltip .= ': ' . $copyOriginAuthor;
                                 }
@@ -245,13 +255,13 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                                 <a class="<?= $community_escape($publicationCardClass) ?>" href="/p/<?= $community_escape($publication['publicId'] ?? '') ?>">
                                     <div class="community-card-media">
                                         <img src="/media/<?= $community_escape(rawurlencode($image)) ?>"
-                                             alt="<?= $community_escape($card['title'] ?? 'Publikacja') ?>"
+                                             alt="<?= $community_escape($card['title'] ?? $t('common.publication')) ?>"
                                              style="object-fit: <?= $community_escape($card['fit'] ?? 'cover') ?>; object-position: <?= (int)($card['focusX'] ?? 50) ?>% <?= (int)($card['focusY'] ?? 50) ?>%;">
                                         <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
                                             <span class="public-profile-age-badge">+18</span>
                                         <?php endif; ?>
                                         <?php if (!empty($publication['isOwn'])): ?>
-                                            <span class="community-own-badge">Twoje</span>
+                                            <span class="community-own-badge"><?= $community_escape($t('community.card.own')) ?></span>
                                         <?php endif; ?>
                                         <?php if ($isCopiedPublication): ?>
                                             <span class="community-copy-badge <?= $copyOriginIsOwn ? 'is-own-origin' : '' ?>" title="<?= $community_escape($copyOriginTooltip) ?>">
@@ -260,10 +270,10 @@ $sortContextLabel = $scope === 'users' ? 'Sortowanie po liczbie publikacji' : 'S
                                         <?php endif; ?>
                                     </div>
                                     <div class="community-card-body">
-                                        <span class="public-profile-card-type"><?= $community_escape($card['typeLabel'] ?? 'Publikacja') ?></span>
-                                        <h3><?= $community_escape($card['title'] ?? 'Publikacja') ?></h3>
+                                        <span class="public-profile-card-type"><?= $community_escape($publicationTypeLabel($publication)) ?></span>
+                                        <h3><?= $community_escape($card['title'] ?? $t('common.publication')) ?></h3>
                                         <p><?= $community_escape($card['description'] ?? '') ?></p>
-                                        <small>Autor: <?= $community_escape($authorName) ?></small>
+                                        <small><?= $community_escape($t('community.card.author', ['name' => $authorName])) ?></small>
                                         <?php if (!empty($filters)): ?>
                                             <div class="public-profile-filter-row">
                                                 <?php foreach (array_slice($filters, 0, 4) as $filter): ?>

@@ -1,10 +1,10 @@
 <?php
-$board = $board ?? ['id' => 0, 'name' => 'Relacje'];
+$board = $board ?? ['id' => 0, 'name' => $t('relations.title')];
 $boardId = $boardId ?? (int)($board['id'] ?? 0);
 $focusCharacterId = $focusCharacterId ?? null;
-$worldLabel = $board['name'] ?? 'Relacje';
+$worldLabel = $board['name'] ?? $t('relations.title');
 $returnUrl = $returnUrl ?? '/relations';
-$returnLabel = $returnLabel ?? 'Wroc do listy relacji';
+$returnLabel = $returnLabel ?? $t('relations.editor.back_to_list');
 ?>
 
 <div class="content-view relations-content-view">
@@ -13,18 +13,18 @@ $returnLabel = $returnLabel ?? 'Wroc do listy relacji';
          data-board-id="<?= (int)$boardId ?>"
          data-return-url="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>"
          data-focus-character-id="<?= $focusCharacterId !== null ? (int)$focusCharacterId : '' ?>">
-        <section id="relations-workspace" class="relations-workspace" aria-label="Pole drzewa relacji">
+        <section id="relations-workspace" class="relations-workspace" aria-label="<?= htmlspecialchars($t('relations.editor.board_label'), ENT_QUOTES, 'UTF-8') ?>">
             <div class="relations-toolbar">
                 <span class="relations-context">
                     <span><?= htmlspecialchars($worldLabel, ENT_QUOTES, 'UTF-8') ?></span>
                 </span>
-                <button type="button" id="relations-zoom-out" title="Oddal"><i class="fa-solid fa-minus"></i></button>
+                <button type="button" id="relations-zoom-out" title="<?= htmlspecialchars($t('publication.relation.zoom_out'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-minus"></i></button>
                 <span id="relations-zoom-value" class="relations-zoom-value">100%</span>
-                <button type="button" id="relations-zoom-in" title="Przybliz"><i class="fa-solid fa-plus"></i></button>
-                <button type="button" id="relations-center" title="Wycentruj"><i class="fa-solid fa-crosshairs"></i></button>
+                <button type="button" id="relations-zoom-in" title="<?= htmlspecialchars($t('publication.relation.zoom_in'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-plus"></i></button>
+                <button type="button" id="relations-center" title="<?= htmlspecialchars($t('publication.relation.center'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-crosshairs"></i></button>
             </div>
             <div id="relations-empty-state" class="relation-empty-state">
-                Przeciagnij pierwsza postac z prawego panelu na pole relacji.
+                <?= htmlspecialchars($t('relations.editor.empty_board'), ENT_QUOTES, 'UTF-8') ?>
             </div>
             <div id="relations-stage" class="relations-stage">
                 <svg id="relations-lines" class="relations-lines"></svg>
@@ -35,9 +35,9 @@ $returnLabel = $returnLabel ?? 'Wroc do listy relacji';
 
         <aside class="relations-panel">
             <div class="relations-panel-header">
-                <h2>Dostepne postacie</h2>
-                <p>Przeciagnij postac na pole albo odloz tutaj postac z pola.</p>
-                <input id="relations-character-search" class="relations-search" type="search" placeholder="Szukaj postaci...">
+                <h2><?= htmlspecialchars($t('relations.editor.available_characters'), ENT_QUOTES, 'UTF-8') ?></h2>
+                <p><?= htmlspecialchars($t('relations.editor.available_help'), ENT_QUOTES, 'UTF-8') ?></p>
+                <input id="relations-character-search" class="relations-search" type="search" placeholder="<?= htmlspecialchars($t('relations.search_characters'), ENT_QUOTES, 'UTF-8') ?>">
             </div>
             <div id="relations-character-list" class="relations-character-list"></div>
             <div class="relations-panel-footer">
@@ -51,31 +51,31 @@ $returnLabel = $returnLabel ?? 'Wroc do listy relacji';
 
 <div id="relations-modal" class="relations-modal" role="dialog" aria-modal="true">
     <div class="relations-modal-card">
-        <h2 id="relations-modal-title" style="margin:0;">Relacja</h2>
+        <h2 id="relations-modal-title" style="margin:0;"><?= htmlspecialchars($t('relations.editor.relation'), ENT_QUOTES, 'UTF-8') ?></h2>
         <div id="relations-type-grid" class="relations-type-grid"></div>
         <div class="relations-form-field">
-            <label for="relations-custom-name">Nazwa custom</label>
-            <input id="relations-custom-name" type="text" maxlength="100" placeholder="np. Mentorzy, dawna przysiega...">
+            <label for="relations-custom-name"><?= htmlspecialchars($t('relations.editor.custom_name'), ENT_QUOTES, 'UTF-8') ?></label>
+            <input id="relations-custom-name" type="text" maxlength="100" placeholder="<?= htmlspecialchars($t('relations.editor.custom_name_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
         </div>
         <div class="relations-custom-options">
             <label class="relations-form-field" for="relations-custom-icon">
-                Emoji
+                <?= htmlspecialchars($t('relations.editor.emoji'), ENT_QUOTES, 'UTF-8') ?>
                 <input id="relations-custom-icon" type="text" maxlength="8" placeholder="np. 💞">
             </label>
             <label class="relations-form-field" for="relations-custom-color">
-                Kolor
+                <?= htmlspecialchars($t('relations.editor.color'), ENT_QUOTES, 'UTF-8') ?>
                 <input id="relations-custom-color" type="color" value="#8E44AD">
             </label>
         </div>
         <div id="relations-custom-presets" class="relations-custom-presets"></div>
         <div class="relations-form-field">
-            <label for="relations-note">Opis relacji</label>
-            <textarea id="relations-note" rows="3" maxlength="1000" placeholder="Opis widoczny po kliknieciu etykiety relacji"></textarea>
+            <label for="relations-note"><?= htmlspecialchars($t('relations.editor.note'), ENT_QUOTES, 'UTF-8') ?></label>
+            <textarea id="relations-note" rows="3" maxlength="1000" placeholder="<?= htmlspecialchars($t('relations.editor.note_placeholder'), ENT_QUOTES, 'UTF-8') ?>"></textarea>
         </div>
         <div class="relations-modal-actions">
-            <button type="button" id="relations-delete-relation" class="danger">Usun</button>
-            <button type="button" id="relations-cancel-modal">Anuluj</button>
-            <button type="button" id="relations-save-relation" class="primary">Zapisz</button>
+            <button type="button" id="relations-delete-relation" class="danger"><?= htmlspecialchars($t('common.delete'), ENT_QUOTES, 'UTF-8') ?></button>
+            <button type="button" id="relations-cancel-modal"><?= htmlspecialchars($t('common.cancel'), ENT_QUOTES, 'UTF-8') ?></button>
+            <button type="button" id="relations-save-relation" class="primary"><?= htmlspecialchars($t('common.save'), ENT_QUOTES, 'UTF-8') ?></button>
         </div>
     </div>
 </div>

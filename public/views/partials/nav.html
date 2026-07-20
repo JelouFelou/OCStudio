@@ -82,7 +82,7 @@
                     <li>
                         <a href="/admin" class="<?= $currentPath === 'admin' ? 'active' : '' ?>">
                             <i class="fa-solid fa-shield-halved"></i>
-                            <span>Admin</span>
+                            <span><?= htmlspecialchars($t('common.admin'), ENT_QUOTES, 'UTF-8') ?></span>
                         </a>
                     </li>
                 <?php endif; ?>
@@ -105,7 +105,7 @@
                         <?php endforeach; ?>
                     <?php else: ?>
                         <li style="padding:12px 15px;color:var(--text-muted,#999);font-size:0.85rem;">
-                            Brak folderów
+                            <?= htmlspecialchars($t('nav.no_folders'), ENT_QUOTES, 'UTF-8') ?>
                         </li>
                     <?php endif; ?>
                 </ul>
@@ -133,7 +133,7 @@
                 </div>
                 <span class="storage-detail"><?= htmlspecialchars($t('nav.storage_used', ['used' => $storage['usedMb'], 'limit' => (string)$storage['limitMb']]), ENT_QUOTES, 'UTF-8') ?></span>
                 <?php if (!empty($storage['isExceeded'])): ?>
-                    <span class="storage-warning">Przekroczono limit miejsca</span>
+                    <span class="storage-warning"><?= htmlspecialchars($t('nav.storage_exceeded'), ENT_QUOTES, 'UTF-8') ?></span>
                 <?php endif; ?>
             </div>
 
@@ -151,7 +151,7 @@
 
     <main class="main-content">
         <header class="top-header">
-            <button type="button" class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Otwórz menu" aria-expanded="false">
+            <button type="button" class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="<?= htmlspecialchars($t('nav.open_menu'), ENT_QUOTES, 'UTF-8') ?>" aria-expanded="false">
                 <i class="fa-solid fa-bars"></i>
             </button>
             <!-- ── Globalna wyszukiwarka ── -->
@@ -159,7 +159,7 @@
                   <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:18px;top:50%;transform:translateY(-50%);color:var(--text-muted,#999);pointer-events:none;z-index:1;"></i>
                   <input id="global-search-input"
                       type="text"
-                      placeholder="Szukaj postaci, folderów..."
+                      placeholder="<?= htmlspecialchars($t('nav.search_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
                       autocomplete="off">
 
                   <!-- Dropdown wyników -->
@@ -167,7 +167,7 @@
                  </div>
             
             <div class="header-right">
-                <button type="button" class="editor-shortcuts-btn" data-editor-shortcuts-toggle hidden title="Skróty klawiszowe" aria-label="Pokaż skróty klawiszowe">
+                <button type="button" class="editor-shortcuts-btn" data-editor-shortcuts-toggle hidden title="<?= htmlspecialchars($t('nav.shortcuts'), ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($t('nav.shortcuts'), ENT_QUOTES, 'UTF-8') ?>">
                     <i class="fa-solid fa-keyboard"></i>
                 </button>
                 <?php if (($siteFeatures['community'] ?? true) !== false && !$isOfflineMode): ?>
@@ -213,7 +213,7 @@
                             $accountType = (int)($_SESSION['account_type'] ?? 0);
                             $accountLabels = [
                                 0 => $t('nav.user'),
-                                1 => 'Admin',
+                                1 => $t('common.admin'),
                             ];
                             $accountLabel = (string)($_SESSION['account_type_name'] ?? ($accountLabels[$accountType] ?? 'User'));
                         ?>
@@ -250,6 +250,7 @@
     const input    = document.getElementById('global-search-input');
     const dropdown = document.getElementById('global-search-dropdown');
     if (!input || !dropdown) return;
+    const i18n = window.OCI18n || {};
 
     let debounce;
 
@@ -362,7 +363,7 @@
 
     function makeEmpty() {
         const el = document.createElement('div');
-        el.textContent = 'Brak wyników';
+        el.textContent = window.OCI18n?.noResults || 'Brak wynikow';
         el.style.cssText = 'padding:18px 14px;text-align:center;color:var(--text-muted,#aaa);font-size:0.9rem;';
         return el;
     }
@@ -423,7 +424,7 @@
         name.style.cssText = 'font-size:0.9rem;font-weight:600;';
 
         const sub = document.createElement('span');
-        sub.textContent  = 'Folder – ' + world.characters.length + ' postaci';
+        sub.textContent  = (i18n.folder || 'Folder') + ' - ' + (i18n.characterCount || ':count characters').replace(':count', world.characters.length);
         sub.style.cssText = 'font-size:0.75rem;color:var(--text-muted,#999);';
 
         label.appendChild(name);
@@ -466,6 +467,16 @@
         return row;
     }
 
+    function publicationTypeText(publication) {
+        return {
+            character: i18n.character || 'Character',
+            story: i18n.story || 'Story',
+            image: i18n.image || 'Image',
+            relation_board: i18n.relationBoard || 'Relations',
+            template: i18n.template || 'Template'
+        }[publication?.contentType] || i18n.publication || 'Publication';
+    }
+
     // ── Render ───────────────────────────────────────────────────────────────
 
     function renderResults(data) {
@@ -486,7 +497,7 @@
 
         // Sekcja: Postacie
         if (hasChars) {
-            dropdown.appendChild(makeSectionLabel('Postacie'));
+            dropdown.appendChild(makeSectionLabel(i18n.characters || 'Characters'));
             characters.forEach(c => dropdown.appendChild(makeCharRow(c, null)));
         }
 
@@ -494,14 +505,14 @@
         if (hasWorlds) {
             if (dropdown.children.length) dropdown.appendChild(makeDivider());
             worlds.forEach(world => {
-                dropdown.appendChild(makeSectionLabel('Folder: ' + world.name));
+                dropdown.appendChild(makeSectionLabel((i18n.folder || 'Folder') + ': ' + world.name));
                 dropdown.appendChild(makeFolderRow(world));
 
                 if (world.characters && world.characters.length > 0) {
                     const sub = document.createElement('div');
                     sub.style.cssText = 'padding:2px 0 2px 14px;border-left:3px solid var(--border,#eee);margin:0 0 0 20px;';
                     world.characters.forEach(c => {
-                        sub.appendChild(makeCharRow(c, 'w: ' + world.name));
+                        sub.appendChild(makeCharRow(c, (i18n.inFolder || 'in: ') + world.name));
                     });
                     dropdown.appendChild(sub);
                 }
@@ -510,7 +521,7 @@
 
         if (hasStories) {
             if (dropdown.children.length) dropdown.appendChild(makeDivider());
-            dropdown.appendChild(makeSectionLabel('Historie'));
+            dropdown.appendChild(makeSectionLabel(i18n.stories || 'Stories'));
             stories.forEach(story => dropdown.appendChild(makeSimpleRow(
                 'fa-solid fa-book-open',
                 story.title,
@@ -524,7 +535,7 @@
 
         if (hasTemplates) {
             if (dropdown.children.length) dropdown.appendChild(makeDivider());
-            dropdown.appendChild(makeSectionLabel('Szablony'));
+            dropdown.appendChild(makeSectionLabel(i18n.templates || 'Templates'));
             templates.forEach(template => dropdown.appendChild(makeSimpleRow(
                 'fa-solid fa-file-code',
                 template.name,
@@ -535,13 +546,13 @@
 
         if (hasPublications) {
             if (dropdown.children.length) dropdown.appendChild(makeDivider());
-            dropdown.appendChild(makeSectionLabel('Publikacje publiczne'));
+            dropdown.appendChild(makeSectionLabel(i18n.publicPublications || 'Public publications'));
             publications.forEach(publication => dropdown.appendChild(makeSimpleRow(
                 'fa-solid fa-share-nodes',
                 publication.title,
                 [
-                    publication.isOwn ? 'Twoja publikacja' : 'Autor: ' + (publication.authorName || 'Uzytkownik'),
-                    publication.typeLabel || 'Publikacja'
+                    publication.isOwn ? (i18n.yourPublication || 'Your publication') : (i18n.author || 'Author') + ': ' + (publication.authorName || i18n.user || 'User'),
+                    publicationTypeText(publication)
                 ].filter(Boolean).join(' - '),
                 '/p/' + encodeURIComponent(publication.publicId || publication.id),
                 publication.image,
@@ -552,7 +563,7 @@
 
         if (hasFilters) {
             if (dropdown.children.length) dropdown.appendChild(makeDivider());
-            dropdown.appendChild(makeSectionLabel('Filtry'));
+            dropdown.appendChild(makeSectionLabel(i18n.filters || 'Filters'));
             filters.forEach(filter => dropdown.appendChild(makeSimpleRow(
                 'fa-solid fa-tag',
                 filter.name,
@@ -643,7 +654,7 @@
         if (!notifications.length) {
             const empty = document.createElement('p');
             empty.className = 'header-notifications-empty';
-            empty.textContent = 'Brak powiadomien.';
+            empty.textContent = window.OCI18n?.notificationsEmpty || 'Brak powiadomien.';
             list.appendChild(empty);
             return;
         }

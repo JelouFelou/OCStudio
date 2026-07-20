@@ -1,16 +1,18 @@
 <?php
 // Helper – zwraca etykietę i ikonę dla danego typu pola
 function fieldTypeMeta(string $type): array {
+    global $t;
+    $tr = is_callable($t ?? null) ? $t : fn(string $key, array $replace = []) => $key;
     return match($type) {
-        'textarea'        => ['icon' => 'fa-align-left',    'label' => 'Długi tekst',    'color' => 'var(--text-muted,#888)'],
-        'list'            => ['icon' => 'fa-list',           'label' => 'Lista',          'color' => 'var(--primary,#3498db)'],
-        'image'           => ['icon' => 'fa-image',          'label' => 'Zdjęcie',        'color' => 'var(--success,#27ae60)'],
-        'image-gallery'   => ['icon' => 'fa-images',         'label' => 'Galeria',        'color' => 'var(--success,#27ae60)'],
-        'table'           => ['icon' => 'fa-table',          'label' => 'Tabela',         'color' => 'var(--secondary,#8e44ad)'],
-        'stats'           => ['icon' => 'fa-chart-simple',   'label' => 'Statystyki',     'color' => 'var(--secondary,#8e44ad)'],
-        'date'            => ['icon' => 'fa-calendar-days',  'label' => 'Data',           'color' => 'var(--warning,#e67e22)'],
-        'select'          => ['icon' => 'fa-chevron-down',   'label' => 'Wybór z listy',  'color' => 'var(--info,#2980b9)'],
-        default           => ['icon' => 'fa-font',           'label' => 'Tekst',          'color' => ''],
+        'textarea'        => ['icon' => 'fa-align-left',    'label' => $tr('publication.template.field.type.textarea'),    'color' => 'var(--text-muted,#888)'],
+        'list'            => ['icon' => 'fa-list',           'label' => $tr('publication.template.field.type.list'),          'color' => 'var(--primary,#3498db)'],
+        'image'           => ['icon' => 'fa-image',          'label' => $tr('publication.template.field.type.image'),        'color' => 'var(--success,#27ae60)'],
+        'image-gallery'   => ['icon' => 'fa-images',         'label' => $tr('publication.template.field.type.image_gallery'),        'color' => 'var(--success,#27ae60)'],
+        'table'           => ['icon' => 'fa-table',          'label' => $tr('publication.template.field.type.table'),         'color' => 'var(--secondary,#8e44ad)'],
+        'stats'           => ['icon' => 'fa-chart-simple',   'label' => $tr('publication.template.field.type.stats'),     'color' => 'var(--secondary,#8e44ad)'],
+        'date'            => ['icon' => 'fa-calendar-days',  'label' => $tr('publication.template.field.type.date'),           'color' => 'var(--warning,#e67e22)'],
+        'select'          => ['icon' => 'fa-chevron-down',   'label' => $tr('publication.template.field.type.select'),  'color' => 'var(--info,#2980b9)'],
+        default           => ['icon' => 'fa-font',           'label' => $tr('publication.template.field.type.text'),          'color' => ''],
     };
 }
 $templateDateSettingsRaw = isset($template) ? (string)($template['date_settings'] ?? '') : '';
@@ -73,23 +75,23 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
 
     <header class="template-header">
         <div class="header-info">
-            <h1>Kreator Szablonu postaci</h1>
-            <p>Zdefiniuj strukturę dla swoich postaci. Pola po lewej będą treścią, pola po prawej stworzą infobox.</p>
+            <h1><?= htmlspecialchars($t('templates.editor.title'), ENT_QUOTES, 'UTF-8') ?></h1>
+            <p><?= htmlspecialchars($t('templates.editor.subtitle'), ENT_QUOTES, 'UTF-8') ?></p>
         </div>
         <div class="header-meta-fields">
             <div class="input-group">
-                <label>Nazwa szablonu postaci</label>
+                <label><?= htmlspecialchars($t('templates.editor.name'), ENT_QUOTES, 'UTF-8') ?></label>
                 <input type="text" name="template_name"
                     value="<?= isset($template) ? htmlspecialchars($template['name']) : '' ?>"
                     placeholder="np. Fantasy Character v1" required>
             </div>
             <div class="input-group">
-                <label>Opis (opcjonalnie)</label>
+                <label><?= htmlspecialchars($t('templates.editor.description_optional'), ENT_QUOTES, 'UTF-8') ?></label>
                 <textarea name="template_description" rows="2"
-                    placeholder="Do czego służy ten szablon postaci..."><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
+                    placeholder="<?= htmlspecialchars($t('templates.editor.description_placeholder'), ENT_QUOTES, 'UTF-8') ?>"><?= isset($template) ? htmlspecialchars($template['description']) : '' ?></textarea>
             </div>
             <div class="input-group">
-                <label>Filtry szablonu, minimum 5</label>
+                <label><?= htmlspecialchars($t('templates.editor.filters'), ENT_QUOTES, 'UTF-8') ?></label>
                 <?php
                     $templateTagsValue = '';
                     if (!empty($templateFilters ?? [])) {
@@ -101,16 +103,16 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
                        placeholder="np. sfw, opis, formularz, postac, fantasy">
             </div>
             <div class="input-group">
-                <label>Typ dat w szablonie</label>
+                <label><?= htmlspecialchars($t('templates.editor.date_type'), ENT_QUOTES, 'UTF-8') ?></label>
                 <?php $dateCalendarType = (string)($template['date_calendar_type'] ?? 'real'); ?>
                 <select name="date_calendar_type" id="template-date-calendar-type">
-                    <option value="real" <?= $dateCalendarType === 'real' ? 'selected' : '' ?>>Realny kalendarz</option>
-                    <option value="fictional" <?= $dateCalendarType === 'fictional' ? 'selected' : '' ?>>Fikcyjny rok</option>
-                    <option value="era" <?= $dateCalendarType === 'era' ? 'selected' : '' ?>>Ery / fantasy</option>
+                    <option value="real" <?= $dateCalendarType === 'real' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.date_type.real'), ENT_QUOTES, 'UTF-8') ?></option>
+                    <option value="fictional" <?= $dateCalendarType === 'fictional' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.date_type.fictional'), ENT_QUOTES, 'UTF-8') ?></option>
+                    <option value="era" <?= $dateCalendarType === 'era' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.date_type.era'), ENT_QUOTES, 'UTF-8') ?></option>
                 </select>
             </div>
             <div class="input-group">
-                <label>Data bazowa swiata</label>
+                <label><?= htmlspecialchars($t('templates.editor.world_base_date'), ENT_QUOTES, 'UTF-8') ?></label>
                 <input type="text" name="current_world_date"
                     value="<?= htmlspecialchars($currentWorldDateValue, ENT_QUOTES, 'UTF-8') ?>"
                     placeholder="np. 2026-06-21, 2077 albo 113 l.s.">
@@ -119,54 +121,77 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
                    value="<?= htmlspecialchars($templateDateSettingsJson ?: '{}', ENT_QUOTES, 'UTF-8') ?>">
         </div>
         <div class="header-actions">
-            <button type="button" class="btn-secondary" onclick="window.location.href='/templates'">Anuluj</button>
-            <button type="submit" form="template-form" class="btn-primary">Zapisz szablon postaci</button>
+            <button type="button" class="btn-secondary" onclick="window.location.href='/templates'"><?= htmlspecialchars($t('common.cancel'), ENT_QUOTES, 'UTF-8') ?></button>
+            <button type="submit" form="template-form" class="btn-primary"><?= htmlspecialchars($t('templates.editor.save'), ENT_QUOTES, 'UTF-8') ?></button>
         </div>
     </header>
 
         <section class="template-date-settings-panel">
             <div>
-                <h3><i class="fa-solid fa-calendar-days"></i> Schemat daty szablonu</h3>
-                <p>Wszystkie pola typu Data w tym szablonie korzystaja z tych samych miesiecy, er i domyslnego roku.</p>
+                <h3><i class="fa-solid fa-calendar-days"></i> <?= htmlspecialchars($t('templates.editor.date_schema'), ENT_QUOTES, 'UTF-8') ?></h3>
+                <p><?= htmlspecialchars($t('templates.editor.date_schema_help'), ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <div class="template-date-settings-grid">
                 <div>
-                    <span class="template-date-settings-label">Miesiace</span>
+                    <span class="template-date-settings-label"><?= htmlspecialchars($t('templates.editor.months'), ENT_QUOTES, 'UTF-8') ?></span>
                     <div id="global-months-container" class="months-container">
                         <div class="add-month-btn-wrap">
                             <button type="button" onclick="addGlobalMonthRow(this)" class="btn-secondary">
-                                <i class="fa-solid fa-plus"></i> Dodaj miesiac
+                                <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_month'), ENT_QUOTES, 'UTF-8') ?>
                             </button>
                         </div>
                     </div>
                 </div>
                 <div>
-                    <span class="template-date-settings-label">Ery</span>
+                    <span class="template-date-settings-label"><?= htmlspecialchars($t('templates.editor.eras'), ENT_QUOTES, 'UTF-8') ?></span>
                     <div id="global-eras-container" class="eras-container">
                         <div class="add-era-btn-wrap">
                             <button type="button" onclick="addGlobalEraRow(this)" class="btn-secondary">
-                                <i class="fa-solid fa-plus"></i> Dodaj ere
+                                <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_era'), ENT_QUOTES, 'UTF-8') ?>
                             </button>
                         </div>
                     </div>
-                    <label class="template-date-settings-label" for="global-default-year">Domyslny rok</label>
+                    <label class="template-date-settings-label" for="global-default-year"><?= htmlspecialchars($t('templates.editor.default_year'), ENT_QUOTES, 'UTF-8') ?></label>
                     <input type="text" id="global-default-year" placeholder="np. 1200">
-                    <label class="template-date-settings-label" for="template-current-date-mode">Aktualna data w timeline</label>
+                    <label class="template-date-settings-label" for="template-current-date-mode"><?= htmlspecialchars($t('templates.editor.current_timeline_date'), ENT_QUOTES, 'UTF-8') ?></label>
                     <select id="template-current-date-mode">
-                        <option value="fixed" <?= $templateDateSettings['currentDateMode'] === 'fixed' ? 'selected' : '' ?>>Stala data bazowa</option>
-                        <option value="real_today" <?= $templateDateSettings['currentDateMode'] === 'real_today' ? 'selected' : '' ?>>Dzisiejsza data realna</option>
-                        <option value="auto" <?= $templateDateSettings['currentDateMode'] === 'auto' ? 'selected' : '' ?>>Naliczaj od daty bazowej</option>
+                        <option value="fixed" <?= $templateDateSettings['currentDateMode'] === 'fixed' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.current_date.fixed'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <option value="real_today" <?= $templateDateSettings['currentDateMode'] === 'real_today' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.current_date.real_today'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <option value="auto" <?= $templateDateSettings['currentDateMode'] === 'auto' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.current_date.auto'), ENT_QUOTES, 'UTF-8') ?></option>
                     </select>
-                    <label class="template-date-settings-label" for="template-current-date-anchor">Start naliczania</label>
+                    <label class="template-date-settings-label" for="template-current-date-anchor"><?= htmlspecialchars($t('templates.editor.current_date_anchor'), ENT_QUOTES, 'UTF-8') ?></label>
                     <input type="date" id="template-current-date-anchor"
                            value="<?= htmlspecialchars($currentDateAnchorValue, ENT_QUOTES, 'UTF-8') ?>">
                 </div>
             </div>
         </section>
 
+        <?php
+            $txtExportEnabled = !empty($template['txt_export_enabled']);
+            $txtExportTemplate = (string)($template['txt_export_template'] ?? '');
+            if ($txtExportTemplate === '') {
+                $txtExportTemplate = "{{character.name}}\n{{variant.name}}\n\n{{all_fields}}";
+            }
+        ?>
+        <section class="template-date-settings-panel">
+            <div>
+                <h3><i class="fa-solid fa-file-lines"></i> <?= htmlspecialchars($t('templates.editor.txt_format'), ENT_QUOTES, 'UTF-8') ?></h3>
+                <p><?= htmlspecialchars($t('templates.editor.txt_format_help'), ENT_QUOTES, 'UTF-8') ?></p>
+            </div>
+            <label class="settings-check-row" style="margin-bottom:12px;">
+                <input type="checkbox" name="txt_export_enabled" value="1" <?= $txtExportEnabled ? 'checked' : '' ?>>
+                <span><?= htmlspecialchars($t('templates.editor.txt_format_enabled'), ENT_QUOTES, 'UTF-8') ?></span>
+            </label>
+            <textarea name="txt_export_template" rows="8" spellcheck="false"
+                      placeholder="{{character.name}}&#10;{{variant.name}}&#10;{{field:Imie}}"><?= htmlspecialchars($txtExportTemplate, ENT_QUOTES, 'UTF-8') ?></textarea>
+            <p class="template-date-settings-label" style="margin-top:10px;">
+                <?= htmlspecialchars($t('templates.editor.txt_tokens'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </section>
+
         <div class="template-grid">
-            <?php foreach(['left' => ['id'=>'left-fields',  'title'=>'<i class="fa-solid fa-align-left"></i> Treść główna (lewa)'],
-                           'right'=> ['id'=>'right-fields', 'title'=>'<i class="fa-solid fa-circle-info"></i> Infobox (prawa)']]
+            <?php foreach(['left' => ['id'=>'left-fields',  'title'=>'<i class="fa-solid fa-align-left"></i> ' . htmlspecialchars($t('templates.editor.main_content'), ENT_QUOTES, 'UTF-8')],
+                           'right'=> ['id'=>'right-fields', 'title'=>'<i class="fa-solid fa-circle-info"></i> ' . htmlspecialchars($t('templates.editor.infobox'), ENT_QUOTES, 'UTF-8')]]
                           as $side => $col): ?>
             <div class="template-column <?= $side ?>-panel">
                 <h3><?= $col['title'] ?></h3>
@@ -181,21 +206,21 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
                     ?>
                     <div class="field-item draggable" draggable="true">
                         <i class="fa-solid fa-grip-vertical drag-handle"></i>
-                        <div class="field-mobile-actions" aria-label="Zmień pozycję pola">
-                            <button type="button" onclick="moveField(this, 'up')" title="Przesuń wyżej"><i class="fa-solid fa-arrow-up"></i></button>
-                            <button type="button" onclick="moveField(this, 'down')" title="Przesuń niżej"><i class="fa-solid fa-arrow-down"></i></button>
-                            <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
+                        <div class="field-mobile-actions" aria-label="<?= htmlspecialchars($t('templates.editor.field_move'), ENT_QUOTES, 'UTF-8') ?>">
+                            <button type="button" onclick="moveField(this, 'up')" title="<?= htmlspecialchars($t('templates.editor.move_up'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-arrow-up"></i></button>
+                            <button type="button" onclick="moveField(this, 'down')" title="<?= htmlspecialchars($t('templates.editor.move_down'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-arrow-down"></i></button>
+                            <button type="button" onclick="moveFieldSide(this)" title="<?= htmlspecialchars($t('templates.editor.move_side'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-right-left"></i></button>
                         </div>
                         <div class="field-content">
                             <input type="text" name="field_labels[]" class="field-label"
                                 value="<?= htmlspecialchars($field['label']) ?>"
-                                placeholder="<?= $side === 'right' ? 'Naglowek/etykieta w infoboxie (opcjonalnie)' : 'Naglowek sekcji (opcjonalnie)' ?>">
+                                placeholder="<?= htmlspecialchars($t($side === 'right' ? 'templates.editor.right_placeholder' : 'templates.editor.left_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="field_ids[]" value="<?= (int)$field['id'] ?>" class="field-id">
                             <input type="hidden" name="field_locations[]"    value="<?= $side ?>"  class="field-location">
                             <input type="hidden" name="field_types[]"        value="<?= $ftype ?>" class="field-type">
                             <input type="hidden" name="field_placeholders[]" value="<?= htmlspecialchars($phRaw) ?>" class="field-placeholder">
                             <div class="type-preview-tag" <?= $meta['color'] ? 'style="color:'.$meta['color'].'"' : '' ?>>
-                                <small><i class="fa-solid <?= $meta['icon'] ?>"></i> Typ: <?= $meta['label'] ?></small>
+                                <small><i class="fa-solid <?= $meta['icon'] ?>"></i> <?= htmlspecialchars($t('templates.editor.type_prefix', ['type' => $meta['label']]), ENT_QUOTES, 'UTF-8') ?></small>
                             </div>
 
                             <?php if($field['field_type'] === 'image'): ?>
@@ -206,63 +231,63 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
                                     : 'medium';
                             ?>
                             <div class="image-size-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Rozmiar zdjęcia w podglądzie:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> <?= htmlspecialchars($t('templates.editor.image_size_preview'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <select class="image-size-input" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:var(--input-bg,#fff);color:var(--text,#333);font-size:0.9rem;">
-                                    <option value="small" <?= $imageSize === 'small' ? 'selected' : '' ?>>Małe</option>
-                                    <option value="medium" <?= $imageSize === 'medium' ? 'selected' : '' ?>>Średnie</option>
-                                    <option value="large" <?= $imageSize === 'large' ? 'selected' : '' ?>>Duże</option>
-                                    <option value="full" <?= $imageSize === 'full' ? 'selected' : '' ?>>Pełna szerokość</option>
+                                    <option value="small" <?= $imageSize === 'small' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.size.small'), ENT_QUOTES, 'UTF-8') ?></option>
+                                    <option value="medium" <?= $imageSize === 'medium' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.size.medium'), ENT_QUOTES, 'UTF-8') ?></option>
+                                    <option value="large" <?= $imageSize === 'large' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.size.large'), ENT_QUOTES, 'UTF-8') ?></option>
+                                    <option value="full" <?= $imageSize === 'full' ? 'selected' : '' ?>><?= htmlspecialchars($t('templates.editor.size.full'), ENT_QUOTES, 'UTF-8') ?></option>
                                 </select>
                             </div>
                             <?php elseif($field['field_type'] === 'table'): ?>
                             <div class="table-rows-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-table"></i> Wiersze tabeli:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-table"></i> <?= htmlspecialchars($t('templates.editor.table_rows'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <div class="table-rows-container">
                                     <div class="add-row-btn-wrap">
                                         <button type="button" onclick="addTableRow(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
-                                            <i class="fa-solid fa-plus"></i> Dodaj wiersz</button>
+                                            <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_row'), ENT_QUOTES, 'UTF-8') ?></button>
                                     </div>
                                 </div>
                             </div>
                             <?php elseif($field['field_type'] === 'select'): ?>
                             <div class="select-options-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-chevron-down"></i> Opcje do wyboru:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-chevron-down"></i> <?= htmlspecialchars($t('templates.editor.select_options'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <div class="select-options-container">
                                     <div class="add-opt-btn-wrap">
                                         <button type="button" onclick="addSelectOption(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
-                                            <i class="fa-solid fa-plus"></i> Dodaj opcję</button>
+                                            <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_option'), ENT_QUOTES, 'UTF-8') ?></button>
                                     </div>
                                 </div>
                             </div>
                             <?php elseif($field['field_type'] === 'stats'): ?>
                             <div class="stats-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-chart-simple"></i> Pula punktow:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-chart-simple"></i> <?= htmlspecialchars($t('templates.editor.points_pool'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <input type="number" min="0" step="1" class="stats-max-input" value="33" style="width:140px;padding:6px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:var(--input-bg,#fff);color:var(--text,#333);font-size:0.9rem;display:block;margin-bottom:10px;">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-list"></i> Statystyki:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-list"></i> <?= htmlspecialchars($t('templates.editor.stats'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <div class="stats-rows-container">
                                     <div class="add-stat-btn-wrap">
                                         <button type="button" onclick="addStatsRow(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
-                                            <i class="fa-solid fa-plus"></i> Dodaj statystyke</button>
+                                            <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_stat'), ENT_QUOTES, 'UTF-8') ?></button>
                                     </div>
                                 </div>
                             </div>
                             <?php elseif($field['field_type'] === 'date'): ?>
                             <div class="date-editor" style="display:none;margin-top:10px;padding:10px;background:var(--surface-alt,#f5f5f5);border-radius:8px;border:1px solid var(--border,#ddd);">
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-calendar"></i> Miesiące:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin-bottom:6px;display:block;"><i class="fa-solid fa-calendar"></i> <?= htmlspecialchars($t('templates.editor.months'), ENT_QUOTES, 'UTF-8') ?>:</span>
                                 <div class="months-container">
                                     <div class="add-month-btn-wrap">
                                         <button type="button" onclick="addMonthRow(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
-                                            <i class="fa-solid fa-plus"></i> Dodaj miesiąc</button>
+                                            <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_month'), ENT_QUOTES, 'UTF-8') ?></button>
                                     </div>
                                 </div>
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin:10px 0 6px;display:block;"><i class="fa-solid fa-hourglass"></i> Ery (opcjonalnie):</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin:10px 0 6px;display:block;"><i class="fa-solid fa-hourglass"></i> <?= htmlspecialchars($t('templates.editor.eras_optional'), ENT_QUOTES, 'UTF-8') ?></span>
                                 <div class="eras-container">
                                     <div class="add-era-btn-wrap">
                                         <button type="button" onclick="addEraRow(this)" style="background:none;border:1px dashed var(--primary,#3498db);color:var(--primary,#3498db);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:0.85rem;width:100%;margin-top:4px;">
-                                            <i class="fa-solid fa-plus"></i> Dodaj erę</button>
+                                            <i class="fa-solid fa-plus"></i> <?= htmlspecialchars($t('templates.editor.add_era'), ENT_QUOTES, 'UTF-8') ?></button>
                                     </div>
                                 </div>
-                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin:10px 0 6px;display:block;"><i class="fa-solid fa-star"></i> Domyślny rok:</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted,#888);margin:10px 0 6px;display:block;"><i class="fa-solid fa-star"></i> <?= htmlspecialchars($t('templates.editor.default_year'), ENT_QUOTES, 'UTF-8') ?>:</span>
                                 <input type="text" class="default-year-input" placeholder="np. 1200"
                                     style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:var(--input-bg,#fff);color:var(--text,#333);font-size:0.9rem;box-sizing:border-box;">
                             </div>
@@ -283,28 +308,28 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
 <!-- ===== Modal wyboru typu pola ===== -->
 <div id="type-modal" class="modal-overlay" style="display:none;">
     <div class="modal-content" style="max-width:520px;">
-        <h3>Wybierz typ pola</h3>
+        <h3><?= htmlspecialchars($t('templates.editor.choose_field_type'), ENT_QUOTES, 'UTF-8') ?></h3>
         <div class="modal-options" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
             <button type="button" class="type-option" id="opt-text">
-                <i class="fa-solid fa-font"></i><span>Tekst</span></button>
+                <i class="fa-solid fa-font"></i><span><?= htmlspecialchars($t('publication.template.field.type.text'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-textarea">
-                <i class="fa-solid fa-align-left"></i><span>Długi tekst</span></button>
+                <i class="fa-solid fa-align-left"></i><span><?= htmlspecialchars($t('publication.template.field.type.textarea'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-list">
-                <i class="fa-solid fa-list-ul"></i><span>Lista (bullet)</span></button>
+                <i class="fa-solid fa-list-ul"></i><span><?= htmlspecialchars($t('publication.template.field.type.list'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-select">
-                <i class="fa-solid fa-chevron-down"></i><span>Wybór z listy</span></button>
+                <i class="fa-solid fa-chevron-down"></i><span><?= htmlspecialchars($t('publication.template.field.type.select'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-image">
-                <i class="fa-solid fa-image"></i><span>Zdjęcie</span></button>
+                <i class="fa-solid fa-image"></i><span><?= htmlspecialchars($t('publication.template.field.type.image'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-image-gallery">
-                <i class="fa-solid fa-images"></i><span>Galeria zdjęć</span></button>
+                <i class="fa-solid fa-images"></i><span><?= htmlspecialchars($t('publication.template.field.type.image_gallery'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-table">
-                <i class="fa-solid fa-table"></i><span>Tabela</span></button>
+                <i class="fa-solid fa-table"></i><span><?= htmlspecialchars($t('publication.template.field.type.table'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-stats">
-                <i class="fa-solid fa-chart-simple"></i><span>Statystyki</span></button>
+                <i class="fa-solid fa-chart-simple"></i><span><?= htmlspecialchars($t('publication.template.field.type.stats'), ENT_QUOTES, 'UTF-8') ?></span></button>
             <button type="button" class="type-option" id="opt-date">
-                <i class="fa-solid fa-calendar-days"></i><span>Data</span></button>
+                <i class="fa-solid fa-calendar-days"></i><span><?= htmlspecialchars($t('publication.template.field.type.date'), ENT_QUOTES, 'UTF-8') ?></span></button>
         </div>
-        <button type="button" class="btn-secondary" style="margin-top:14px;" onclick="closeModal()">Anuluj</button>
+        <button type="button" class="btn-secondary" style="margin-top:14px;" onclick="closeModal()"><?= htmlspecialchars($t('common.cancel'), ENT_QUOTES, 'UTF-8') ?></button>
     </div>
 </div>
 
@@ -312,13 +337,13 @@ $templateDateSettingsJson = json_encode($templateDateSettings, JSON_UNESCAPED_UN
 <template id="field-template">
     <div class="field-item draggable" draggable="true">
         <i class="fa-solid fa-grip-vertical drag-handle"></i>
-        <div class="field-mobile-actions" aria-label="Zmień pozycję pola">
-            <button type="button" onclick="moveField(this, 'up')" title="Przesuń wyżej"><i class="fa-solid fa-arrow-up"></i></button>
-            <button type="button" onclick="moveField(this, 'down')" title="Przesuń niżej"><i class="fa-solid fa-arrow-down"></i></button>
-            <button type="button" onclick="moveFieldSide(this)" title="Przenieś do drugiej sekcji"><i class="fa-solid fa-right-left"></i></button>
+        <div class="field-mobile-actions" aria-label="<?= htmlspecialchars($t('templates.editor.field_move'), ENT_QUOTES, 'UTF-8') ?>">
+            <button type="button" onclick="moveField(this, 'up')" title="<?= htmlspecialchars($t('templates.editor.move_up'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveField(this, 'down')" title="<?= htmlspecialchars($t('templates.editor.move_down'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="moveFieldSide(this)" title="<?= htmlspecialchars($t('templates.editor.move_side'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-right-left"></i></button>
         </div>
         <div class="field-content">
-            <input type="text" name="field_labels[]" class="field-label" placeholder="Naglowek/etykieta pola (opcjonalnie)">
+            <input type="text" name="field_labels[]" class="field-label" placeholder="<?= htmlspecialchars($t('templates.editor.field_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="field_ids[]" value="" class="field-id">
             <input type="hidden" name="field_locations[]"    value="" class="field-location">
             <input type="hidden" name="field_types[]"        value="" class="field-type">

@@ -1,35 +1,37 @@
 (function () {
     const EDITOR_VIEWS = new Set([
         'create_character',
+        'create_story',
         'create_template',
         'edit_story',
-        'relations_editor',
     ]);
 
     const view = document.body?.dataset.view || '';
     if (!EDITOR_VIEWS.has(view)) return;
+    const i18n = window.OCI18n?.shortcuts || {};
+    const text = (key, fallback) => i18n[key] || fallback;
 
     const shortcuts = [
-        ['Ctrl + S', 'Zapisuje aktywny formularz edycji.'],
+        ['Ctrl + S', text('saveForm', 'Zapisuje aktywny formularz edycji.')],
     ];
 
-    if (view === 'edit_story') {
+    if (view === 'create_story' || view === 'edit_story') {
         shortcuts.push(
-            ['Shift + F', 'Dodaje Długi tekst pod aktywnym polem historii.'],
-            ['Shift + D', 'Dodaje Dialog pod aktywnym polem historii.'],
-            ['Shift + Z', 'Dodaje Zdjęcie pod aktywnym polem historii.'],
-            ['Ctrl + ↑ / ↓', 'Przechodzi do poprzedniego lub następnego bloku historii.']
+            ['Shift + F', text('storyLongText', 'Dodaje dlugi tekst pod aktywnym polem historii.')],
+            ['Shift + D', text('storyDialog', 'Dodaje dialog pod aktywnym polem historii.')],
+            ['Shift + Z', text('storyImage', 'Dodaje zdjecie pod aktywnym polem historii.')],
+            ['Ctrl + ↑ / ↓', text('storyMove', 'Przechodzi do poprzedniego lub nastepnego bloku historii.')]
         );
     }
 
     if (view === 'create_character') {
         shortcuts.push(
-            ['Ctrl + ↑ / ↓', 'Przechodzi po polach oraz wierszach tabel/statystyk.'],
-            ['Ctrl + ← / →', 'Przechodzi między lewą i prawą kolumną pól.']
+            ['Ctrl + ↑ / ↓', text('characterMoveVertical', 'Przechodzi po polach oraz wierszach tabel/statystyk.')],
+            ['Ctrl + ← / →', text('characterMoveHorizontal', 'Przechodzi miedzy lewa i prawa kolumna pol.')]
         );
     }
 
-    shortcuts.push(['Shift + /', 'Pokazuje lub ukrywa tę legendę.']);
+    shortcuts.push(['Shift + /', text('toggleLegend', 'Pokazuje lub ukrywa te legende.')]);
 
     function isTextEditingTarget(target) {
         return target?.matches?.('textarea, [contenteditable="true"]');
@@ -65,10 +67,10 @@
         modal.className = 'editor-shortcuts-popover';
         modal.hidden = true;
         modal.innerHTML = `
-            <div class="editor-shortcuts-panel" role="dialog" aria-modal="false" aria-label="Skróty klawiszowe">
+            <div class="editor-shortcuts-panel" role="dialog" aria-modal="false" aria-label="${text('title', 'Skroty klawiszowe')}">
                 <div class="editor-shortcuts-header">
-                    <strong>Skróty klawiszowe</strong>
-                    <button type="button" data-editor-shortcuts-close aria-label="Zamknij">
+                    <strong>${text('title', 'Skroty klawiszowe')}</strong>
+                    <button type="button" data-editor-shortcuts-close aria-label="${text('close', 'Zamknij')}">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>

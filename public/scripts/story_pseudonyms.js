@@ -212,7 +212,7 @@ class StoryPseudonymHighlighter {
         const clean = String(filename || '').split('/').pop();
         const fallback = document.body?.dataset.theme === 'dark' ? 'default_dark.png' : 'default.png';
         const resolved = !clean || ['default.png', 'default.jpg', 'default_dark.png'].includes(clean) ? fallback : clean;
-        return '/public/uploads/' + resolved;
+        return '/media/' + resolved;
     }
 
     characterImageVars(character) {

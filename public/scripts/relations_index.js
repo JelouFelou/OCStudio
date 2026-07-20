@@ -1,6 +1,8 @@
 (function () {
     const modal = document.getElementById('relation-board-modal');
     if (!modal) return;
+    const i18n = window.OCI18n || {};
+    const tr = (scope, key, fallback) => i18n?.[scope]?.[key] || fallback;
 
     const fields = {
         id: document.getElementById('relation-board-id'),
@@ -14,7 +16,7 @@
 
     function openModal(board) {
         fields.id.value = board ? board.id : '';
-        fields.title.textContent = board ? 'Edytuj relacje' : 'Nowa relacja';
+        fields.title.textContent = board ? tr('relations', 'edit', 'Edytuj relacje') : tr('relations', 'new', 'Nowa relacja');
         fields.name.value = board ? board.name : '';
         fields.description.value = board ? (board.description || '') : '';
         setSelected('.relation-board-world', board ? board.worldIds : []);
@@ -59,7 +61,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            throw new Error(data.error || 'Nie udalo sie zapisac relacji.');
+            throw new Error(data.error || tr('relations', 'errorSave', 'Nie udalo sie zapisac relacji.'));
         }
         return data;
     }
@@ -155,7 +157,7 @@
                     window.location.href = publicationUrl;
                     return;
                 }
-                alert('Relacje zostaly udostepnione.');
+                alert(tr('relations', 'published', 'Relacje zostaly udostepnione.'));
             } catch (error) {
                 button.disabled = false;
                 alert(error.message);
@@ -168,10 +170,10 @@
             const card = event.currentTarget.closest('.relations-index-card');
             const board = card?.dataset.board ? JSON.parse(card.dataset.board) : {};
             const name = board.name || '';
-            const confirmation = prompt('Aby usunac relacje, wpisz dokladnie jej nazwe:', '');
+            const confirmation = prompt(tr('relations', 'deletePrompt', 'Aby usunac relacje, wpisz dokladnie jej nazwe:'), '');
             if (confirmation === null) return;
             if (confirmation !== name) {
-                alert('Nazwa relacji nie zgadza sie.');
+                alert(tr('relations', 'deleteMismatch', 'Nazwa relacji nie zgadza sie.'));
                 return;
             }
 

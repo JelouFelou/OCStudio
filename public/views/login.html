@@ -1,10 +1,19 @@
 <div class="auth-wrapper">
     <div class="auth-container">
+        <form class="auth-language" method="POST" action="/locale">
+            <input type="hidden" name="return_to" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/login', ENT_QUOTES, 'UTF-8') ?>">
+            <label for="auth-locale"><?= htmlspecialchars($t('auth.language'), ENT_QUOTES, 'UTF-8') ?></label>
+            <select id="auth-locale" name="locale" onchange="this.form.submit()">
+                <option value="pl" <?= ($locale ?? 'pl') === 'pl' ? 'selected' : '' ?>>PL</option>
+                <option value="en" <?= ($locale ?? 'pl') === 'en' ? 'selected' : '' ?>>EN</option>
+            </select>
+        </form>
+
         <div class="auth-logo">
             OC<span>Studio</span>
         </div>
-        <h2>Zaloguj sie</h2>
-        <p class="auth-subtitle">Witaj z powrotem!</p>
+        <h2><?= htmlspecialchars($t('auth.login.title'), ENT_QUOTES, 'UTF-8') ?></h2>
+        <p class="auth-subtitle"><?= htmlspecialchars($t('auth.login.subtitle'), ENT_QUOTES, 'UTF-8') ?></p>
 
         <?php if(isset($messages)): ?>
             <?php foreach($messages as $message): ?>
@@ -16,12 +25,12 @@
 
         <form action="/login" method="POST" class="auth-form">
             <div class="input-group">
-                <label>Email lub nazwa użytkownika</label>
-                <input type="text" name="login" placeholder="twoj@email.com lub nazwa_uzytkownika" maxlength="254" autocomplete="username" required>
+                <label><?= htmlspecialchars($t('auth.login.identifier'), ENT_QUOTES, 'UTF-8') ?></label>
+                <input type="text" name="login" placeholder="<?= htmlspecialchars($t('auth.login.identifier_placeholder'), ENT_QUOTES, 'UTF-8') ?>" maxlength="254" autocomplete="username" required>
             </div>
 
             <div class="input-group">
-                <label>Hasło</label>
+                <label><?= htmlspecialchars($t('auth.login.password'), ENT_QUOTES, 'UTF-8') ?></label>
                 <input type="password" name="password" placeholder="********" maxlength="72" autocomplete="current-password" required>
             </div>
 
@@ -32,16 +41,16 @@
 
             <div class="auth-options">
                 <label class="checkbox-container">
-                    <input type="checkbox" name="remember_login" value="1"> Nie wylogowuj mnie
+                    <input type="checkbox" name="remember_login" value="1"> <?= htmlspecialchars($t('auth.login.remember'), ENT_QUOTES, 'UTF-8') ?>
                 </label>
-                <a href="/forgot-password">Zapomniales hasla?</a>
+                <a href="/forgot-password"><?= htmlspecialchars($t('auth.login.forgot'), ENT_QUOTES, 'UTF-8') ?></a>
             </div>
 
-            <button type="submit" class="auth-btn">Zaloguj sie</button>
+            <button type="submit" class="auth-btn"><?= htmlspecialchars($t('auth.login.submit'), ENT_QUOTES, 'UTF-8') ?></button>
         </form>
 
         <p class="auth-footer">
-            Nie masz konta? <a href="/register">Zarejestruj sie za darmo</a>
+            <?= htmlspecialchars($t('auth.login.no_account'), ENT_QUOTES, 'UTF-8') ?> <a href="/register"><?= htmlspecialchars($t('auth.login.register'), ENT_QUOTES, 'UTF-8') ?></a>
         </p>
     </div>
 </div>

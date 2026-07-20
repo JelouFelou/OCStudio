@@ -6,6 +6,7 @@
     const launcher = root.querySelector('[data-chat-toggle]');
     const panel = root.querySelector('[data-chat-panel]');
     const closeBtn = root.querySelector('[data-chat-close]');
+    const title = root.querySelector('[data-chat-title]');
     const unreadBadge = root.querySelector('[data-chat-unread]');
     const status = root.querySelector('[data-chat-status]');
     const searchInput = root.querySelector('[data-chat-search]');
@@ -25,6 +26,11 @@
     let listTimer = null;
     let searchTimer = null;
     let loadingThread = false;
+    let sendingMessage = false;
+    const i18n = window.OCI18n?.chat || {};
+    const tr = (key, fallback) => i18n[key] || fallback;
+    if (title) title.textContent = tr('messages', 'Messages');
+    if (status) status.textContent = tr('ready', 'Ready');
 
     const readState = () => {
         try {
@@ -50,7 +56,7 @@
     const initials = (name) => String(name || 'U').trim().slice(0, 1).toUpperCase() || 'U';
 
     const setStatus = (text) => {
-        if (status) status.textContent = text || 'Gotowe';
+        if (status) status.textContent = text || tr('ready', 'Ready');
     };
 
     const setUnread = (count) => {
@@ -64,7 +70,7 @@
         const response = await fetch(url, options);
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.error) {
-            const error = new Error(data.error || 'Nie udalo sie wykonac operacji.');
+            const error = new Error(data.error || tr('genericError', 'Nie udalo sie wykonac operacji.'));
             error.status = response.status;
             throw error;
         }
@@ -74,13 +80,13 @@
     const renderConversations = () => {
         if (!conversationList) return;
         if (!conversations.length) {
-            conversationList.innerHTML = '<p class="chat-empty">Brak rozmow.</p>';
+            conversationList.innerHTML = `<p class="chat-empty">${escapeHtml(tr('noConversations', 'No conversations.'))}</p>`;
             return;
         }
 
         conversationList.innerHTML = conversations.map((conversation) => {
-            const username = conversation.otherUser?.username || 'Uzytkownik';
-            const latest = conversation.latestMessage?.body || 'Brak wiadomosci.';
+            const username = conversation.otherUser?.username || tr('user', 'User');
+            const latest = conversation.latestMessage?.body || tr('noMessages', 'No messages.');
             const unread = Number(conversation.unreadCount || 0);
             return `
                 <button type="button" class="chat-conversation-item ${conversation.uuid === activeConversationId ? 'active' : ''}" data-chat-conversation="${escapeHtml(conversation.uuid)}">
@@ -116,22 +122,27 @@
         if (!append) messagesList.innerHTML = '';
 
         messages.forEach((message) => {
+            const messageId = Number(message.id || 0);
+            if (messageId > 0 && messagesList.querySelector(`[data-message-id="${messageId}"]`)) {
+                lastMessageId = Math.max(lastMessageId, messageId);
+                return;
+            }
             const item = document.createElement('article');
             item.className = `chat-message ${message.mine ? 'mine' : ''}`;
-            item.dataset.messageId = String(message.id);
+            item.dataset.messageId = String(messageId || message.id || '');
             item.innerHTML = `
                 <p>${escapeHtml(message.body)}</p>
-                <small>${escapeHtml(message.mine ? 'Ty' : message.senderUsername || 'Uzytkownik')}</small>
+                <small>${escapeHtml(message.mine ? tr('you', 'You') : message.senderUsername || tr('user', 'User'))}</small>
             `;
             messagesList.appendChild(item);
-            lastMessageId = Math.max(lastMessageId, Number(message.id || 0));
+            lastMessageId = Math.max(lastMessageId, messageId);
         });
 
         messagesList.scrollTop = messagesList.scrollHeight;
     };
 
     const showThread = (conversation) => {
-        const username = conversation?.otherUser?.username || 'Rozmowa';
+        const username = conversation?.otherUser?.username || tr('conversation', 'Conversation');
         if (emptyState) emptyState.hidden = true;
         if (threadHead) threadHead.hidden = false;
         if (messagesList) messagesList.hidden = false;
@@ -152,7 +163,7 @@
             renderMessages(Array.isArray(data.messages) ? data.messages : [], append);
             setUnread(data.unreadCount);
             renderConversations();
-            setStatus('Gotowe');
+            setStatus(tr('ready', 'Ready'));
         } catch (error) {
             setStatus(error.message);
             if (!append) {
@@ -174,7 +185,7 @@
 
     const startConversation = async (userId) => {
         try {
-            setStatus('Otwieram rozmowe...');
+            setStatus(tr('opening', 'Opening conversation...'));
             const data = await api('/api/messages/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -209,10 +220,10 @@
                 <button type="button" class="chat-user-result" data-chat-user="${Number(user.id || 0)}">
                     <span class="chat-avatar">${escapeHtml(initials(user.username))}</span>
                     <span>
-                        <strong>${escapeHtml(user.username || 'Uzytkownik')}</strong>
+                        <strong>${escapeHtml(user.username || tr('user', 'User'))}</strong>
                     </span>
                 </button>
-            `).join('') : '<p class="chat-empty">Brak uzytkownikow.</p>';
+            `).join('') : `<p class="chat-empty">${escapeHtml(tr('noUsers', 'No users.'))}</p>`;
         } catch (error) {
             setStatus(error.message);
         }
@@ -220,10 +231,12 @@
 
     const sendMessage = async () => {
         const body = String(input?.value || '').trim();
-        if (!body || !activeConversationId) return;
+        if (!body || !activeConversationId || sendingMessage) return;
 
         try {
-            setStatus('Wysylam...');
+            sendingMessage = true;
+            if (input) input.disabled = true;
+            setStatus(tr('sending', 'Sending...'));
             const data = await api('/api/messages/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -233,9 +246,15 @@
             renderMessages([data.message], true);
             setUnread(data.unreadCount);
             await loadConversations();
-            setStatus('Gotowe');
+            setStatus(tr('ready', 'Ready'));
         } catch (error) {
             setStatus(error.message);
+        } finally {
+            sendingMessage = false;
+            if (input) {
+                input.disabled = false;
+                input.focus();
+            }
         }
     };
 

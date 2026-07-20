@@ -149,6 +149,10 @@ font-size: 1rem;
 transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
+.editor-shortcuts-btn[hidden] {
+display: none !important;
+}
+
 .editor-shortcuts-btn:hover,
 .editor-shortcuts-btn:focus-visible,
 .editor-shortcuts-btn.is-active {

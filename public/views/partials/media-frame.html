@@ -143,6 +143,8 @@ if (!function_exists('oc_render_tile_body')) {
         $maxFilters = max(0, (int)($options['maxFilters'] ?? 4));
         $class = trim('oc-tile-body ' . (string)($options['class'] ?? ''));
         $filterTitle = (string)($options['filterTitle'] ?? '');
+        $filterAttrs = (array)($options['filterAttrs'] ?? []);
+        $renderEmptyFilters = !empty($options['renderEmptyFilters']);
         $visibleFilters = $fitFiltersToRow
             ? $filters
             : ($maxFilters > 0 ? array_slice($filters, 0, $maxFilters) : []);
@@ -175,10 +177,11 @@ if (!function_exists('oc_render_tile_body')) {
             echo (string)$options['afterDescriptionHtml'];
         }
 
-        if (!empty($visibleFilters)) {
+        if (!empty($visibleFilters) || $renderEmptyFilters) {
             $chipsClass = 'oc-tile-filter-chips' . ($fitFiltersToRow ? ' oc-tile-filter-chips--fit-row' : '');
             $chipsAttrs = $fitFiltersToRow ? ' data-fit-filter-row' : '';
-            echo '<div class="' . oc_media_escape($chipsClass) . '" title="' . oc_media_escape($filterTitle) . '"' . $chipsAttrs . '>';
+            $filterAttrs = array_merge(['class' => $chipsClass, 'title' => $filterTitle], $filterAttrs);
+            echo '<div' . oc_media_attrs($filterAttrs) . $chipsAttrs . '>';
             foreach ($visibleFilters as $filter) {
                 $label = oc_media_filter_label($filter);
                 if (trim((string)$label) === '') {

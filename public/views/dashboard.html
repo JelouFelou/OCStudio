@@ -4,10 +4,10 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
             <div>
                 <h1 style="margin:0;font-size:1.4rem;"><?= htmlspecialchars($t('nav.dashboard'), ENT_QUOTES, 'UTF-8') ?></h1>
-                <p style="margin:6px 0 0;color:var(--text-muted,#777);">Bezpieczny podglad ostatnich postaci, historii i szablonow.</p>
+                <p style="margin:6px 0 0;color:var(--text-muted,#777);"><?= htmlspecialchars($t('dashboard.subtitle'), ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <?php if (!empty($siteFeatures['characters'])): ?>
-                <a href="/characters" class="btn-primary" style="padding:10px 18px;font-size:0.95rem;">Przejdz do Postaci</a>
+                <a href="/characters" class="btn-primary" style="padding:10px 18px;font-size:0.95rem;"><?= htmlspecialchars($t('dashboard.go_to_characters'), ENT_QUOTES, 'UTF-8') ?></a>
             <?php endif; ?>
         </div>
     </section>
@@ -16,28 +16,28 @@
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-person"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Postacie</span>
+                <span class="stat-label"><?= htmlspecialchars($t('content.type.character'), ENT_QUOTES, 'UTF-8') ?></span>
                 <span class="stat-value"><?= isset($characterCount) ? $characterCount : 0; ?></span>
             </div>
         </div>
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-file-code"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Szablony</span>
+                <span class="stat-label"><?= htmlspecialchars($t('content.type.template'), ENT_QUOTES, 'UTF-8') ?></span>
                 <span class="stat-value"><?= isset($templateCount) ? $templateCount : 0; ?></span>
             </div>
         </div>
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Foldery</span>
+                <span class="stat-label"><?= htmlspecialchars($t('dashboard.folders'), ENT_QUOTES, 'UTF-8') ?></span>
                 <span class="stat-value"><?= isset($worldCount) ? $worldCount : 0; ?></span>
             </div>
         </div>
         <div class="stat-card">
             <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
             <div class="stat-info">
-                <span class="stat-label">Historie</span>
+                <span class="stat-label"><?= htmlspecialchars($t('content.type.story'), ENT_QUOTES, 'UTF-8') ?></span>
                 <span class="stat-value"><?= isset($storyCount) ? $storyCount : 0; ?></span>
             </div>
         </div>
@@ -46,8 +46,8 @@
     <?php if(!empty($siteFeatures['characters']) && isset($characters) && is_array($characters) && !empty($characters)): ?>
         <section class="dashboard-section">
             <div class="dashboard-section-header">
-                <h2>Postacie</h2>
-                <a href="/characters" class="btn-secondary">Wszystkie</a>
+                <h2><?= htmlspecialchars($t('content.type.character'), ENT_QUOTES, 'UTF-8') ?></h2>
+                <a href="/characters" class="btn-secondary"><?= htmlspecialchars($t('dashboard.all'), ENT_QUOTES, 'UTF-8') ?></a>
             </div>
             <div class="dashboard-grid">
                 <?php foreach ($characters as $char): ?>
@@ -63,16 +63,16 @@
     <?php elseif (!empty($siteFeatures['characters'])): ?>
         <div class="oc-empty-state">
             <i class="fa-solid fa-person-circle-plus"></i>
-            <p>Nie masz jeszcze widocznych postaci.</p>
-            <a href="/createCharacter" class="btn-primary">Dodaj postac</a>
+            <p><?= htmlspecialchars($t('dashboard.empty.characters'), ENT_QUOTES, 'UTF-8') ?></p>
+            <a href="/createCharacter" class="btn-primary"><?= htmlspecialchars($t('dashboard.add_character'), ENT_QUOTES, 'UTF-8') ?></a>
         </div>
     <?php endif; ?>
 
     <?php if(!empty($siteFeatures['stories']) && isset($stories) && is_array($stories) && !empty($stories)): ?>
         <section class="dashboard-section">
             <div class="dashboard-section-header">
-                <h2>Historie</h2>
-                <a href="/stories" class="btn-secondary">Wszystkie</a>
+                <h2><?= htmlspecialchars($t('content.type.story'), ENT_QUOTES, 'UTF-8') ?></h2>
+                <a href="/stories" class="btn-secondary"><?= htmlspecialchars($t('dashboard.all'), ENT_QUOTES, 'UTF-8') ?></a>
             </div>
             <div class="dashboard-story-grid">
                 <?php foreach($stories as $story): ?>
@@ -91,7 +91,7 @@
                         <?php oc_render_media_frame([
                             'variant' => 'story-card',
                             'src' => '/media/' . $storyImage,
-                            'alt' => 'Okladka historii',
+                            'alt' => $t('dashboard.story_cover'),
                         ]); ?>
                         <?php oc_render_tile_body([
                             'class' => 'story-preview-body',
@@ -109,8 +109,8 @@
     <?php if(!empty($siteFeatures['characters']) && isset($templates) && is_array($templates) && !empty($templates)): ?>
         <section class="dashboard-section">
             <div class="dashboard-section-header">
-                <h2>Szablony</h2>
-                <a href="/templates" class="btn-secondary">Wszystkie</a>
+                <h2><?= htmlspecialchars($t('content.type.template'), ENT_QUOTES, 'UTF-8') ?></h2>
+                <a href="/templates" class="btn-secondary"><?= htmlspecialchars($t('dashboard.all'), ENT_QUOTES, 'UTF-8') ?></a>
             </div>
             <div class="templates-grid dashboard-template-grid">
                 <?php foreach($templates as $template): ?>

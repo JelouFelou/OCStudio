@@ -18,15 +18,25 @@ $resolveDefaultImage = static function (string $image) use ($defaultCharacterIma
     $image = basename($image) ?: 'default.png';
     return in_array($image, ['default.png', 'default.jpg', 'default_dark.png', ''], true) ? $defaultCharacterImage : $image;
 };
+$publicationTypeLabel = static function (array $publication) use ($t): string {
+    return match ((string)($publication['contentType'] ?? '')) {
+        'character' => $t('content.type.character_one'),
+        'story' => $t('content.type.story_one'),
+        'image' => $t('content.type.image_one'),
+        'relation_board' => $t('content.type.relation_board_one'),
+        'template' => $t('content.type.template_one'),
+        default => $t('common.publication'),
+    };
+};
 $avatarUrl = trim((string)($profile['avatarUrl'] ?? ''));
 
 $typeOptions = [
-    'all' => 'Wszystkie typy',
-    'character' => 'Postacie',
-    'story' => 'Historie',
-    'image' => 'Zdjecia',
-    'relation_board' => 'Relacje',
-    'template' => 'Szablony',
+    'all' => $t('content.type.all'),
+    'character' => $t('content.type.character'),
+    'story' => $t('content.type.story'),
+    'image' => $t('content.type.image'),
+    'relation_board' => $t('content.type.relation_board'),
+    'template' => $t('content.type.template'),
 ];
 $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
 ?>
@@ -48,11 +58,11 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
                         data-image-id-selector="#profile-avatar-image-id"
                         data-picker-default-tab="gallery">
                     <i class="fa-solid fa-image"></i>
-                    Wybierz
+                    <?= $profile_escape($t('profile.choose_avatar')) ?>
                 </button>
                 <button type="submit" class="btn-primary">
                     <i class="fa-solid fa-floppy-disk"></i>
-                    Zapisz
+                    <?= $profile_escape($t('profile.save_avatar')) ?>
                 </button>
                 <?php if ($avatarUrl !== ''): ?>
                     <button type="submit" name="remove_avatar" value="1" class="btn-secondary profile-avatar-remove">
@@ -63,36 +73,36 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
         </form>
 
         <div class="profile-header-main">
-            <span>Profil</span>
-            <h1><?= $profile_escape($profile['username'] ?? 'Uzytkownik') ?></h1>
+            <span><?= $profile_escape($t('profile.title')) ?></span>
+            <h1><?= $profile_escape($profile['username'] ?? $t('common.user')) ?></h1>
         </div>
 
         <form class="profile-edit-card" method="POST" action="/profile/bio">
             <input type="hidden" name="csrf_token" value="<?= $profile_escape($csrfToken ?? '') ?>">
-            <textarea name="bio" rows="7" maxlength="1200" placeholder="Napisz cos o sobie albo swoich OC..."><?= $profile_escape($profile['bio'] ?? '') ?></textarea>
+            <textarea name="bio" rows="7" maxlength="1200" placeholder="<?= $profile_escape($t('profile.bio_placeholder')) ?>"><?= $profile_escape($profile['bio'] ?? '') ?></textarea>
             <button type="submit" class="btn-primary">
                 <i class="fa-solid fa-floppy-disk"></i>
-                Zapisz opis
+                <?= $profile_escape($t('profile.save_bio')) ?>
             </button>
         </form>
 
         <a class="btn-secondary profile-public-preview" href="/u/<?= $profile_escape(rawurlencode((string)($profile['username'] ?? ''))) ?>">
             <i class="fa-solid fa-eye"></i>
-            Publiczny podglad
+            <?= $profile_escape($t('profile.public_preview')) ?>
         </a>
 
         <div class="profile-stat-list">
             <div>
                 <strong><?= $publicationTotal ?></strong>
-                <span>publikacji</span>
+                <span><?= $profile_escape($t('common.publication_count')) ?></span>
             </div>
             <div>
                 <strong><?= $followerCount ?></strong>
-                <span>obserwujacych</span>
+                <span><?= $profile_escape($t('common.followers')) ?></span>
             </div>
             <div>
                 <strong><?= $followingCount ?></strong>
-                <span>obserwowanych</span>
+                <span><?= $profile_escape($t('common.following')) ?></span>
             </div>
         </div>
     </aside>
@@ -100,19 +110,19 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
     <main class="profile-main">
         <form class="community-search-panel profile-search-panel" method="GET" action="/profile">
             <label class="community-query">
-                <span>Szukaj</span>
-                <input type="search" name="q" value="<?= $profile_escape($query) ?>" placeholder="Nazwa postaci, filtr..." autocomplete="off">
+                <span><?= $profile_escape($t('common.search')) ?></span>
+                <input type="search" name="q" value="<?= $profile_escape($query) ?>" placeholder="<?= $profile_escape($t('profile.search_placeholder')) ?>" autocomplete="off">
             </label>
 
             <label>
-                <span>Zakres</span>
+                <span><?= $profile_escape($t('common.scope')) ?></span>
                 <select disabled>
-                    <option>Ten profil</option>
+                    <option><?= $profile_escape($t('common.this_profile')) ?></option>
                 </select>
             </label>
 
             <label>
-                <span>Typ tresci</span>
+                <span><?= $profile_escape($t('common.type')) ?></span>
                 <select name="type">
                     <?php foreach ($typeOptions as $value => $label): ?>
                         <option value="<?= $profile_escape($value) ?>" <?= $type === $value ? 'selected' : '' ?>>
@@ -124,31 +134,31 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
 
             <label class="community-checkbox">
                 <input type="checkbox" name="adult" value="1" <?= $includeAdult ? 'checked' : '' ?>>
-                <span>Pokaz +18</span>
+                <span><?= $profile_escape($t('common.show_adult')) ?></span>
             </label>
 
             <button type="submit" class="btn-primary">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                Szukaj
+                <?= $profile_escape($t('common.search')) ?>
             </button>
         </form>
 
         <section class="profile-publications-panel">
             <div class="dashboard-section-header">
-                <h2>Udostepnione tresci</h2>
+                <h2><?= $profile_escape($t('common.shared_content')) ?></h2>
                 <a class="btn-secondary" href="/profile">
                     <i class="fa-solid fa-id-badge"></i>
-                    Moje publiczne
+                    <?= $profile_escape($t('common.my_public')) ?>
                 </a>
             </div>
 
             <?php if ($publicationsDisabled): ?>
                 <div class="public-profile-empty">
-                    <p>Publikacje sa aktualnie wylaczone przez administracje.</p>
+                    <p><?= $profile_escape($t('profile.publications_disabled')) ?></p>
                 </div>
             <?php elseif (empty($publications)): ?>
                 <div class="public-profile-empty">
-                    <p><?= $hasProfileFilters ? 'Brak wynikow dla wybranych filtrow.' : 'Nie masz jeszcze udostepnionych publikacji.' ?></p>
+                    <p><?= $profile_escape($hasProfileFilters ? $t('profile.empty_filtered') : $t('profile.empty_own')) ?></p>
                 </div>
             <?php else: ?>
                 <div class="public-profile-grid profile-publication-grid">
@@ -165,8 +175,8 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
                         $copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
                         $copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
                         $copyOriginTooltip = $copyOriginIsOwn
-                            ? 'Skopiowano od Ciebie'
-                            : 'Kopia z zachowanym pochodzeniem';
+                            ? $t('community.copy_origin.own')
+                            : $t('community.copy_origin.other');
                         if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
                             $copyOriginTooltip .= ': ' . $copyOriginAuthor;
                         }
@@ -177,7 +187,7 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
                         <a class="public-profile-card is-own" href="/p/<?= $profile_escape($publication['publicId'] ?? '') ?>">
                             <div class="public-profile-card-media">
                                 <img src="/media/<?= $profile_escape(rawurlencode($image)) ?>"
-                                     alt="<?= $profile_escape($card['title'] ?? 'Publikacja') ?>"
+                                     alt="<?= $profile_escape($card['title'] ?? $t('common.publication')) ?>"
                                      style="object-fit: <?= $profile_escape($card['fit'] ?? 'cover') ?>; object-position: <?= (int)($card['focusX'] ?? 50) ?>% <?= (int)($card['focusY'] ?? 50) ?>%;">
                                 <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
                                     <span class="public-profile-age-badge">+18</span>
@@ -189,8 +199,8 @@ $hasProfileFilters = $query !== '' || $type !== 'all' || $includeAdult;
                                 <?php endif; ?>
                             </div>
                             <div class="public-profile-card-body">
-                                <span class="public-profile-card-type"><?= $profile_escape($card['typeLabel'] ?? 'Publikacja') ?></span>
-                                <h3><?= $profile_escape($card['title'] ?? 'Publikacja') ?></h3>
+                                <span class="public-profile-card-type"><?= $profile_escape($publicationTypeLabel($publication)) ?></span>
+                                <h3><?= $profile_escape($card['title'] ?? $t('common.publication')) ?></h3>
                                 <p><?= $profile_escape($card['description'] ?? '') ?></p>
                                 <?php if (!empty($filters)): ?>
                                     <div class="public-profile-filter-row">

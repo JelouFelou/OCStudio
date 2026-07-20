@@ -6,8 +6,8 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
 <div class="content-view gallery-content-view">
     <section class="gallery-header">
         <div>
-            <h1>Galeria</h1>
-            <p>Prywatna biblioteka zdjec wykorzystywanych w postaciach i polach szablonow.</p>
+            <h1><?= htmlspecialchars($t('gallery.title'), ENT_QUOTES, 'UTF-8') ?></h1>
+            <p><?= htmlspecialchars($t('gallery.subtitle'), ENT_QUOTES, 'UTF-8') ?></p>
         </div>
         <div class="gallery-header-actions">
             <?php oc_render_image_upload_controls([
@@ -15,13 +15,13 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
                 'buttonId' => 'gallery-upload-button',
                 'buttonClass' => 'btn-primary gallery-upload-trigger',
                 'buttonStyle' => '',
-                'label' => 'Dodaj zdjecie',
+                'label' => $t('gallery.add_image'),
                 'defaultTab' => 'upload',
                 'attrs' => ['data-gallery-upload' => '1', 'data-upload-only' => '1'],
             ]); ?>
             <button type="button" id="gallery-toggle-filters" class="btn-secondary">
                 <i class="fa-solid fa-tags"></i>
-                Edytuj filtry
+                <?= htmlspecialchars($t('gallery.edit_filters'), ENT_QUOTES, 'UTF-8') ?>
             </button>
         </div>
     </section>
@@ -29,7 +29,7 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
     <section class="gallery-toolbar">
         <div class="gallery-search">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input id="gallery-search-input" type="search" placeholder="Szukaj po filtrze...">
+            <input id="gallery-search-input" type="search" placeholder="<?= htmlspecialchars($t('gallery.search_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
         </div>
     </section>
 
@@ -55,7 +55,7 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
                 </button>
                 <?php if (!empty($image['hasHiddenReferences'])): ?>
                     <span class="gallery-hidden-badge">
-                        <?= ($image['visibility'] ?? 'normal') === 'adult' ? '+18' : (!empty($image['hiddenWithoutOwnFilters']) ? 'Ukryte bez filtrow' : 'Ukryte') ?>
+                        <?= htmlspecialchars(($image['visibility'] ?? 'normal') === 'adult' ? '+18' : (!empty($image['hiddenWithoutOwnFilters']) ? $t('gallery.hidden_without_filters') : $t('common.hidden')), ENT_QUOTES, 'UTF-8') ?>
                     </span>
                 <?php endif; ?>
                 <div class="gallery-card-actions">
@@ -63,35 +63,35 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
                     <button type="button"
                             class="gallery-publish-image"
                             data-publish-image
-                            title="<?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'Ukrytego zdjecia nie mozna opublikowac' : 'Udostepnij zdjecie' ?>"
+                            title="<?= htmlspecialchars(($image['visibility'] ?? 'normal') === 'hidden' ? $t('gallery.hidden_publish_disabled') : $t('gallery.publish_image'), ENT_QUOTES, 'UTF-8') ?>"
                             <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'disabled' : '' ?>>
                         <i class="fa-solid fa-share-nodes"></i>
                     </button>
                     <?php endif; ?>
-                    <button type="button" class="gallery-delete-image" data-delete-image title="Usuń zdjęcie">
+                    <button type="button" class="gallery-delete-image" data-delete-image title="<?= htmlspecialchars($t('gallery.delete_image'), ENT_QUOTES, 'UTF-8') ?>">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
                 <div class="gallery-card-details">
                     <label>
-                        <span>Filtry</span>
+                        <span><?= htmlspecialchars($t('common.filters'), ENT_QUOTES, 'UTF-8') ?></span>
                         <textarea data-gallery-tags-input rows="3"><?= htmlspecialchars(implode(', ', array_map(fn($tag) => $tag['name'] ?? '', $image['tags'] ?? [])), ENT_QUOTES, 'UTF-8') ?></textarea>
                     </label>
                     <label>
-                        <span>Widocznosc</span>
+                        <span><?= htmlspecialchars($t('gallery.visibility'), ENT_QUOTES, 'UTF-8') ?></span>
                         <select data-gallery-visibility>
-                            <option value="normal" <?= ($image['visibility'] ?? 'normal') === 'normal' ? 'selected' : '' ?>>Zwykle</option>
-                            <option value="hidden" <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'selected' : '' ?>>Ukryte</option>
+                            <option value="normal" <?= ($image['visibility'] ?? 'normal') === 'normal' ? 'selected' : '' ?>><?= htmlspecialchars($t('common.normal'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="hidden" <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'selected' : '' ?>><?= htmlspecialchars($t('common.hidden'), ENT_QUOTES, 'UTF-8') ?></option>
                             <option value="adult" <?= ($image['visibility'] ?? 'normal') === 'adult' ? 'selected' : '' ?>>+18</option>
                         </select>
                     </label>
-                    <button type="button" class="gallery-save-tags" data-save-card-tags>Zapisz</button>
+                    <button type="button" class="gallery-save-tags" data-save-card-tags><?= htmlspecialchars($t('common.save'), ENT_QUOTES, 'UTF-8') ?></button>
                     <?php if ($canPublishContent): ?>
                     <button type="button"
                             class="gallery-publish-image"
                             data-publish-image
                             <?= ($image['visibility'] ?? 'normal') === 'hidden' ? 'disabled' : '' ?>>
-                        Udostepnij
+                        <?= htmlspecialchars($t('common.publish'), ENT_QUOTES, 'UTF-8') ?>
                     </button>
                     <?php endif; ?>
                 </div>
@@ -102,10 +102,10 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
 
 <div id="gallery-lightbox" class="gallery-lightbox" hidden aria-hidden="true">
     <div class="gallery-lightbox-toolbar">
-        <button type="button" data-gallery-zoom-out title="Pomniejsz"><i class="fa-solid fa-minus"></i></button>
-        <button type="button" data-gallery-zoom-reset title="Reset"><i class="fa-solid fa-expand"></i></button>
-        <button type="button" data-gallery-zoom-in title="Powieksz"><i class="fa-solid fa-plus"></i></button>
-        <button type="button" data-gallery-lightbox-close title="Zamknij"><i class="fa-solid fa-xmark"></i></button>
+        <button type="button" data-gallery-zoom-out title="<?= htmlspecialchars($t('gallery.zoom_out'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-minus"></i></button>
+        <button type="button" data-gallery-zoom-reset title="<?= htmlspecialchars($t('gallery.zoom_reset'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-expand"></i></button>
+        <button type="button" data-gallery-zoom-in title="<?= htmlspecialchars($t('gallery.zoom_in'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-plus"></i></button>
+        <button type="button" data-gallery-lightbox-close title="<?= htmlspecialchars($t('common.close'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="gallery-lightbox-stage">
         <img id="gallery-lightbox-img" src="" alt="">
@@ -113,27 +113,27 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
     <aside id="gallery-inspector" class="gallery-inspector" aria-live="polite">
         <div class="gallery-inspector-content" hidden>
             <div class="gallery-inspector-meta">
-                <strong>Zdjecie w galerii</strong>
+                <strong><?= htmlspecialchars($t('gallery.image_in_gallery'), ENT_QUOTES, 'UTF-8') ?></strong>
                 <span id="gallery-inspector-usage"></span>
             </div>
             <div class="gallery-inspector-section">
-                <span>Filtry</span>
+                <span><?= htmlspecialchars($t('common.filters'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div id="gallery-inspector-tags" class="gallery-inspector-tags"></div>
             </div>
             <div class="gallery-inspector-section">
-                <span>Uzywane w</span>
+                <span><?= htmlspecialchars($t('gallery.used_in'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div id="gallery-inspector-usage-list" class="gallery-inspector-usage-list"></div>
             </div>
             <div class="gallery-inspector-section">
-                <span>Widocznosc</span>
+                <span><?= htmlspecialchars($t('gallery.visibility'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div class="gallery-visibility-radios" id="gallery-inspector-visibility-radios">
                     <label>
                         <input type="radio" name="gallery-inspector-visibility" value="normal" data-gallery-visibility-option="normal">
-                        <span><i class="fa-solid fa-leaf"></i> Zwykle</span>
+                        <span><i class="fa-solid fa-leaf"></i> <?= htmlspecialchars($t('common.normal'), ENT_QUOTES, 'UTF-8') ?></span>
                     </label>
                     <label>
                         <input type="radio" name="gallery-inspector-visibility" value="hidden" data-gallery-visibility-option="hidden">
-                        <span><i class="fa-solid fa-eye-slash"></i> Ukryte</span>
+                        <span><i class="fa-solid fa-eye-slash"></i> <?= htmlspecialchars($t('common.hidden'), ENT_QUOTES, 'UTF-8') ?></span>
                     </label>
                     <label>
                         <input type="radio" name="gallery-inspector-visibility" value="adult" data-gallery-visibility-option="adult">
@@ -142,29 +142,29 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
                 </div>
                 <div class="gallery-visibility-menu">
                     <button type="button" id="gallery-inspector-visibility-toggle" class="gallery-visibility-toggle" aria-expanded="false">
-                        <span id="gallery-inspector-visibility-label">🌿 Zwykle</span>
+                        <span id="gallery-inspector-visibility-label"><?= htmlspecialchars($t('common.normal'), ENT_QUOTES, 'UTF-8') ?></span>
                         <i class="fa-solid fa-ellipsis"></i>
                     </button>
                     <div id="gallery-inspector-visibility-options" class="gallery-visibility-options" hidden>
-                        <button type="button" data-gallery-visibility-option="normal">🌿 Zwykle</button>
-                        <button type="button" data-gallery-visibility-option="hidden">👁️‍🗨️ Ukryte</button>
+                        <button type="button" data-gallery-visibility-option="normal"><?= htmlspecialchars($t('common.normal'), ENT_QUOTES, 'UTF-8') ?></button>
+                        <button type="button" data-gallery-visibility-option="hidden"><?= htmlspecialchars($t('common.hidden'), ENT_QUOTES, 'UTF-8') ?></button>
                         <button type="button" data-gallery-visibility-option="adult">🔞 +18</button>
                     </div>
                 </div>
                 <button type="button" id="gallery-inspector-visibility-saving" class="gallery-visibility-saving" hidden>
                     <i class="fa-solid fa-spinner fa-spin"></i>
-                    Zapisywanie
+                    <?= htmlspecialchars($t('gallery.saving'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
             </div>
             <div id="gallery-inspector-warning" class="gallery-inspector-warning" hidden></div>
             <div class="gallery-inspector-actions">
                 <button type="button" id="gallery-inspector-replace-btn">
                     <i class="fa-solid fa-repeat"></i>
-                    Zastap
+                    <?= htmlspecialchars($t('gallery.replace'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
                 <button type="button" id="gallery-inspector-delete-btn" class="danger">
                     <i class="fa-solid fa-trash"></i>
-                    Usun
+                    <?= htmlspecialchars($t('common.delete'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
             </div>
         </div>
@@ -173,14 +173,14 @@ $canPublishContent = empty($isOfflineMode) && !empty($siteFeatures['community'])
 
 <div id="gallery-dialog" class="gallery-dialog" hidden>
     <div class="gallery-dialog-card">
-        <h2 id="gallery-dialog-title">Filtry zdjecia</h2>
+        <h2 id="gallery-dialog-title"><?= htmlspecialchars($t('gallery.filters_image'), ENT_QUOTES, 'UTF-8') ?></h2>
         <label class="gallery-field">
-            <span>Filtry, minimum 5</span>
-            <input id="gallery-tags-input" type="text" placeholder="np. sfw, facet, mlody, plaza, morze">
+            <span><?= htmlspecialchars($t('gallery.filters_min'), ENT_QUOTES, 'UTF-8') ?></span>
+            <input id="gallery-tags-input" type="text" placeholder="<?= htmlspecialchars($t('gallery.tags_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
         </label>
         <div class="gallery-dialog-actions">
-            <button type="button" id="gallery-dialog-cancel">Anuluj</button>
-            <button type="button" id="gallery-dialog-save" class="primary">Zapisz</button>
+            <button type="button" id="gallery-dialog-cancel"><?= htmlspecialchars($t('common.cancel'), ENT_QUOTES, 'UTF-8') ?></button>
+            <button type="button" id="gallery-dialog-save" class="primary"><?= htmlspecialchars($t('common.save'), ENT_QUOTES, 'UTF-8') ?></button>
         </div>
     </div>
 </div>

@@ -98,11 +98,31 @@ if (!function_exists('oc_character_filter_label')) {
         return trim((string)$filter);
     }
 }
+if (!function_exists('oc_character_status_label')) {
+    function oc_character_status_label(?CharacterStatus $status, callable $translate): string {
+        if (!$status) {
+            return '';
+        }
+
+        return match ((int)$status->getId()) {
+            1 => $translate('characters.status.todo'),
+            2 => $translate('characters.status.progress'),
+            3 => $translate('characters.status.done'),
+            default => match (mb_strtolower(trim($status->getName()))) {
+                'do zrobienia' => $translate('characters.status.todo'),
+                'w trakcie' => $translate('characters.status.progress'),
+                'gotowa' => $translate('characters.status.done'),
+                default => $status->getName(),
+            },
+        };
+    }
+}
 if (!function_exists('oc_character_publication_badge')) {
-    function oc_character_publication_badge(?array $publication): array {
+    function oc_character_publication_badge(?array $publication, ?callable $translate = null): array {
+        $label = static fn(string $key, string $fallback): string => $translate ? $translate($key) : $fallback;
         if (!$publication) {
             return [
-                'label' => 'Prywatna',
+                'label' => $label('publication.status.private', 'Prywatna'),
                 'class' => 'is-private',
                 'publicId' => '',
                 'id' => 0,
@@ -115,7 +135,7 @@ if (!function_exists('oc_character_publication_badge')) {
         if ($status === 'published' && $publicId !== '') {
             $isOutdated = !empty($publication['isOutdated']);
             return [
-                'label' => $isOutdated ? 'Zmieniona' : 'Opublikowana',
+                'label' => $isOutdated ? $label('publication.status.outdated', 'Zmieniona') : $label('publication.status.published', 'Opublikowana'),
                 'class' => $isOutdated ? 'is-outdated' : 'is-published',
                 'publicId' => $publicId,
                 'id' => (int)($publication['id'] ?? 0),
@@ -124,7 +144,7 @@ if (!function_exists('oc_character_publication_badge')) {
         }
 
         return [
-            'label' => 'Cofnieta',
+            'label' => $label('publication.status.unpublished', 'Cofnieta'),
             'class' => 'is-unpublished',
             'publicId' => $publicId,
             'id' => (int)($publication['id'] ?? 0),
@@ -148,14 +168,14 @@ if ($characterReturnQuery) {
     $characterReturnUrl .= '?' . $characterReturnQuery;
 }
 $encodedCharacterReturnUrl = rawurlencode($characterReturnUrl);
-$basePublicationBadge = oc_character_publication_badge($characterPublications[0] ?? null);
+$basePublicationBadge = oc_character_publication_badge($characterPublications[0] ?? null, $t);
 $variantPreviewOptions = [];
 foreach ($characterVariants as $variant) {
     $variantImage = trim((string)($variant['image'] ?? ''));
     $variantFilters = $variant['content_filters'] ?? [];
     $variantDescription = trim((string)($variant['description'] ?? ''));
-    $variantName = (string)($variant['name'] ?? 'Wariant');
-    $variantPublicationBadge = oc_character_publication_badge($characterPublications[(int)($variant['id'] ?? 0)] ?? null);
+    $variantName = (string)($variant['name'] ?? $t('characters.preview_variant'));
+    $variantPublicationBadge = oc_character_publication_badge($characterPublications[(int)($variant['id'] ?? 0)] ?? null, $t);
     $variantPreviewOptions[] = [
         'id' => (int)($variant['id'] ?? 0),
         'name' => $variantName,
@@ -192,24 +212,26 @@ $cardPublicationBadge = $defaultVariantOption['publication'] ?? $basePublication
 // Oblicz poziom gotowości
 if (!$noImage && !$noTemplate) {
     $readiness      = 'done';
-    $readinessLabel = 'Gotowa';
+    $readinessLabel = $t('characters.status.done');
     $readinessIcon  = 'fa-circle-check';
 } elseif ($noImage && $noTemplate) {
     $readiness      = 'todo';
-    $readinessLabel = 'Do zrobienia';
+    $readinessLabel = $t('characters.status.todo');
     $readinessIcon  = 'fa-circle-xmark';
 } else {
     $readiness      = 'wip';
-    $readinessLabel = 'W trakcie';
+    $readinessLabel = $t('characters.status.progress');
     $readinessIcon  = 'fa-circle-half-stroke';
 }
 
 // Znajdź status po ID
 $statusObj = null;
+$statusLabel = '';
 if (isset($statuses) && $char->getIdStatus()) {
     foreach ($statuses as $s) {
         if ($s->getId() === $char->getIdStatus()) {
             $statusObj = $s;
+            $statusLabel = oc_character_status_label($statusObj, $t);
             break;
         }
     }
@@ -217,6 +239,7 @@ if (isset($statuses) && $char->getIdStatus()) {
 ?>
 
 <div class="character-card <?= $char->isHidden() ? 'is-hidden-content' : '' ?> <?= $isMainCharacter ? 'is-main-character' : '' ?> <?= $isPinned ? 'is-pinned-character' : '' ?>"
+     data-hidden-label="<?= htmlspecialchars($t('common.hidden'), ENT_QUOTES, 'UTF-8') ?>"
      <?php if ($isDraggable): ?>draggable="true" data-character-id="<?= $char->getId() ?>" data-name="<?= htmlspecialchars(strtolower($char->getName()), ENT_QUOTES, 'UTF-8') ?>"<?php endif; ?>
      data-character-name="<?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?>"
      data-character-public-id="<?= htmlspecialchars($char->getPublicId(), ENT_QUOTES, 'UTF-8') ?>"
@@ -239,9 +262,9 @@ if (isset($statuses) && $char->getIdStatus()) {
      style="cursor:<?= $isDraggable ? 'grab' : 'pointer' ?>;position:relative;">
 
     <?php if ($isMainCharacter): ?>
-        <div class="main-character-badge" title="Główna postać">⭐</div>
+        <div class="main-character-badge" title="<?= htmlspecialchars($t('characters.main_character'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-star"></i></div>
     <?php elseif ($isPinned): ?>
-        <div class="pinned-character-badge" title="Przypięta postać">📌</div>
+        <div class="pinned-character-badge" title="<?= htmlspecialchars($t('characters.pinned_character'), ENT_QUOTES, 'UTF-8') ?>"><i class="fa-solid fa-thumbtack"></i></div>
     <?php endif; ?>
     
     <div class="character-top-badges">
@@ -254,8 +277,8 @@ if (isset($statuses) && $char->getIdStatus()) {
              data-status-id="<?= $statusObj->getId() ?>"
              <?php if ($showAddStatusBtn): ?>onclick="event.stopPropagation(); openStatusModal(<?= $char->getId() ?>)"<?php endif; ?>
              style="position:absolute;top:8px;left:8px;height:auto;padding:4px 8px;border-radius:50px;<?php if ($showAddStatusBtn): ?>cursor:pointer;<?php endif; ?>display:flex;align-items:center;justify-content:center;font-size:0.7rem;z-index:2;transition:transform .2s,box-shadow .2s;background:<?= htmlspecialchars($statusObj->getColorHex(), ENT_QUOTES, 'UTF-8') ?>;color:white;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.2);text-align:center;white-space:nowrap;"
-             title="<?= htmlspecialchars($statusObj->getName(), ENT_QUOTES, 'UTF-8') ?>">
-            <?= htmlspecialchars($statusObj->getName(), ENT_QUOTES, 'UTF-8') ?>
+             title="<?= htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') ?>">
+            <?= htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') ?>
         </div>
     <?php 
         endif;
@@ -264,7 +287,7 @@ if (isset($statuses) && $char->getIdStatus()) {
                 data-character-id="<?= $char->getId() ?>"
                 onclick="event.stopPropagation(); openStatusModal(<?= $char->getId() ?>)"
             style="position:absolute;top:8px;left:8px;width:40px;height:40px;border-radius:50%;background:white;border:2px dashed var(--border,#ddd);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.2rem;z-index:2;transition:all .2s;color:var(--text-muted);"
-                title="Dodaj status">
+                title="<?= htmlspecialchars($t('characters.add_status'), ENT_QUOTES, 'UTF-8') ?>">
             +
         </button>
     <?php else: ?>
@@ -277,12 +300,12 @@ if (isset($statuses) && $char->getIdStatus()) {
         </div>
     <?php endif; ?>
         <?php if ($showAdultBadge || $hasVariantAdult): ?>
-            <div class="adult-badge" data-character-adult-badge title="Treść 18+" <?= $showAdultBadge ? '' : 'hidden' ?>>+18</div>
+            <div class="adult-badge" data-character-adult-badge title="<?= htmlspecialchars($t('stories.adult'), ENT_QUOTES, 'UTF-8') ?>" <?= $showAdultBadge ? '' : 'hidden' ?>>+18</div>
         <?php endif; ?>
     </div>
     <div class="card-publication-badge <?= htmlspecialchars($cardPublicationBadge['class'], ENT_QUOTES, 'UTF-8') ?>"
          data-card-publication-badge
-         title="Status publikacji">
+         title="<?= htmlspecialchars($t('characters.publication_status'), ENT_QUOTES, 'UTF-8') ?>">
         <?= htmlspecialchars($cardPublicationBadge['label'], ENT_QUOTES, 'UTF-8') ?>
     </div>
 
@@ -290,7 +313,7 @@ if (isset($statuses) && $char->getIdStatus()) {
         'variant' => 'character-card',
         'mode' => $imageDisplayMode,
         'src' => '/media/' . $displayImg,
-        'alt' => 'Postać',
+        'alt' => $t('content.type.character_one'),
         'fit' => $imageFit,
         'focusX' => $imageFocusX,
         'focusY' => $imageFocusY,
@@ -298,12 +321,12 @@ if (isset($statuses) && $char->getIdStatus()) {
         'imgAttrs' => [
             'onerror' => "this.src='/media/" . htmlspecialchars($defaultCharacterImage, ENT_QUOTES, 'UTF-8') . "'",
         ],
-        'after' => function () use ($showEditButton, $char, $encodedCharacterReturnUrl, $showCharacterActions, $characterFilters, $characterFilterTitle, $isMainCharacter, $isPinned, $variantPreviewOptions, $defaultVariantOption, $cardTitle, $cardCaption, $cardFilters, $cardFilterTitle) {
+        'after' => function () use ($t, $showEditButton, $char, $encodedCharacterReturnUrl, $showCharacterActions, $characterFilters, $characterFilterTitle, $isMainCharacter, $isPinned, $variantPreviewOptions, $defaultVariantOption, $cardTitle, $cardCaption, $cardFilters, $cardFilterTitle) {
     ?>
         <?php if ($showEditButton): ?>
             <button class="card-edit-btn"
                     onclick="event.stopPropagation(); const card = this.closest('.character-card'); window.location.href = (card?.dataset.characterEditUrl || '/editCharacter/<?= htmlspecialchars($char->getPublicId(), ENT_QUOTES, 'UTF-8') ?>?return_url=<?= htmlspecialchars($encodedCharacterReturnUrl, ENT_QUOTES, 'UTF-8') ?>') + (card?.dataset.selectedVariant ? '&variant=' + encodeURIComponent(card.dataset.selectedVariant) : '')"
-                    title="Edytuj">
+                    title="<?= htmlspecialchars($t('common.edit'), ENT_QUOTES, 'UTF-8') ?>">
                 <i class="fa-solid fa-pen"></i>
             </button>
         <?php endif; ?>
@@ -320,19 +343,19 @@ if (isset($statuses) && $char->getIdStatus()) {
                 <button type="button"
                         class="card-action-btn"
                         onclick="event.stopPropagation(); duplicateCharacter(<?= (int)$char->getId() ?>)"
-                        title="Duplikuj">
+                        title="<?= htmlspecialchars($t('common.duplicate'), ENT_QUOTES, 'UTF-8') ?>">
                     <i class="fa-solid fa-copy"></i>
                 </button>
                 <button type="button"
                         class="card-action-btn danger"
                         onclick="event.stopPropagation(); deleteCharacterWithConfirm(<?= (int)$char->getId() ?>, this.closest('.character-card').dataset.characterName || '')"
-                        title="Usuń">
+                        title="<?= htmlspecialchars($t('common.delete'), ENT_QUOTES, 'UTF-8') ?>">
                     <i class="fa-solid fa-trash"></i>
                 </button>
                 <button type="button"
                         class="card-action-btn"
                         onclick="event.stopPropagation(); toggleCharacterHidden(<?= (int)$char->getId() ?>, <?= $char->isHidden() ? 'false' : 'true' ?>)"
-                        title="<?= $char->isHidden() ? 'Odkryj' : 'Ukryj' ?>">
+                        title="<?= htmlspecialchars($char->isHidden() ? $t('common.show_hidden') : $t('common.hide'), ENT_QUOTES, 'UTF-8') ?>">
                     <i class="fa-solid <?= $char->isHidden() ? 'fa-eye' : 'fa-eye-slash' ?>"></i>
                 </button>
             </div>
@@ -341,17 +364,19 @@ if (isset($statuses) && $char->getIdStatus()) {
             'class' => 'card-content',
             'title' => $cardTitle,
             'description' => $cardCaption,
-            'filters' => empty($variantPreviewOptions) ? $cardFilters : [],
+            'filters' => $cardFilters,
             'filterTitle' => $cardFilterTitle,
+            'filterAttrs' => ['data-card-filter-chips' => true],
+            'renderEmptyFilters' => true,
             'fitFiltersToRow' => true,
             'titleAttrs' => ['data-card-title' => true],
             'descriptionAttrs' => ['data-card-description' => true],
-            'afterDescription' => function () use ($variantPreviewOptions, $defaultVariantOption, $char) {
+            'afterDescription' => function () use ($t, $variantPreviewOptions, $defaultVariantOption, $char) {
                 if (empty($variantPreviewOptions)) {
                     return;
                 }
         ?>
-                <select class="card-variant-select" data-card-variant-select onclick="event.stopPropagation()" title="Wariant podglądu">
+                <select class="card-variant-select" data-card-variant-select onclick="event.stopPropagation()" title="<?= htmlspecialchars($t('characters.preview_variant'), ENT_QUOTES, 'UTF-8') ?>">
                     <option value="" <?= $defaultVariantOption ? 'disabled' : '' ?>><?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?></option>
                     <?php foreach ($variantPreviewOptions as $variantOption): ?>
                         <option value="<?= (int)$variantOption['id'] ?>" <?= $defaultVariantOption && (int)$defaultVariantOption['id'] === (int)$variantOption['id'] ? 'selected' : '' ?>><?= htmlspecialchars($variantOption['name'], ENT_QUOTES, 'UTF-8') ?></option>
@@ -369,7 +394,7 @@ if (isset($statuses) && $char->getIdStatus()) {
         <div class="character-filters-display" 
              data-character-id="<?= $char->getId() ?>"
              style="display:none;">
-            <span style="display:none;color:var(--text-muted);">Brak filtrów</span>
+            <span style="display:none;color:var(--text-muted);"><?= htmlspecialchars($t('characters.no_filters'), ENT_QUOTES, 'UTF-8') ?></span>
         </div>
     <?php endif; ?>
 </div>
@@ -463,7 +488,7 @@ document.addEventListener('change', event => {
         let basePublication = {};
         try { basePublication = JSON.parse(card.dataset.basePublication || '{}'); } catch (error) {}
         const publication = selected?.publication || basePublication || {};
-        publicationBadge.textContent = publication.label || 'Prywatna';
+        publicationBadge.textContent = publication.label || (window.OCI18n?.publicationStatuses?.private || 'Prywatna');
         publicationBadge.classList.remove('is-private', 'is-published', 'is-unpublished', 'is-outdated');
         publicationBadge.classList.add(publication.class || 'is-private');
     }
@@ -475,6 +500,21 @@ document.addEventListener('change', event => {
     const caption = card.querySelector('[data-card-description]');
     if (caption) {
         caption.textContent = selected?.caption || card.dataset.baseCaption || '';
+    }
+
+    const filterChips = card.querySelector('[data-card-filter-chips]');
+    if (filterChips) {
+        const filters = selected?.filters || (() => {
+            try { return JSON.parse(card.dataset.baseFilters || '[]'); } catch (error) { return []; }
+        })();
+        const labels = (Array.isArray(filters) ? filters : [])
+            .map(filter => String(filter?.name || filter?.label || filter?.slug || filter || '').trim())
+            .filter(Boolean)
+            .sort((a, b) => a.length - b.length || a.localeCompare(b));
+        const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+        filterChips.title = selected?.filterTitle || card.dataset.baseFilterTitle || labels.join(', ');
+        filterChips.innerHTML = labels.map(label => `<span class="oc-tile-filter-chip">${escapeHtml(label)}</span>`).join('') + '<span class="oc-tile-filter-chip oc-tile-filter-chip--more" hidden></span>';
+        requestAnimationFrame(() => window.OCMediaFrame?.refresh(card));
     }
     card.dataset.selectedVariant = selected?.id ? String(selected.id) : '';
     ocSetRememberedCharacterVariant(card, card.dataset.selectedVariant);

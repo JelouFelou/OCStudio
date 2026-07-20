@@ -5,7 +5,7 @@
     const boardId = parseInt(app.dataset.boardId, 10);
     const focusCharacterId = app.dataset.focusCharacterId ? parseInt(app.dataset.focusCharacterId, 10) : null;
     const returnUrl = app.dataset.returnUrl || '/relations';
-    const uploadBase = '/public/uploads/';
+    const uploadBase = '/media/';
 
     const els = {
         workspace: document.getElementById('relations-workspace'),
@@ -50,6 +50,13 @@
         panY: 0,
         modal: null
     };
+    const relationText = window.OCI18n?.relations || {};
+    const relationTr = (key, fallback) => relationText[key] || fallback;
+
+    function relationTypeName(type) {
+        const code = String(type?.code || '').trim();
+        return relationText.types?.[code] || type?.name || code || '';
+    }
 
     function api(url, options) {
         return fetch(url, options).then(async res => {
@@ -170,7 +177,7 @@
                     </div>
                     <div>
                         <strong>${escapeHtml(character.name)}</strong>
-                        <span>${escapeHtml(character.world_name || 'Folder glowny')}</span>
+                        <span>${escapeHtml(character.world_name || window.OCI18n?.relations?.rootFolder || 'Folder glowny')}</span>
                     </div>
                 `;
                 const image = row.querySelector('img');
@@ -234,7 +241,10 @@
             const mx = (ax + bx) / 2;
             const my = (ay + by) / 2;
             const customRelation = boolFlag(relation.is_custom);
-            const label = customRelation && relation.custom_name ? relation.custom_name : relation.type_name;
+            const label = customRelation && relation.custom_name ? relation.custom_name : relationTypeName({
+                code: relation.code,
+                name: relation.type_name
+            });
             const icon = customRelation && relation.custom_icon ? relation.custom_icon : emojiForRelation(relation.code);
             const visibleLabel = icon ? `${icon} ${label}` : label;
             const labelWidth = relationLabelWidth(visibleLabel);
@@ -490,7 +500,12 @@
         };
         hideNotePopover();
         const existing = Boolean(relation.id);
-        els.modalTitle.textContent = `${existing ? 'Edytuj relacje' : 'Dodaj relacje'}: ${entityName(a.key)} <-> ${entityName(b.key)}`;
+        const action = existing ? relationTr('edit', 'Edit relation') : relationTr('new', 'New relation');
+        const titleTemplate = relationTr('modalTitle', ':action: :a <-> :b');
+        els.modalTitle.textContent = titleTemplate
+            .replace(':action', action)
+            .replace(':a', entityName(a.key))
+            .replace(':b', entityName(b.key));
         els.customName.value = relation.custom_name || '';
         els.customIcon.value = relation.custom_icon || '';
         els.customColor.value = relation.custom_color_hex || '#8E44AD';
@@ -512,7 +527,7 @@
             btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
             btn.style.setProperty('--relation-color', type.color_hex);
             btn.classList.toggle('is-custom-type', isCustomType(type));
-            btn.innerHTML = `<i class="${escapeHtml(type.icon)}" style="color:${escapeHtml(type.color_hex)}"></i><span>${escapeHtml(type.name)}</span><i class="fa-solid fa-check relations-type-check"></i>`;
+            btn.innerHTML = `<i class="${escapeHtml(type.icon)}" style="color:${escapeHtml(type.color_hex)}"></i><span>${escapeHtml(relationTypeName(type))}</span><i class="fa-solid fa-check relations-type-check"></i>`;
             btn.addEventListener('click', () => {
                 renderRelationTypes(type.id);
                 syncCustomNameVisibility();
@@ -548,7 +563,7 @@
         if (!presets.length) return;
         const label = document.createElement('span');
         label.className = 'relations-custom-presets-label';
-        label.textContent = 'Poprzednie custom relacje';
+        label.textContent = relationTr('customPresets', 'Previous custom relations');
         els.customPresets.appendChild(label);
         presets.forEach(preset => {
             const btn = document.createElement('button');

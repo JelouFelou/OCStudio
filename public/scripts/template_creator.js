@@ -3,16 +3,25 @@ console.log("Template Creator Script Loaded!");
 let currentTargetLocation = 'left';
 let currentInsertIndex = null;
 
+const templateI18n = () => window.OCI18n?.templateEditor || {};
+const templateText = (key, fallback, replacements = {}) => {
+    let value = templateI18n()[key] || fallback || key;
+    Object.entries(replacements).forEach(([name, replacement]) => {
+        value = value.replaceAll(`:${name}`, String(replacement));
+    });
+    return value;
+};
+
 const FIELD_TYPE_OPTIONS = [
-    ['text', 'fa-font', 'Tekst'],
-    ['textarea', 'fa-align-left', 'Dlugi tekst'],
-    ['list', 'fa-list-ul', 'Lista'],
-    ['select', 'fa-chevron-down', 'Wybor z listy'],
-    ['image', 'fa-image', 'Zdjecie'],
-    ['image-gallery', 'fa-images', 'Galeria'],
-    ['table', 'fa-table', 'Tabela'],
-    ['stats', 'fa-chart-simple', 'Statystyki'],
-    ['date', 'fa-calendar-days', 'Data'],
+    ['text', 'fa-font', templateText('text', 'Tekst')],
+    ['textarea', 'fa-align-left', templateText('textarea', 'Dlugi tekst')],
+    ['list', 'fa-list-ul', templateText('list', 'Lista')],
+    ['select', 'fa-chevron-down', templateText('select', 'Wybor z listy')],
+    ['image', 'fa-image', templateText('image', 'Zdjecie')],
+    ['image-gallery', 'fa-images', templateText('imageGallery', 'Galeria')],
+    ['table', 'fa-table', templateText('table', 'Tabela')],
+    ['stats', 'fa-chart-simple', templateText('stats', 'Statystyki')],
+    ['date', 'fa-calendar-days', templateText('date', 'Data')],
 ];
 
 // -------------------------------------------------------
@@ -147,7 +156,7 @@ function createTemplateInsertPoint(location, index) {
     const point = document.createElement('div');
     point.className = 'template-field-insert-point';
     point.innerHTML = `
-        <button type="button" class="template-field-insert-btn" data-template-location="${location}" data-template-insert-index="${index}" title="Dodaj pole w tym miejscu">
+        <button type="button" class="template-field-insert-btn" data-template-location="${location}" data-template-insert-index="${index}" title="${escapeHtml(templateText('addFieldHere', 'Dodaj pole'))}">
             <i class="fa-solid fa-plus"></i>
         </button>`;
     return point;
@@ -190,9 +199,9 @@ const EDITOR_WRAP = 'margin-top:10px;padding:10px;background:var(--surface-alt,#
 // -------------------------------------------------------
 function buildTableRowHtml(name = '') {
     return `<div class="table-row-definition" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <input type="text" class="table-row-name-input" placeholder="Nazwa wiersza..."
+        <input type="text" class="table-row-name-input" placeholder="${escapeHtml(templateText('rowName', 'Nazwa wiersza...'))}"
             value="${name.replace(/"/g,'&quot;')}" style="${INPUT_STYLE}">
-        <button type="button" onclick="removeTableRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usuń">
+        <button type="button" onclick="removeTableRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}">
             <i class="fa-solid fa-minus"></i></button></div>`;
 }
 
@@ -262,28 +271,28 @@ function buildTableRowHtml(row = '') {
     const esc = value => String(value || '').replace(/"/g, '&quot;');
     return `<div class="table-row-definition" style="display:grid;grid-template-columns:minmax(130px,1fr) 110px minmax(130px,0.9fr) minmax(120px,0.9fr) minmax(150px,1fr) auto;align-items:center;gap:8px;margin-bottom:6px;">
         <input type="hidden" class="table-row-key-input" value="${esc(cfg.key)}">
-        <input type="text" class="table-row-name-input" placeholder="Nazwa wiersza..."
+        <input type="text" class="table-row-name-input" placeholder="${escapeHtml(templateText('rowName', 'Nazwa wiersza...'))}"
             value="${esc(cfg.label)}" style="${INPUT_STYLE}">
         <select class="table-row-type-input" style="${INPUT_STYLE}">
-            <option value="text" ${cfg.type === 'text' ? 'selected' : ''}>Tekst</option>
-            <option value="date" ${cfg.type === 'date' ? 'selected' : ''}>Data</option>
-            <option value="image" ${cfg.type === 'image' ? 'selected' : ''}>Zdjecie</option>
-            <option value="list" ${cfg.type === 'list' ? 'selected' : ''}>Lista</option>
-            <option value="select" ${cfg.type === 'select' ? 'selected' : ''}>Wybor</option>
-            <option value="age" ${cfg.type === 'age' ? 'selected' : ''}>Wiek z daty</option>
+            <option value="text" ${cfg.type === 'text' ? 'selected' : ''}>${escapeHtml(templateText('text', 'Tekst'))}</option>
+            <option value="date" ${cfg.type === 'date' ? 'selected' : ''}>${escapeHtml(templateText('date', 'Data'))}</option>
+            <option value="image" ${cfg.type === 'image' ? 'selected' : ''}>${escapeHtml(templateText('image', 'Zdjecie'))}</option>
+            <option value="list" ${cfg.type === 'list' ? 'selected' : ''}>${escapeHtml(templateText('list', 'Lista'))}</option>
+            <option value="select" ${cfg.type === 'select' ? 'selected' : ''}>${escapeHtml(templateText('choice', 'Wybor'))}</option>
+            <option value="age" ${cfg.type === 'age' ? 'selected' : ''}>${escapeHtml(templateText('ageFromDate', 'Wiek z daty'))}</option>
         </select>
-        <input type="text" class="table-row-age-from-input" placeholder="Nazwa wiersza daty"
+        <input type="text" class="table-row-age-from-input" placeholder="${escapeHtml(templateText('dateRowName', 'Nazwa wiersza daty'))}"
             value="${esc(cfg.ageFrom)}" style="${INPUT_STYLE}${cfg.type === 'age' ? '' : 'display:none;'}">
-        <input type="text" class="table-row-default-input" placeholder="Domyślna wartość"
+        <input type="text" class="table-row-default-input" placeholder="${escapeHtml(templateText('defaultValue', 'Domyslna wartosc'))}"
             value="${esc(cfg.defaultValue)}" style="${INPUT_STYLE}${cfg.type === 'text' ? '' : 'display:none;'}">
-        <input type="text" class="table-row-options-input" placeholder="Opcje po przecinku"
+        <input type="text" class="table-row-options-input" placeholder="${escapeHtml(templateText('optionsComma', 'Opcje po przecinku'))}"
             value="${esc((cfg.options || []).join(', '))}" style="${INPUT_STYLE}${cfg.type === 'select' ? '' : 'display:none;'}">
         <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-            <button type="button" onclick="moveTableRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w gore">
+            <button type="button" onclick="moveTableRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveUp', 'Przesun w gore'))}">
                 <i class="fa-solid fa-arrow-up"></i></button>
-            <button type="button" onclick="moveTableRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w dol">
+            <button type="button" onclick="moveTableRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveDown', 'Przesun w dol'))}">
                 <i class="fa-solid fa-arrow-down"></i></button>
-            <button type="button" onclick="removeTableRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usun">
+            <button type="button" onclick="removeTableRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}">
                 <i class="fa-solid fa-minus"></i></button>
         </div></div>`;
 }
@@ -341,7 +350,7 @@ function buildSelectOptionHtml(val = '') {
     return `<div class="select-option-def" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <input type="text" class="select-option-input" placeholder="Opcja..."
             value="${val.replace(/"/g,'&quot;')}" style="${INPUT_STYLE}">
-        <button type="button" onclick="removeSelectOption(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usuń">
+        <button type="button" onclick="removeSelectOption(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}">
             <i class="fa-solid fa-minus"></i></button></div>`;
 }
 
@@ -393,7 +402,7 @@ function initExistingSelectFields() {
 function buildMonthRowHtml(name='', days=30, idx=0) {
     return `<div class="month-row" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
         <span class="month-num" style="font-size:0.75rem;color:var(--text-muted,#999);min-width:18px;">${idx+1}.</span>
-        <input type="text" class="month-name-input" placeholder="Nazwa miesiąca..."
+        <input type="text" class="month-name-input" placeholder="${escapeHtml(templateText('monthName', 'Nazwa miesiaca...'))}"
             value="${name.replace(/"/g,'&quot;')}" style="flex:1;${INPUT_STYLE}">
         <input type="number" class="month-days-input" min="1" max="99" value="${days}"
             style="width:64px;${INPUT_STYLE}" title="Liczba dni">
@@ -404,7 +413,7 @@ function buildMonthRowHtml(name='', days=30, idx=0) {
 
 function buildEraRowHtml(val='') {
     return `<div class="era-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <input type="text" class="era-input" placeholder="Nazwa ery (np. n.e.)..."
+        <input type="text" class="era-input" placeholder="${escapeHtml(templateText('eraName', 'Nazwa ery (np. n.e.)...'))}"
             value="${val.replace(/"/g,'&quot;')}" style="${INPUT_STYLE}">
         <button type="button" onclick="removeEraRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);">
             <i class="fa-solid fa-minus"></i></button></div>`;
@@ -582,14 +591,14 @@ function buildStatsRowHtml(row = '') {
     const esc = value => String(value || '').replace(/"/g, '&quot;');
     return `<div class="stats-row-definition" style="display:grid;grid-template-columns:minmax(130px,1fr) minmax(90px,0.45fr) auto;align-items:center;gap:8px;margin-bottom:6px;">
         <input type="hidden" class="stats-row-key-input" value="${esc(cfg.key)}">
-        <input type="text" class="stats-row-name-input" placeholder="Nazwa statystyki..."
+        <input type="text" class="stats-row-name-input" placeholder="${escapeHtml(templateText('statName', 'Nazwa statystyki...'))}"
             value="${esc(cfg.label)}" style="${INPUT_STYLE}">
-        <input type="number" min="0" step="1" class="stats-row-default-input" placeholder="Domyślna"
+        <input type="number" min="0" step="1" class="stats-row-default-input" placeholder="${escapeHtml(templateText('defaultValue', 'Domyslna'))}"
             value="${esc(cfg.defaultValue)}" style="${INPUT_STYLE}">
         <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-            <button type="button" onclick="moveStatsRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w gore"><i class="fa-solid fa-arrow-up"></i></button>
-            <button type="button" onclick="moveStatsRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="Przesun w dol"><i class="fa-solid fa-arrow-down"></i></button>
-            <button type="button" onclick="removeStatsRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="Usun"><i class="fa-solid fa-minus"></i></button>
+            <button type="button" onclick="moveStatsRow(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveUp', 'Przesun w gore'))}"><i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveStatsRow(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveDown', 'Przesun w dol'))}"><i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="removeStatsRow(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}"><i class="fa-solid fa-minus"></i></button>
         </div>
     </div>`;
 }
@@ -599,12 +608,12 @@ function ensureStatsEditor(fi) {
     let editor = fi.querySelector('.stats-editor');
     if (!fc || editor) return editor;
     fc.insertAdjacentHTML('beforeend', `<div class="stats-editor" style="${EDITOR_WRAP}">
-        <span style="${LABEL_SM}"><i class="fa-solid fa-chart-simple"></i> Pula punktow:</span>
+        <span style="${LABEL_SM}"><i class="fa-solid fa-chart-simple"></i> ${escapeHtml(templateText('pointsPool', 'Pula punktow:'))}</span>
         <input type="number" min="0" step="1" class="stats-max-input" value="33" style="${INPUT_STYLE}width:140px;display:block;margin-bottom:10px;">
-        <span style="${LABEL_SM}"><i class="fa-solid fa-list"></i> Statystyki:</span>
+        <span style="${LABEL_SM}"><i class="fa-solid fa-list"></i> ${escapeHtml(templateText('stats', 'Statystyki'))}:</span>
         <div class="stats-rows-container">
             <div class="add-stat-btn-wrap"><button type="button" onclick="addStatsRow(this)" style="${DASHED_BTN}">
-                <i class="fa-solid fa-plus"></i> Dodaj statystyke</button></div>
+                <i class="fa-solid fa-plus"></i> ${escapeHtml(templateText('addStat', 'Dodaj statystyke'))}</button></div>
         </div>
     </div>`);
     return fi.querySelector('.stats-editor');
@@ -683,15 +692,15 @@ function initExistingStatsFields() {
 // Metadane typów
 // -------------------------------------------------------
 const TYPE_META = {
-    text:            { icon:'fa-font',          label:'Typ: Tekst',          color:'' },
-    textarea:        { icon:'fa-align-left',     label:'Typ: Długi tekst',    color:'var(--text-muted,#888)' },
-    list:            { icon:'fa-list',           label:'Typ: Lista',          color:'var(--primary,#3498db)' },
-    image:           { icon:'fa-image',          label:'Typ: Zdjęcie',        color:'var(--success,#27ae60)' },
-    'image-gallery': { icon:'fa-images',         label:'Typ: Galeria',        color:'var(--success,#27ae60)' },
-    table:           { icon:'fa-table',          label:'Typ: Tabela',         color:'var(--secondary,#8e44ad)' },
-    stats:           { icon:'fa-chart-simple',   label:'Typ: Statystyki',     color:'var(--secondary,#8e44ad)' },
-    date:            { icon:'fa-calendar-days',  label:'Typ: Data',           color:'var(--warning,#e67e22)' },
-    select:          { icon:'fa-chevron-down',   label:'Typ: Wybór z listy',  color:'var(--info,#2980b9)' },
+    text:            { icon:'fa-font',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('text', 'Tekst') }),          color:'' },
+    textarea:        { icon:'fa-align-left',     label: templateText('typePrefix', 'Typ: :type', { type: templateText('textarea', 'Dlugi tekst') }),    color:'var(--text-muted,#888)' },
+    list:            { icon:'fa-list',           label: templateText('typePrefix', 'Typ: :type', { type: templateText('list', 'Lista') }),          color:'var(--primary,#3498db)' },
+    image:           { icon:'fa-image',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('image', 'Zdjecie') }),        color:'var(--success,#27ae60)' },
+    'image-gallery': { icon:'fa-images',         label: templateText('typePrefix', 'Typ: :type', { type: templateText('imageGallery', 'Galeria') }),        color:'var(--success,#27ae60)' },
+    table:           { icon:'fa-table',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('table', 'Tabela') }),         color:'var(--secondary,#8e44ad)' },
+    stats:           { icon:'fa-chart-simple',   label: templateText('typePrefix', 'Typ: :type', { type: templateText('stats', 'Statystyki') }),     color:'var(--secondary,#8e44ad)' },
+    date:            { icon:'fa-calendar-days',  label: templateText('typePrefix', 'Typ: :type', { type: templateText('date', 'Data') }),           color:'var(--warning,#e67e22)' },
+    select:          { icon:'fa-chevron-down',   label: templateText('typePrefix', 'Typ: :type', { type: templateText('select', 'Wybor z listy') }),  color:'var(--info,#2980b9)' },
 };
 
 // -------------------------------------------------------
@@ -728,41 +737,41 @@ function createField(type) {
     const fc = fi.querySelector('.field-content');
     if (type === 'table') {
         fc.insertAdjacentHTML('beforeend', `<div class="table-rows-editor" style="${EDITOR_WRAP}">
-            <span style="${LABEL_SM}"><i class="fa-solid fa-table"></i> Wiersze tabeli:</span>
+            <span style="${LABEL_SM}"><i class="fa-solid fa-table"></i> ${escapeHtml(templateText('tableRows', 'Wiersze tabeli:'))}</span>
             <div class="table-rows-container">
                 <div class="add-row-btn-wrap"><button type="button" onclick="addTableRow(this)" style="${DASHED_BTN}">
-                    <i class="fa-solid fa-plus"></i> Dodaj wiersz</button></div>
+                    <i class="fa-solid fa-plus"></i> ${escapeHtml(templateText('addRow', 'Dodaj wiersz'))}</button></div>
             </div></div>`);
     } else if (type === 'select') {
         fc.insertAdjacentHTML('beforeend', `<div class="select-options-editor" style="${EDITOR_WRAP}">
-            <span style="${LABEL_SM}"><i class="fa-solid fa-chevron-down"></i> Opcje do wyboru:</span>
+            <span style="${LABEL_SM}"><i class="fa-solid fa-chevron-down"></i> ${escapeHtml(templateText('selectOptions', 'Opcje do wyboru:'))}</span>
             <div class="select-options-container">
                 <div class="add-opt-btn-wrap"><button type="button" onclick="addSelectOption(this)" style="${DASHED_BTN}">
-                    <i class="fa-solid fa-plus"></i> Dodaj opcję</button></div>
+                    <i class="fa-solid fa-plus"></i> ${escapeHtml(templateText('addOption', 'Dodaj opcje'))}</button></div>
             </div></div>`);
     } else if (type === 'date') {
         fc.insertAdjacentHTML('beforeend', `<div class="date-editor" style="${EDITOR_WRAP}">
-            <span style="${LABEL_SM}"><i class="fa-solid fa-calendar"></i> Miesiące (kolejność = kolejność wyboru):</span>
+            <span style="${LABEL_SM}"><i class="fa-solid fa-calendar"></i> ${escapeHtml(templateText('months', 'Miesiace'))}:</span>
             <div class="months-container">
                 <div class="add-month-btn-wrap"><button type="button" onclick="addMonthRow(this)" style="${DASHED_BTN}">
-                    <i class="fa-solid fa-plus"></i> Dodaj miesiąc</button></div>
+                    <i class="fa-solid fa-plus"></i> ${escapeHtml(templateText('addMonth', 'Dodaj miesiac'))}</button></div>
             </div>
-            <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-hourglass"></i> Ery (opcjonalnie, np. "p.n.e.", "n.e."):</span>
+            <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-hourglass"></i> ${escapeHtml(templateText('erasOptional', 'Ery (opcjonalnie):'))}</span>
             <div class="eras-container">
                 <div class="add-era-btn-wrap"><button type="button" onclick="addEraRow(this)" style="${DASHED_BTN}">
-                    <i class="fa-solid fa-plus"></i> Dodaj erę</button></div>
+                    <i class="fa-solid fa-plus"></i> ${escapeHtml(templateText('addEra', 'Dodaj ere'))}</button></div>
             </div>
-            <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-star"></i> Domyślny rok:</span>
+            <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-star"></i> ${escapeHtml(templateText('defaultYear', 'Domyslny rok'))}:</span>
             <input type="text" class="default-year-input" placeholder="np. 1200" style="${INPUT_STYLE}display:block;">
         </div>`);
     } else if (type === 'image') {
         fc.insertAdjacentHTML('beforeend', `<div class="image-size-editor" style="${EDITOR_WRAP}">
-            <span style="${LABEL_SM}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> Rozmiar zdjęcia w podglądzie:</span>
+            <span style="${LABEL_SM}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> ${escapeHtml(templateText('imageSizePreview', 'Rozmiar zdjecia w podgladzie:'))}</span>
             <select class="image-size-input" style="${INPUT_STYLE}width:100%;">
-                <option value="small">Małe</option>
-                <option value="medium" selected>Średnie</option>
-                <option value="large">Duże</option>
-                <option value="full">Pełna szerokość</option>
+                <option value="small">${escapeHtml(templateText('sizeSmall', 'Male'))}</option>
+                <option value="medium" selected>${escapeHtml(templateText('sizeMedium', 'Srednie'))}</option>
+                <option value="large">${escapeHtml(templateText('sizeLarge', 'Duze'))}</option>
+                <option value="full">${escapeHtml(templateText('sizeFull', 'Pelna szerokosc'))}</option>
             </select>
         </div>`);
     }

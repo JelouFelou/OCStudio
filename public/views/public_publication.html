@@ -6,9 +6,17 @@ $pp_escape = function ($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 };
 
-$pp_text = function ($value) use ($pp_escape): string {
+$pp_t = function (string $key, array $params = []) use ($t, $pp_escape): string {
+    return $pp_escape($t($key, $params));
+};
+
+$pp_raw_t = function (string $key, array $params = []) use ($t): string {
+    return $t($key, $params);
+};
+
+$pp_text = function ($value) use ($pp_escape, $pp_raw_t): string {
     $value = trim((string)$value);
-    return $value === '' ? '<span class="wiki-empty">Brak danych</span>' : nl2br($pp_escape($value));
+    return $value === '' ? '<span class="wiki-empty">' . $pp_escape($pp_raw_t('common.no_data')) . '</span>' : nl2br($pp_escape($value));
 };
 
 $pp_decode_json = static function ($value) {
@@ -91,7 +99,7 @@ $pp_list_items = function ($value) use ($pp_decode_json, $pp_is_assoc_array, $pp
     return array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$value) ?: []), static fn($item) => $item !== ''));
 };
 
-$pp_render_public_character_field = function (array $field) use ($pp_escape, $pp_text, $pp_decode_json, $pp_is_assoc_array, $pp_readable_value, $pp_image_from_value, $pp_list_items): string {
+$pp_render_public_character_field = function (array $field) use ($pp_escape, $pp_text, $pp_decode_json, $pp_is_assoc_array, $pp_readable_value, $pp_image_from_value, $pp_list_items, $pp_raw_t): string {
     $type = (string)($field['type'] ?? 'text');
     $value = (string)($field['value'] ?? '');
     ob_start();
@@ -99,7 +107,7 @@ $pp_render_public_character_field = function (array $field) use ($pp_escape, $pp
     if ($type === 'image') {
         $image = $pp_image_from_value($value);
         if ($image) {
-            echo '<figure class="wiki-single-image public-character-field-image"><img src="' . $pp_escape($image['url']) . '" alt="' . $pp_escape($field['label'] ?? 'Zdjecie') . '"></figure>';
+            echo '<figure class="wiki-single-image public-character-field-image"><img src="' . $pp_escape($image['url']) . '" alt="' . $pp_escape($field['label'] ?? $pp_raw_t('content.type.image_one')) . '"></figure>';
         } else {
             echo $pp_text('');
         }
@@ -205,11 +213,11 @@ $defaultNames = $contentType === 'story'
 $image = in_array($image, $defaultNames, true) ? $defaultImage : $image;
 $imageUrl = '/media/' . rawurlencode($image);
 $displayName = match ($contentType) {
-    'template' => (string)($template['name'] ?? 'Szablon'),
-    'image' => (string)($imagePayload['title'] ?? 'Zdjecie'),
-    'story' => (string)($story['title'] ?? 'Historia'),
-    'relation_board' => (string)($relationBoard['name'] ?? 'Relacje'),
-    default => (string)($character['name'] ?? 'Publikacja'),
+    'template' => (string)($template['name'] ?? $pp_raw_t('content.type.template_one')),
+    'image' => (string)($imagePayload['title'] ?? $pp_raw_t('content.type.image_one')),
+    'story' => (string)($story['title'] ?? $pp_raw_t('content.type.story_one')),
+    'relation_board' => (string)($relationBoard['name'] ?? $pp_raw_t('content.type.relation_board_one')),
+    default => (string)($character['name'] ?? $pp_raw_t('common.publication')),
 };
 $description = match ($contentType) {
     'template' => (string)($template['description'] ?? ''),
@@ -220,11 +228,11 @@ $description = match ($contentType) {
 };
 $intro = $contentType === 'character' ? (string)($character['intro'] ?? '') : '';
 $contentTypeLabel = match ($contentType) {
-    'template' => 'Szablon',
-    'image' => 'Zdjecie',
-    'story' => 'Historia',
-    'relation_board' => 'Relacje',
-    default => 'Postac',
+    'template' => $pp_raw_t('content.type.template_one'),
+    'image' => $pp_raw_t('content.type.image_one'),
+    'story' => $pp_raw_t('content.type.story_one'),
+    'relation_board' => $pp_raw_t('content.type.relation_board_one'),
+    default => $pp_raw_t('content.type.character_one'),
 };
 $contentTypeIcon = match ($contentType) {
     'template' => 'fa-file-invoice',
@@ -233,20 +241,20 @@ $contentTypeIcon = match ($contentType) {
     'relation_board' => 'fa-diagram-project',
     default => 'fa-user',
 };
-$templateFieldMeta = static function (string $type): array {
+$templateFieldMeta = function (string $type) use ($pp_raw_t): array {
     return match ($type) {
-        'textarea' => ['icon' => 'fa-align-left', 'label' => 'Dlugi tekst'],
-        'list' => ['icon' => 'fa-list-ul', 'label' => 'Lista'],
-        'select' => ['icon' => 'fa-chevron-down', 'label' => 'Wybor z listy'],
-        'image' => ['icon' => 'fa-image', 'label' => 'Zdjecie'],
-        'image-gallery' => ['icon' => 'fa-images', 'label' => 'Galeria zdjec'],
-        'table' => ['icon' => 'fa-table', 'label' => 'Tabela'],
-        'stats' => ['icon' => 'fa-chart-simple', 'label' => 'Statystyki'],
-        'date' => ['icon' => 'fa-calendar-days', 'label' => 'Data'],
-        default => ['icon' => 'fa-font', 'label' => 'Tekst'],
+        'textarea' => ['icon' => 'fa-align-left', 'label' => $pp_raw_t('publication.template.field.type.textarea')],
+        'list' => ['icon' => 'fa-list-ul', 'label' => $pp_raw_t('publication.template.field.type.list')],
+        'select' => ['icon' => 'fa-chevron-down', 'label' => $pp_raw_t('publication.template.field.type.select')],
+        'image' => ['icon' => 'fa-image', 'label' => $pp_raw_t('publication.template.field.type.image')],
+        'image-gallery' => ['icon' => 'fa-images', 'label' => $pp_raw_t('publication.template.field.type.image_gallery')],
+        'table' => ['icon' => 'fa-table', 'label' => $pp_raw_t('publication.template.field.type.table')],
+        'stats' => ['icon' => 'fa-chart-simple', 'label' => $pp_raw_t('publication.template.field.type.stats')],
+        'date' => ['icon' => 'fa-calendar-days', 'label' => $pp_raw_t('publication.template.field.type.date')],
+        default => ['icon' => 'fa-font', 'label' => $pp_raw_t('publication.template.field.type.text')],
     };
 };
-$templateFieldSummary = static function (array $field): string {
+$templateFieldSummary = function (array $field) use ($pp_raw_t): string {
     $type = (string)($field['type'] ?? 'text');
     $placeholder = trim((string)($field['placeholder'] ?? ''));
     $config = json_decode($placeholder, true);
@@ -259,36 +267,46 @@ $templateFieldSummary = static function (array $field): string {
             $labels[] = is_array($row) ? (string)($row['label'] ?? $row['name'] ?? '') : (string)$row;
         }
         $labels = array_values(array_filter(array_map('trim', $labels)));
-        return empty($labels) ? 'Tabela bez zdefiniowanych wierszy.' : 'Wiersze: ' . implode(', ', array_slice($labels, 0, 6)) . (count($labels) > 6 ? '...' : '');
+        return empty($labels)
+            ? $pp_raw_t('publication.template.field.summary.table_empty')
+            : $pp_raw_t('publication.template.field.summary.rows', ['rows' => implode(', ', array_slice($labels, 0, 6)) . (count($labels) > 6 ? '...' : '')]);
     }
 
     if ($type === 'stats' && $hasConfig) {
         $rows = is_array($config['rows'] ?? null) ? $config['rows'] : [];
         $maxPoints = (int)($config['maxPoints'] ?? 0);
-        $base = count($rows) . ' statystyk';
-        return $maxPoints > 0 ? $base . ', pula ' . $maxPoints . ' pkt.' : $base . '.';
+        return $maxPoints > 0
+            ? $pp_raw_t('publication.template.field.summary.stats_pool', ['count' => count($rows), 'points' => $maxPoints])
+            : $pp_raw_t('publication.template.field.summary.stats', ['count' => count($rows)]);
     }
 
     if ($type === 'select' && $hasConfig) {
         $options = is_array($config['options'] ?? null) ? array_values(array_filter(array_map('trim', $config['options']))) : [];
-        return empty($options) ? 'Lista wyboru bez opcji.' : 'Opcje: ' . implode(', ', array_slice($options, 0, 6)) . (count($options) > 6 ? '...' : '');
+        return empty($options)
+            ? $pp_raw_t('publication.template.field.summary.select_empty')
+            : $pp_raw_t('publication.template.field.summary.options', ['options' => implode(', ', array_slice($options, 0, 6)) . (count($options) > 6 ? '...' : '')]);
     }
 
     if ($type === 'image' && $hasConfig) {
-        $sizes = ['small' => 'male', 'medium' => 'srednie', 'large' => 'duze', 'full' => 'pelna szerokosc'];
+        $sizes = [
+            'small' => $pp_raw_t('publication.template.field.size.small'),
+            'medium' => $pp_raw_t('publication.template.field.size.medium'),
+            'large' => $pp_raw_t('publication.template.field.size.large'),
+            'full' => $pp_raw_t('publication.template.field.size.full'),
+        ];
         $size = (string)($config['size'] ?? 'medium');
-        return 'Rozmiar w podgladzie: ' . ($sizes[$size] ?? 'srednie') . '.';
+        return $pp_raw_t('publication.template.field.summary.image_size', ['size' => $sizes[$size] ?? $sizes['medium']]);
     }
 
     if ($type === 'date') {
-        return 'Korzysta z ustawien dat szablonu.';
+        return $pp_raw_t('publication.template.field.summary.date');
     }
 
     if ($placeholder !== '' && !$hasConfig) {
         return $placeholder;
     }
 
-    return 'Brak dodatkowego opisu pola.';
+    return $pp_raw_t('publication.template.field.summary.empty');
 };
 $rawFit = (string)($imageDisplay['fit'] ?? ($contentType === 'image' ? 'contain' : 'cover'));
 $fit = in_array($rawFit, ['cover', 'contain'], true) ? $rawFit : 'cover';
@@ -296,7 +314,7 @@ $focusX = max(0, min(100, (int)($imageDisplay['focusX'] ?? 50)));
 $focusY = max(0, min(100, (int)($imageDisplay['focusY'] ?? 50)));
 $zoom = max(1, min(6, (float)($imageDisplay['zoom'] ?? 1)));
 $backUrl = $viewerLoggedIn ? '/community' : '/login';
-$backLabel = $viewerLoggedIn ? 'Spolecznosc' : 'OCStudio';
+$backLabel = $viewerLoggedIn ? $pp_raw_t('nav.community') : $pp_raw_t('app.name');
 $isEmbeddedPublication = (string)($_GET['embed'] ?? '') === '1';
 $copyOrigin = is_array($publication['copyOrigin'] ?? null) ? $publication['copyOrigin'] : [];
 $isCopiedPublication = !empty($publication['isCopy']) || !empty($copyOrigin);
@@ -306,8 +324,8 @@ $copyOriginIsOwn = !empty($publication['copyOriginIsOwn'])
 $copyOriginAuthor = trim((string)($copyOrigin['username'] ?? ''));
 $copyOriginTitle = trim((string)($copyOrigin['title'] ?? ''));
 $copyOriginTooltip = $copyOriginIsOwn
-    ? 'Skopiowano od Ciebie'
-    : 'Kopia z zachowanym pochodzeniem';
+    ? $pp_raw_t('community.copy_origin.own')
+    : $pp_raw_t('community.copy_origin.other');
 if (!$copyOriginIsOwn && $copyOriginAuthor !== '') {
     $copyOriginTooltip .= ': ' . $copyOriginAuthor;
 }
@@ -321,7 +339,7 @@ if ($copyOriginTitle !== '') {
         <header class="public-publication-top">
             <a href="<?= $pp_escape($backUrl) ?>"
                class="wiki-back-link public-publication-back-icon"
-               aria-label="<?= $pp_escape('Wroc do ' . $backLabel) ?>">
+               aria-label="<?= $pp_t('publication.back_to', ['place' => $backLabel]) ?>">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
         </header>
@@ -330,8 +348,8 @@ if ($copyOriginTitle !== '') {
     <?php if (!$publication): ?>
         <section class="wiki-view">
             <article class="wiki-article">
-                <h1>Publikacja nie znaleziona</h1>
-                <p class="wiki-empty">Ta publikacja zostala cofnieta, ukryta albo nie istnieje.</p>
+                <h1><?= $pp_t('publication.not_found.title') ?></h1>
+                <p class="wiki-empty"><?= $pp_t('publication.not_found.body') ?></p>
             </article>
         </section>
     <?php else: ?>
@@ -346,11 +364,11 @@ if ($copyOriginTitle !== '') {
                     <h1><?= $pp_escape($displayName) ?></h1>
                     <div class="public-publication-authorline">
                         <span>
-                            Autor:
+                            <?= $pp_t('common.author') ?>:
                             <?php if (!empty($author['profileUrl'])): ?>
-                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                             <?php else: ?>
-                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                                <?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?>
                             <?php endif; ?>
                         </span>
                         <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
@@ -369,7 +387,7 @@ if ($copyOriginTitle !== '') {
                         <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
                             <button type="button" class="btn-secondary" data-copy-publication>
                                 <i class="fa-solid fa-copy"></i>
-                                Kopiuj do siebie
+                                <?= $pp_t('common.copy_to_account') ?>
                             </button>
                             <p data-copy-message hidden></p>
                         </section>
@@ -381,8 +399,8 @@ if ($copyOriginTitle !== '') {
                                  data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                                  data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                             <div class="public-reactions-heading">
-                                <h2>Reakcje</h2>
-                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                                <h2><?= $pp_t('publication.reactions') ?></h2>
+                                <span data-reaction-total><?= $pp_t('common.total', ['count' => (int)($reactions['total'] ?? 0)]) ?></span>
                             </div>
                             <div class="public-reactions-row">
                                 <?php foreach ($reactionItems as $reaction): ?>
@@ -391,7 +409,7 @@ if ($copyOriginTitle !== '') {
                                             class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
                                             data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
                                             <?= $viewerLoggedIn ? '' : 'disabled' ?>
-                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? $pp_raw_t('publication.reactions')) : $pp_t('publication.login_react') ?>">
                                         <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
                                         <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
                                         <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
@@ -399,7 +417,7 @@ if ($copyOriginTitle !== '') {
                                 <?php endforeach; ?>
                             </div>
                             <?php if (!$viewerLoggedIn): ?>
-                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                                <p class="public-reactions-note"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_react_suffix') ?></p>
                             <?php else: ?>
                                 <p class="public-reactions-note" data-reaction-message hidden></p>
                             <?php endif; ?>
@@ -429,11 +447,11 @@ if ($copyOriginTitle !== '') {
                                                 </label>
                                                 <div class="public-report-actions">
                                                     <p data-report-message hidden></p>
-                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                    <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                                 </div>
                                             </form>
                                         <?php else: ?>
-                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                            <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                         <?php endif; ?>
                                     </details>
                                 </section>
@@ -464,11 +482,11 @@ if ($copyOriginTitle !== '') {
                                         </label>
                                         <div class="public-report-actions">
                                             <p data-report-message hidden></p>
-                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                            <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                         </div>
                                     </form>
                                 <?php else: ?>
-                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                    <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                 <?php endif; ?>
                             </details>
                         </section>
@@ -477,14 +495,14 @@ if ($copyOriginTitle !== '') {
 
                 <?php if (trim($description) !== ''): ?>
                     <section class="public-image-info-panel">
-                        <h2>Opis</h2>
+                        <h2><?= $pp_t('common.description') ?></h2>
                         <p><?= $pp_text($description) ?></p>
                     </section>
                 <?php endif; ?>
 
                 <?php if (!empty($filters)): ?>
                     <section class="public-image-info-panel">
-                        <h2>Filtry</h2>
+                        <h2><?= $pp_t('common.filters') ?></h2>
                         <div class="public-image-tags">
                             <?php foreach ($filters as $filter): ?>
                                 <span><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?></span>
@@ -499,22 +517,22 @@ if ($copyOriginTitle !== '') {
                              data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                              data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                         <div class="public-comments-heading">
-                            <h2>Komentarze</h2>
+                            <h2><?= $pp_t('publication.comments') ?></h2>
                             <span data-comments-count><?= count($comments) ?></span>
                         </div>
 
                         <div class="public-comments-list" data-comments-list>
                             <?php if (empty($comments)): ?>
-                                <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                                <p class="public-comments-empty" data-comments-empty><?= $pp_t('publication.no_comments') ?></p>
                             <?php else: ?>
                                 <?php foreach ($comments as $comment): ?>
                                     <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
                                     <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
                                         <header>
                                             <?php if (!empty($commentAuthor['profileUrl'])): ?>
-                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                                             <?php else: ?>
-                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></span>
                                             <?php endif; ?>
                                             <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
                                         </header>
@@ -526,15 +544,15 @@ if ($copyOriginTitle !== '') {
 
                         <?php if ($viewerLoggedIn): ?>
                             <form class="public-comment-form" data-comment-form>
-                                <label for="public-comment-body">Dodaj komentarz</label>
+                            <label for="public-comment-body"><?= $pp_t('publication.add_comment') ?></label>
                                 <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
                                 <div class="public-comment-form-actions">
                                     <p data-comment-message hidden></p>
-                                    <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                                    <button type="submit" class="btn-secondary"><?= $pp_t('publication.add_comment') ?></button>
                                 </div>
                             </form>
                         <?php else: ?>
-                            <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                            <p class="public-comments-login"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_comment_suffix') ?></p>
                         <?php endif; ?>
                     </section>
                 <?php endif; ?>
@@ -617,7 +635,7 @@ if ($copyOriginTitle !== '') {
 
                             <?php if (!empty($filters)): ?>
                                 <div class="wiki-infobox-field">
-                                    <h3>Filtry</h3>
+                                    <h3><?= $pp_t('common.filters') ?></h3>
                                     <p>
                                         <?php foreach ($filters as $index => $filter): ?>
                                             <?= $index > 0 ? ', ' : '' ?><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?>
@@ -634,15 +652,15 @@ if ($copyOriginTitle !== '') {
                              data-public-relation-board
                              data-nodes='<?= $pp_escape(json_encode($relationNodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>'
                              data-relations='<?= $pp_escape(json_encode($relationEdges, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?>'>
-                        <div class="relations-workspace" aria-label="Publiczna tablica relacji">
+                        <div class="relations-workspace" aria-label="<?= $pp_t('publication.relation.board') ?>">
                             <div class="relations-toolbar">
                                 <span class="relations-context">
                                     <span><?= $pp_escape($displayName) ?></span>
                                 </span>
-                                <button type="button" data-public-relation-zoom-out title="Oddal"><i class="fa-solid fa-minus"></i></button>
+                                <button type="button" data-public-relation-zoom-out title="<?= $pp_t('publication.relation.zoom_out') ?>"><i class="fa-solid fa-minus"></i></button>
                                 <span class="relations-zoom-value" data-public-relation-zoom-value>100%</span>
-                                <button type="button" data-public-relation-zoom-in title="Przybliz"><i class="fa-solid fa-plus"></i></button>
-                                <button type="button" data-public-relation-center title="Wycentruj"><i class="fa-solid fa-crosshairs"></i></button>
+                                <button type="button" data-public-relation-zoom-in title="<?= $pp_t('publication.relation.zoom_in') ?>"><i class="fa-solid fa-plus"></i></button>
+                                <button type="button" data-public-relation-center title="<?= $pp_t('publication.relation.center') ?>"><i class="fa-solid fa-crosshairs"></i></button>
                                 <span class="relations-zoom-value"><?= count($relationNodes) ?> postaci</span>
                                 <span class="relations-zoom-value"><?= count($relationEdges) ?> relacji</span>
                             </div>
@@ -697,7 +715,7 @@ if ($copyOriginTitle !== '') {
                     ?>
                     <section class="public-detail-panel public-template-schema-panel">
                         <div class="public-detail-panel-heading">
-                            <h2>Uklad szablonu</h2>
+                            <h2><?= $pp_t('publication.template.layout') ?></h2>
                             <span><?= count($fields) ?></span>
                         </div>
                         <?php if (empty($fields)): ?>
@@ -705,8 +723,8 @@ if ($copyOriginTitle !== '') {
                         <?php else: ?>
                             <div class="public-template-schema-grid">
                                 <?php foreach ([
-                                    'left' => ['title' => 'Tresc glowna', 'icon' => 'fa-align-left', 'empty' => 'Brak pol po lewej stronie.'],
-                                    'right' => ['title' => 'Infobox', 'icon' => 'fa-circle-info', 'empty' => 'Brak pol po prawej stronie.'],
+                                    'left' => ['title' => $pp_raw_t('publication.template.main_content'), 'icon' => 'fa-align-left', 'empty' => $pp_raw_t('publication.template.left_empty')],
+                                    'right' => ['title' => $pp_raw_t('publication.template.infobox'), 'icon' => 'fa-circle-info', 'empty' => $pp_raw_t('publication.template.right_empty')],
                                 ] as $side => $column): ?>
                                     <article class="public-template-schema-column public-template-schema-column--<?= $pp_escape($side) ?>">
                                         <header class="public-template-schema-column-head">
@@ -745,7 +763,7 @@ if ($copyOriginTitle !== '') {
                 <?php elseif (false && $contentType === 'template'): ?>
                     <section class="public-detail-panel">
                         <div class="public-detail-panel-heading">
-                            <h2>Pola szablonu</h2>
+                            <h2><?= $pp_t('publication.template.fields') ?></h2>
                             <span><?= count($fields) ?></span>
                         </div>
                         <?php if (empty($fields)): ?>
@@ -767,7 +785,7 @@ if ($copyOriginTitle !== '') {
                 <?php else: ?>
                     <?php if (trim($description) !== '' && trim($description) !== trim($intro)): ?>
                         <section class="public-detail-panel">
-                            <h2>Opis</h2>
+                            <h2><?= $pp_t('common.description') ?></h2>
                             <p><?= $pp_text($description) ?></p>
                         </section>
                     <?php endif; ?>
@@ -781,7 +799,7 @@ if ($copyOriginTitle !== '') {
                                         <?php $fieldImage = basename((string)($field['value'] ?? '')); ?>
                                         <?php if ($fieldImage !== ''): ?>
                                             <figure class="public-story-image-field">
-                                                <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? 'Obraz historii') ?>">
+                                                <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? $pp_raw_t('stories.view.illustration_alt')) ?>">
                                             </figure>
                                         <?php else: ?>
                                             <p><?= $pp_text('') ?></p>
@@ -803,11 +821,11 @@ if ($copyOriginTitle !== '') {
                     <h1><?= $pp_escape($displayName) ?></h1>
                     <div class="public-publication-authorline">
                         <span>
-                            Autor:
+                            <?= $pp_t('common.author') ?>:
                             <?php if (!empty($author['profileUrl'])): ?>
-                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                             <?php else: ?>
-                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                                <?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?>
                             <?php endif; ?>
                         </span>
                         <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
@@ -826,7 +844,7 @@ if ($copyOriginTitle !== '') {
                         <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
                             <button type="button" class="btn-secondary" data-copy-publication>
                                 <i class="fa-solid fa-copy"></i>
-                                Kopiuj do siebie
+                                <?= $pp_t('common.copy_to_account') ?>
                             </button>
                             <p data-copy-message hidden></p>
                         </section>
@@ -838,8 +856,8 @@ if ($copyOriginTitle !== '') {
                                  data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                                  data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                             <div class="public-reactions-heading">
-                                <h2>Reakcje</h2>
-                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                                <h2><?= $pp_t('publication.reactions') ?></h2>
+                                <span data-reaction-total><?= $pp_t('common.total', ['count' => (int)($reactions['total'] ?? 0)]) ?></span>
                             </div>
                             <div class="public-reactions-row">
                                 <?php foreach ($reactionItems as $reaction): ?>
@@ -848,7 +866,7 @@ if ($copyOriginTitle !== '') {
                                             class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
                                             data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
                                             <?= $viewerLoggedIn ? '' : 'disabled' ?>
-                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? $pp_raw_t('publication.reactions')) : $pp_t('publication.login_react') ?>">
                                         <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
                                         <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
                                         <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
@@ -856,7 +874,7 @@ if ($copyOriginTitle !== '') {
                                 <?php endforeach; ?>
                             </div>
                             <?php if (!$viewerLoggedIn): ?>
-                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                                <p class="public-reactions-note"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_react_suffix') ?></p>
                             <?php else: ?>
                                 <p class="public-reactions-note" data-reaction-message hidden></p>
                             <?php endif; ?>
@@ -886,11 +904,11 @@ if ($copyOriginTitle !== '') {
                                                 </label>
                                                 <div class="public-report-actions">
                                                     <p data-report-message hidden></p>
-                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                    <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                                 </div>
                                             </form>
                                         <?php else: ?>
-                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                            <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                         <?php endif; ?>
                                     </details>
                                 </section>
@@ -921,11 +939,11 @@ if ($copyOriginTitle !== '') {
                                         </label>
                                         <div class="public-report-actions">
                                             <p data-report-message hidden></p>
-                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                            <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                         </div>
                                     </form>
                                 <?php else: ?>
-                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                    <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                 <?php endif; ?>
                             </details>
                         </section>
@@ -934,14 +952,14 @@ if ($copyOriginTitle !== '') {
 
                 <?php if ($contentType !== 'character' && trim($description) !== ''): ?>
                     <section class="public-image-info-panel">
-                        <h2>Opis</h2>
+                        <h2><?= $pp_t('common.description') ?></h2>
                         <p><?= $pp_text($description) ?></p>
                     </section>
                 <?php endif; ?>
 
                 <?php if (!empty($filters)): ?>
                     <section class="public-image-info-panel">
-                        <h2>Filtry</h2>
+                        <h2><?= $pp_t('common.filters') ?></h2>
                         <div class="public-image-tags">
                             <?php foreach ($filters as $filter): ?>
                                 <span><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?></span>
@@ -956,22 +974,22 @@ if ($copyOriginTitle !== '') {
                              data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                              data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                         <div class="public-comments-heading">
-                            <h2>Komentarze</h2>
+                            <h2><?= $pp_t('publication.comments') ?></h2>
                             <span data-comments-count><?= count($comments) ?></span>
                         </div>
 
                         <div class="public-comments-list" data-comments-list>
                             <?php if (empty($comments)): ?>
-                                <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                                <p class="public-comments-empty" data-comments-empty><?= $pp_t('publication.no_comments') ?></p>
                             <?php else: ?>
                                 <?php foreach ($comments as $comment): ?>
                                     <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
                                     <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
                                         <header>
                                             <?php if (!empty($commentAuthor['profileUrl'])): ?>
-                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                                <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                                             <?php else: ?>
-                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                                <span><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></span>
                                             <?php endif; ?>
                                             <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
                                         </header>
@@ -983,15 +1001,15 @@ if ($copyOriginTitle !== '') {
 
                         <?php if ($viewerLoggedIn): ?>
                             <form class="public-comment-form" data-comment-form>
-                                <label for="public-comment-body">Dodaj komentarz</label>
+                                <label for="public-comment-body"><?= $pp_t('publication.add_comment') ?></label>
                                 <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
                                 <div class="public-comment-form-actions">
                                     <p data-comment-message hidden></p>
-                                    <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                                    <button type="submit" class="btn-secondary"><?= $pp_t('publication.add_comment') ?></button>
                                 </div>
                             </form>
                         <?php else: ?>
-                            <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                            <p class="public-comments-login"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_comment_suffix') ?></p>
                         <?php endif; ?>
                     </section>
                 <?php endif; ?>
@@ -1004,11 +1022,11 @@ if ($copyOriginTitle !== '') {
                     <h1><?= $pp_escape($displayName) ?></h1>
                     <div class="public-publication-authorline">
                         <span>
-                            Autor:
+                            <?= $pp_t('common.author') ?>:
                             <?php if (!empty($author['profileUrl'])): ?>
-                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?></a>
+                                <a href="<?= $pp_escape($author['profileUrl']) ?>"><?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                             <?php else: ?>
-                                <?= $pp_escape($author['displayName'] ?? 'Uzytkownik') ?>
+                                <?= $pp_escape($author['displayName'] ?? $pp_raw_t('common.user')) ?>
                             <?php endif; ?>
                         </span>
                         <?php if (($publication['ageRating'] ?? 'general') === 'adult'): ?>
@@ -1027,7 +1045,7 @@ if ($copyOriginTitle !== '') {
                         <section class="public-copy-panel" data-copy-panel data-public-id="<?= $pp_escape($publication['publicId'] ?? '') ?>">
                             <button type="button" class="btn-secondary" data-copy-publication>
                                 <i class="fa-solid fa-copy"></i>
-                                Kopiuj do siebie
+                                <?= $pp_t('common.copy_to_account') ?>
                             </button>
                             <p data-copy-message hidden></p>
                         </section>
@@ -1039,8 +1057,8 @@ if ($copyOriginTitle !== '') {
                                  data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                                  data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                             <div class="public-reactions-heading">
-                                <h2>Reakcje</h2>
-                                <span data-reaction-total><?= (int)($reactions['total'] ?? 0) ?> razem</span>
+                                <h2><?= $pp_t('publication.reactions') ?></h2>
+                                <span data-reaction-total><?= $pp_t('common.total', ['count' => (int)($reactions['total'] ?? 0)]) ?></span>
                             </div>
                             <div class="public-reactions-row">
                                 <?php foreach ($reactionItems as $reaction): ?>
@@ -1049,7 +1067,7 @@ if ($copyOriginTitle !== '') {
                                             class="public-reaction-btn <?= $active ? 'is-active' : '' ?>"
                                             data-reaction-type="<?= $pp_escape($reaction['type'] ?? '') ?>"
                                             <?= $viewerLoggedIn ? '' : 'disabled' ?>
-                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? 'Reakcja') : 'Zaloguj sie, aby zareagowac' ?>">
+                                            title="<?= $viewerLoggedIn ? $pp_escape($reaction['label'] ?? $pp_raw_t('publication.reactions')) : $pp_t('publication.login_react') ?>">
                                         <span class="public-reaction-emoji"><?= $pp_escape($reaction['emoji'] ?? '') ?></span>
                                         <span class="public-reaction-label"><?= $pp_escape($reaction['label'] ?? '') ?></span>
                                         <strong data-reaction-count="<?= $pp_escape($reaction['type'] ?? '') ?>"><?= (int)($reaction['count'] ?? 0) ?></strong>
@@ -1057,7 +1075,7 @@ if ($copyOriginTitle !== '') {
                                 <?php endforeach; ?>
                             </div>
                             <?php if (!$viewerLoggedIn): ?>
-                                <p class="public-reactions-note"><a href="/login">Zaloguj sie</a>, aby dodac reakcje.</p>
+                                <p class="public-reactions-note"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_react_suffix') ?></p>
                             <?php else: ?>
                                 <p class="public-reactions-note" data-reaction-message hidden></p>
                             <?php endif; ?>
@@ -1087,11 +1105,11 @@ if ($copyOriginTitle !== '') {
                                                 </label>
                                                 <div class="public-report-actions">
                                                     <p data-report-message hidden></p>
-                                                    <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                                    <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                                 </div>
                                             </form>
                                         <?php else: ?>
-                                            <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                            <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                         <?php endif; ?>
                                     </details>
                                 </section>
@@ -1122,11 +1140,11 @@ if ($copyOriginTitle !== '') {
                                         </label>
                                         <div class="public-report-actions">
                                             <p data-report-message hidden></p>
-                                            <button type="submit" class="btn-secondary publication-danger">Wyslij zgloszenie</button>
+                                            <button type="submit" class="btn-secondary publication-danger"><?= $pp_t('publication.send_report') ?></button>
                                         </div>
                                     </form>
                                 <?php else: ?>
-                                    <p><a href="/login">Zaloguj sie</a>, aby zglosic publikacje.</p>
+                                    <p><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_report_suffix') ?></p>
                                 <?php endif; ?>
                             </details>
                         </section>
@@ -1136,7 +1154,7 @@ if ($copyOriginTitle !== '') {
 
             <?php if (trim($intro) !== ''): ?>
                 <section class="wiki-article wiki-intro-section">
-                    <h2>Wstep</h2>
+                    <h2><?= $pp_t('common.intro') ?></h2>
                     <p><?= $pp_text($intro) ?></p>
                 </section>
             <?php endif; ?>
@@ -1144,7 +1162,7 @@ if ($copyOriginTitle !== '') {
             <div class="wiki-layout">
                 <article class="wiki-article">
                     <section class="wiki-section">
-                        <h2>Opis</h2>
+                        <h2><?= $pp_t('common.description') ?></h2>
                         <p><?= $pp_text($description) ?></p>
                     </section>
 
@@ -1152,7 +1170,7 @@ if ($copyOriginTitle !== '') {
                         <?php $relationNodes = is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : []; ?>
                         <?php $relationEdges = is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : []; ?>
                         <section class="wiki-section">
-                            <h2>Postacie na tablicy</h2>
+                            <h2><?= $pp_t('content.type.character') ?></h2>
                             <?php if (empty($relationNodes)): ?>
                                 <p><?= $pp_text('') ?></p>
                             <?php else: ?>
@@ -1171,7 +1189,7 @@ if ($copyOriginTitle !== '') {
                                             <img src="/media/<?= $pp_escape(rawurlencode($nodeImage)) ?>"
                                                  alt=""
                                                  style="object-fit: <?= $pp_escape($nodeFit) ?>; object-position: <?= $nodeFocusX ?>% <?= $nodeFocusY ?>%; --image-zoom: <?= $pp_escape((string)$nodeZoom) ?>;">
-                                            <strong><?= $pp_escape($node['name'] ?? 'Postac') ?></strong>
+                                            <strong><?= $pp_escape($node['name'] ?? $pp_raw_t('content.type.character_one')) ?></strong>
                                         </article>
                                     <?php endforeach; ?>
                                 </div>
@@ -1179,7 +1197,7 @@ if ($copyOriginTitle !== '') {
                         </section>
 
                         <section class="wiki-section">
-                            <h2>Relacje</h2>
+                            <h2><?= $pp_t('content.type.relation_board_one') ?></h2>
                             <?php if (empty($relationEdges)): ?>
                                 <p><?= $pp_text('') ?></p>
                             <?php else: ?>
@@ -1188,7 +1206,7 @@ if ($copyOriginTitle !== '') {
                                         <article class="public-relation-edge" style="--relation-color: <?= $pp_escape($edge['color'] ?? '#7B61FF') ?>;">
                                             <span><?= $pp_escape($edge['icon'] ?? '') ?></span>
                                             <div>
-                                                <strong><?= $pp_escape($edge['label'] ?? 'Relacja') ?></strong>
+                                                <strong><?= $pp_escape($edge['label'] ?? $pp_raw_t('content.type.relation_board_one')) ?></strong>
                                                 <?php if (trim((string)($edge['note'] ?? '')) !== ''): ?>
                                                     <p><?= $pp_text($edge['note'] ?? '') ?></p>
                                                 <?php endif; ?>
@@ -1205,12 +1223,13 @@ if ($copyOriginTitle !== '') {
 
                     <?php if (!empty($fields)): ?>
                         <?php foreach ($fields as $field): ?>
+                            <?php $fieldMeta = $templateFieldMeta((string)($field['type'] ?? 'text')); ?>
                             <section class="wiki-section">
-                                <h2><?= $pp_escape($field['label'] ?? 'Pole') ?></h2>
+                                <h2><?= $pp_escape($field['label'] ?? $pp_raw_t('publication.template.field_fallback')) ?></h2>
                                 <?php if ($contentType === 'template'): ?>
                                     <p>
-                                        Typ: <?= $pp_escape($field['type'] ?? 'text') ?><br>
-                                        Miejsce: <?= $pp_escape($field['location'] ?? 'left') ?>
+                                        <?= $pp_t('common.type') ?>: <?= $pp_escape($fieldMeta['label'] ?? (string)($field['type'] ?? 'text')) ?><br>
+                                        <?= $pp_t('publication.template.location') ?>: <?= $pp_escape($field['location'] ?? 'left') ?>
                                         <?php if (trim((string)($field['placeholder'] ?? '')) !== ''): ?>
                                             <br>Placeholder: <?= $pp_escape($field['placeholder'] ?? '') ?>
                                         <?php endif; ?>
@@ -1219,7 +1238,7 @@ if ($copyOriginTitle !== '') {
                                     <?php $fieldImage = basename((string)($field['value'] ?? '')); ?>
                                     <?php if ($fieldImage !== ''): ?>
                                         <figure class="public-story-image-field">
-                                            <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? 'Obraz historii') ?>">
+                                            <img src="/media/<?= $pp_escape(rawurlencode($fieldImage)) ?>" alt="<?= $pp_escape($field['label'] ?? $pp_raw_t('stories.view.illustration_alt')) ?>">
                                         </figure>
                                     <?php else: ?>
                                         <p><?= $pp_text('') ?></p>
@@ -1255,17 +1274,17 @@ if ($copyOriginTitle !== '') {
 
                     <?php if ($contentType === 'template'): ?>
                         <div class="wiki-infobox-field">
-                            <h3>Pola</h3>
-                            <p><?= count($fields) ?> pol</p>
+                            <h3><?= $pp_t('publication.template.fields') ?></h3>
+                            <p><?= $pp_t('publication.template.field_count', ['count' => count($fields)]) ?></p>
                         </div>
                         <div class="wiki-infobox-field">
-                            <h3>Kalendarz</h3>
+                            <h3><?= $pp_t('common.calendar') ?></h3>
                             <p><?= $pp_escape($template['dateCalendarType'] ?? 'real') ?></p>
                         </div>
                     <?php elseif ($contentType === 'story'): ?>
                         <div class="wiki-infobox-field">
-                            <h3>Pola</h3>
-                            <p><?= count($fields) ?> blokow</p>
+                            <h3><?= $pp_t('publication.template.fields') ?></h3>
+                            <p><?= $pp_t('publication.story.block_count', ['count' => count($fields)]) ?></p>
                         </div>
                         <?php if (trim((string)($story['storyDate'] ?? '')) !== ''): ?>
                             <div class="wiki-infobox-field">
@@ -1275,18 +1294,18 @@ if ($copyOriginTitle !== '') {
                         <?php endif; ?>
                     <?php elseif ($contentType === 'relation_board'): ?>
                         <div class="wiki-infobox-field">
-                            <h3>Postacie</h3>
-                            <p><?= count(is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : []) ?> wezlow</p>
+                            <h3><?= $pp_t('content.type.character') ?></h3>
+                            <p><?= $pp_t('publication.relation.nodes', ['count' => count(is_array($relationBoard['nodes'] ?? null) ? $relationBoard['nodes'] : [])]) ?></p>
                         </div>
                         <div class="wiki-infobox-field">
-                            <h3>Relacje</h3>
-                            <p><?= count(is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : []) ?> polaczen</p>
+                            <h3><?= $pp_t('content.type.relation_board_one') ?></h3>
+                            <p><?= $pp_t('publication.relation.edges', ['count' => count(is_array($relationBoard['relations'] ?? null) ? $relationBoard['relations'] : [])]) ?></p>
                         </div>
                     <?php endif; ?>
 
                     <?php if (!empty($filters)): ?>
                         <div class="wiki-infobox-field">
-                            <h3>Filtry</h3>
+                            <h3><?= $pp_t('common.filters') ?></h3>
                             <p>
                                 <?php foreach ($filters as $index => $filter): ?>
                                     <?= $index > 0 ? ', ' : '' ?><?= $pp_escape($filter['label'] ?? $filter['name'] ?? '') ?>
@@ -1303,22 +1322,22 @@ if ($copyOriginTitle !== '') {
                          data-publication-id="<?= (int)($publication['id'] ?? 0) ?>"
                          data-viewer-logged-in="<?= $viewerLoggedIn ? '1' : '0' ?>">
                     <div class="public-comments-heading">
-                        <h2>Komentarze</h2>
+                        <h2><?= $pp_t('publication.comments') ?></h2>
                         <span data-comments-count><?= count($comments) ?></span>
                     </div>
 
                     <div class="public-comments-list" data-comments-list>
                         <?php if (empty($comments)): ?>
-                            <p class="public-comments-empty" data-comments-empty>Brak komentarzy.</p>
+                            <p class="public-comments-empty" data-comments-empty><?= $pp_t('publication.no_comments') ?></p>
                         <?php else: ?>
                             <?php foreach ($comments as $comment): ?>
                                 <?php $commentAuthor = is_array($comment['author'] ?? null) ? $comment['author'] : []; ?>
                                 <article class="public-comment" data-comment-id="<?= (int)($comment['id'] ?? 0) ?>">
                                     <header>
                                         <?php if (!empty($commentAuthor['profileUrl'])): ?>
-                                            <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></a>
+                                            <a href="<?= $pp_escape($commentAuthor['profileUrl']) ?>"><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></a>
                                         <?php else: ?>
-                                            <span><?= $pp_escape($commentAuthor['displayName'] ?? 'Uzytkownik') ?></span>
+                                            <span><?= $pp_escape($commentAuthor['displayName'] ?? $pp_raw_t('common.user')) ?></span>
                                         <?php endif; ?>
                                         <time><?= $pp_escape($comment['createdAt'] ?? '') ?></time>
                                     </header>
@@ -1330,15 +1349,15 @@ if ($copyOriginTitle !== '') {
 
                     <?php if ($viewerLoggedIn): ?>
                         <form class="public-comment-form" data-comment-form>
-                            <label for="public-comment-body">Dodaj komentarz</label>
+                            <label for="public-comment-body"><?= $pp_t('publication.add_comment') ?></label>
                             <textarea id="public-comment-body" name="body" maxlength="1000" rows="3" required></textarea>
                             <div class="public-comment-form-actions">
                                 <p data-comment-message hidden></p>
-                                <button type="submit" class="btn-secondary">Dodaj komentarz</button>
+                                    <button type="submit" class="btn-secondary"><?= $pp_t('publication.add_comment') ?></button>
                             </div>
                         </form>
                     <?php else: ?>
-                        <p class="public-comments-login"><a href="/login">Zaloguj sie</a>, aby dodac komentarz.</p>
+                            <p class="public-comments-login"><a href="/login"><?= $pp_t('auth.login.submit') ?></a>, <?= $pp_t('publication.login_comment_suffix') ?></p>
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
@@ -1378,14 +1397,14 @@ if ($copyOriginTitle !== '') {
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Nie udalo sie skopiowac publikacji.');
+                throw new Error(data.error || <?= json_encode($t('publication.copy_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
             }
 
             const privateUrl = data.publication?.privateUrl || data.publication?.privateCopyUrl || '';
-            const link = privateUrl ? ' <a href="' + privateUrl + '">Otworz kopie</a>' : '';
-            setMessage('Skopiowano do Twojego konta.' + link, false);
+            const link = privateUrl ? ' <a href="' + privateUrl + '">' + <?= json_encode($t('publication.copy_open'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?> + '</a>' : '';
+            setMessage(<?= json_encode($t('publication.copy_success'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?> + link, false);
         } catch (error) {
-            setMessage(error.message || 'Nie udalo sie skopiowac publikacji.', true);
+            setMessage(error.message || <?= json_encode($t('publication.copy_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, true);
         } finally {
             button.disabled = false;
         }
@@ -1424,7 +1443,10 @@ if ($copyOriginTitle !== '') {
             button.classList.toggle('is-active', Boolean(item.active));
         });
 
-        if (total) total.textContent = String(reactions?.total || 0) + ' razem';
+        if (total) {
+            const template = <?= json_encode($t('common.total'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+            total.textContent = template.replace(':count', String(reactions?.total || 0));
+        }
     }
 
     buttons.forEach(button => {
@@ -1443,11 +1465,11 @@ if ($copyOriginTitle !== '') {
                 });
                 const data = await response.json();
                 if (!response.ok || !data.success) {
-                    throw new Error(data.error || 'Nie udalo sie zapisac reakcji.');
+                    throw new Error(data.error || <?= json_encode($t('publication.reaction_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
                 }
                 render(data.reactions || {});
             } catch (error) {
-                setMessage(error.message || 'Nie udalo sie zapisac reakcji.', true);
+                setMessage(error.message || <?= json_encode($t('publication.reaction_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, true);
             } finally {
                 buttons.forEach(item => item.disabled = false);
             }
@@ -1488,7 +1510,7 @@ if ($copyOriginTitle !== '') {
         article.dataset.commentId = String(comment.id || '');
 
         const header = document.createElement('header');
-        const authorName = comment.author?.displayName || 'Uzytkownik';
+        const authorName = comment.author?.displayName || <?= json_encode($t('common.user'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         if (comment.author?.profileUrl) {
             const link = document.createElement('a');
             link.href = comment.author.profileUrl;
@@ -1519,7 +1541,7 @@ if ($copyOriginTitle !== '') {
         event.preventDefault();
         const body = String(textarea?.value || '').trim();
         if (!publicationId || body.length < 2) {
-            setMessage('Komentarz musi miec przynajmniej 2 znaki.', true);
+            setMessage(<?= json_encode($t('publication.comment_min'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, true);
             return;
         }
 
@@ -1534,12 +1556,12 @@ if ($copyOriginTitle !== '') {
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Nie udalo sie zapisac komentarza.');
+                throw new Error(data.error || <?= json_encode($t('publication.comment_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
             }
             appendComment(data.comment);
             form.reset();
         } catch (error) {
-            setMessage(error.message || 'Nie udalo sie zapisac komentarza.', true);
+            setMessage(error.message || <?= json_encode($t('publication.comment_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, true);
         } finally {
             if (submit) submit.disabled = false;
         }
@@ -1584,12 +1606,12 @@ if ($copyOriginTitle !== '') {
             });
             const data = await response.json();
             if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Nie udalo sie wyslac zgloszenia.');
+                throw new Error(data.error || <?= json_encode($t('publication.report_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>);
             }
             form.reset();
-            setMessage('Zgloszenie zapisane. Dzieki.', false);
+            setMessage(<?= json_encode($t('publication.report_saved'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, false);
         } catch (error) {
-            setMessage(error.message || 'Nie udalo sie wyslac zgloszenia.', true);
+            setMessage(error.message || <?= json_encode($t('publication.report_error'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>, true);
         } finally {
             if (submit) submit.disabled = false;
         }
