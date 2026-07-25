@@ -13,7 +13,16 @@ gap: 16px; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 color: var(--text-main);
 }
 
+.template-card[data-edit-url] {
+cursor: pointer;
+}
+
 .template-card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.08); border-color: var(--primary); }
+
+.template-card:focus-visible {
+outline: 2px solid var(--primary);
+outline-offset: 3px;
+}
 
 .template-icon {
 font-size: 1.5rem; color: var(--primary); background: var(--primary-light);

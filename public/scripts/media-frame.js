@@ -39,6 +39,7 @@
 
     function shouldCalculate(frame, img) {
         if (!frame.classList.contains('oc-media-frame--anchored-cover')) return false;
+        if (frame.classList.contains('is-default-character-image')) return false;
         const isCharacterCard = frame.classList.contains('oc-media-frame--character-card');
         if (!isCharacterCard && (frame.classList.contains('oc-media-frame--natural') || frame.classList.contains('image-mode-natural'))) return false;
         const fit = mediaValue(frame, img, ['--oc-media-fit', '--image-fit', '--story-cover-fit'], textVar(img, 'object-fit', 'cover'));

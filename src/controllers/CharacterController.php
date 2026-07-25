@@ -682,6 +682,11 @@ class CharacterController extends AppController
         }
 
         $fields = $this->templateRepository->getTemplateFields($id);
+        $decodedDateSettings = json_decode($template->getDateSettings(), true) ?: [];
+        $currentWorldDate = trim($template->getCurrentWorldDate());
+        if ($currentWorldDate === '' && is_array($decodedDateSettings)) {
+            $currentWorldDate = trim((string)($decodedDateSettings['worldBaseDate'] ?? ''));
+        }
 
         echo json_encode([
             'id'          => $template->getId(),
@@ -689,8 +694,8 @@ class CharacterController extends AppController
             'description' => $template->getDescription(),
             'dateSettings' => [
                 'calendarType' => $template->getDateCalendarType(),
-                'settings' => json_decode($template->getDateSettings(), true) ?: [],
-                'currentWorldDate' => $template->getCurrentWorldDate(),
+                'settings' => is_array($decodedDateSettings) ? $decodedDateSettings : [],
+                'currentWorldDate' => $currentWorldDate,
             ],
             'fields'      => $fields
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

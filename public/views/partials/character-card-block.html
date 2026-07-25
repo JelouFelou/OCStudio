@@ -22,6 +22,12 @@ $showEditButton  = $showEditButton ?? true;
 $showCharacterActions = $showCharacterActions ?? false;
 $showAdultBadge  = $showAdultBadge ?? false;
 $defaultCharacterImage = $userSettings['defaultCharacterImage'] ?? (($userSettings['theme'] ?? 'light') === 'dark' ? 'default_dark.png' : 'default.png');
+$siteFeatures = is_array($siteFeatures ?? null) ? $siteFeatures : [];
+$showPublicationInfo = empty($isOfflineMode)
+    && empty($siteFeatures['offlineMode'])
+    && (($siteFeatures['login'] ?? true) !== false)
+    && (($siteFeatures['community'] ?? true) !== false)
+    && (($siteFeatures['publications'] ?? true) !== false);
 
 // Przygotuj dane obrazka
 $img        = $char->getImage() ?: 'default.png';
@@ -98,6 +104,19 @@ if (!function_exists('oc_character_filter_label')) {
         return trim((string)$filter);
     }
 }
+if (!function_exists('oc_character_card_is_default_image')) {
+    function oc_character_card_is_default_image(mixed $image, string $configuredDefault = ''): bool {
+        $filename = basename(trim((string)$image));
+        if ($filename === '') {
+            return true;
+        }
+        $defaultNames = ['default.png', 'default.jpg', 'default_dark.png'];
+        if ($configuredDefault !== '') {
+            $defaultNames[] = basename($configuredDefault);
+        }
+        return in_array($filename, array_unique($defaultNames), true);
+    }
+}
 if (!function_exists('oc_character_status_label')) {
     function oc_character_status_label(?CharacterStatus $status, callable $translate): string {
         if (!$status) {
@@ -172,6 +191,7 @@ $basePublicationBadge = oc_character_publication_badge($characterPublications[0]
 $variantPreviewOptions = [];
 foreach ($characterVariants as $variant) {
     $variantImage = trim((string)($variant['image'] ?? ''));
+    $variantDisplayImage = $variantImage !== '' ? $variantImage : $displayImg;
     $variantFilters = $variant['content_filters'] ?? [];
     $variantDescription = trim((string)($variant['description'] ?? ''));
     $variantName = (string)($variant['name'] ?? $t('characters.preview_variant'));
@@ -181,7 +201,8 @@ foreach ($characterVariants as $variant) {
         'name' => $variantName,
         'description' => $variantDescription,
         'caption' => $variantDescription !== '' ? $variantDescription : $variantName,
-        'image' => $variantImage !== '' ? $variantImage : $displayImg,
+        'image' => $variantDisplayImage,
+        'isDefaultImage' => oc_character_card_is_default_image($variantDisplayImage, $variantImage === '' && $noImage ? $defaultCharacterImage : ''),
         'isAdult' => !empty($variant['is_adult']) || oc_character_filters_have_adult($variantFilters),
         'filters' => $variantFilters,
         'filterTitle' => implode(', ', array_map(fn($filter) => oc_character_filter_label($filter), $variantFilters)),
@@ -208,6 +229,7 @@ $cardCaption = $defaultVariantOption['caption'] ?? $char->getDescription();
 $cardFilters = $defaultVariantOption['filters'] ?? $characterFilters;
 $cardFilterTitle = $defaultVariantOption['filterTitle'] ?? $characterFilterTitle;
 $cardPublicationBadge = $defaultVariantOption['publication'] ?? $basePublicationBadge;
+$displayIsDefaultImage = oc_character_card_is_default_image($displayImg, $noImage ? $defaultCharacterImage : '');
 
 // Oblicz poziom gotowości
 if (!$noImage && !$noTemplate) {
@@ -244,6 +266,7 @@ if (isset($statuses) && $char->getIdStatus()) {
      data-character-name="<?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?>"
      data-character-public-id="<?= htmlspecialchars($char->getPublicId(), ENT_QUOTES, 'UTF-8') ?>"
      data-base-image="<?= htmlspecialchars($baseDisplayImg, ENT_QUOTES, 'UTF-8') ?>"
+     data-base-default-image="<?= $noImage ? '1' : '0' ?>"
      data-base-adult="<?= $baseAdultBadge ? '1' : '0' ?>"
      data-base-title="<?= htmlspecialchars($char->getName(), ENT_QUOTES, 'UTF-8') ?>"
      data-base-caption="<?= htmlspecialchars($char->getDescription(), ENT_QUOTES, 'UTF-8') ?>"
@@ -303,21 +326,24 @@ if (isset($statuses) && $char->getIdStatus()) {
             <div class="adult-badge" data-character-adult-badge title="<?= htmlspecialchars($t('stories.adult'), ENT_QUOTES, 'UTF-8') ?>" <?= $showAdultBadge ? '' : 'hidden' ?>>+18</div>
         <?php endif; ?>
     </div>
-    <div class="card-publication-badge <?= htmlspecialchars($cardPublicationBadge['class'], ENT_QUOTES, 'UTF-8') ?>"
-         data-card-publication-badge
-         title="<?= htmlspecialchars($t('characters.publication_status'), ENT_QUOTES, 'UTF-8') ?>">
-        <?= htmlspecialchars($cardPublicationBadge['label'], ENT_QUOTES, 'UTF-8') ?>
-    </div>
+    <?php if ($showPublicationInfo): ?>
+        <div class="card-publication-badge <?= htmlspecialchars($cardPublicationBadge['class'], ENT_QUOTES, 'UTF-8') ?>"
+             data-card-publication-badge
+             title="<?= htmlspecialchars($t('characters.publication_status'), ENT_QUOTES, 'UTF-8') ?>">
+            <?= htmlspecialchars($cardPublicationBadge['label'], ENT_QUOTES, 'UTF-8') ?>
+        </div>
+    <?php endif; ?>
 
     <?php oc_render_media_frame([
         'variant' => 'character-card',
         'mode' => $imageDisplayMode,
         'src' => '/media/' . $displayImg,
         'alt' => $t('content.type.character_one'),
-        'fit' => $imageFit,
-        'focusX' => $imageFocusX,
-        'focusY' => $imageFocusY,
-        'zoom' => $imageZoom,
+        'class' => $displayIsDefaultImage ? 'is-default-character-image' : '',
+        'fit' => $displayIsDefaultImage ? 'cover' : $imageFit,
+        'focusX' => $displayIsDefaultImage ? 50 : $imageFocusX,
+        'focusY' => $displayIsDefaultImage ? 50 : $imageFocusY,
+        'zoom' => $displayIsDefaultImage ? 1 : $imageZoom,
         'imgAttrs' => [
             'onerror' => "this.src='/media/" . htmlspecialchars($defaultCharacterImage, ENT_QUOTES, 'UTF-8') . "'",
         ],
@@ -436,6 +462,19 @@ function ocSetRememberedCharacterVariant(card, variantId) {
     }
 }
 
+function ocCharacterCardIsDefaultImage(filename) {
+    const name = String(filename || '').trim().split('/').pop();
+    if (!name) return true;
+    const configured = document.body?.dataset.defaultCharacterImage || '';
+    const defaultNames = new Set([
+        'default.png',
+        'default.jpg',
+        'default_dark.png',
+        configured.split('/').pop(),
+    ].filter(Boolean));
+    return defaultNames.has(name);
+}
+
 document.addEventListener('change', event => {
     const select = event.target.closest('[data-card-variant-select]');
     if (!select) return;
@@ -448,6 +487,7 @@ document.addEventListener('change', event => {
     try { variants = JSON.parse(card.dataset.variants || '[]'); } catch(e) {}
     const selected = variants.find(variant => String(variant.id) === String(select.value));
     const filename = selected?.image || card.dataset.baseImage || document.body.dataset.defaultCharacterImage || 'default.png';
+    const isDefaultImage = selected ? !!selected.isDefaultImage : card.dataset.baseDefaultImage === '1' || ocCharacterCardIsDefaultImage(filename);
     const fit = selected?.fit || card.dataset.baseFit || 'cover';
     const focusX = Number(selected?.focusX ?? card.dataset.baseFocusX ?? 50);
     const focusY = Number(selected?.focusY ?? card.dataset.baseFocusY ?? 50);
@@ -458,16 +498,17 @@ document.addEventListener('change', event => {
         const freshImage = image.cloneNode(false);
         freshImage.removeAttribute('srcset');
         freshImage.removeAttribute('sizes');
-        freshImage.style.objectFit = fit;
+        freshImage.style.objectFit = isDefaultImage ? 'cover' : fit;
         frame?.classList.remove('is-crop-calculated');
+        frame?.classList.toggle('is-default-character-image', isDefaultImage);
         frame?.style.removeProperty('--oc-render-width');
         frame?.style.removeProperty('--oc-render-height');
         frame?.style.removeProperty('--oc-render-left');
         frame?.style.removeProperty('--oc-render-top');
-        frame?.style.setProperty('--image-fit', fit);
-        frame?.style.setProperty('--image-focus-x', `${Number.isFinite(focusX) ? focusX : 50}%`);
-        frame?.style.setProperty('--image-focus-y', `${Number.isFinite(focusY) ? focusY : 50}%`);
-        frame?.style.setProperty('--image-zoom', Number.isFinite(zoom) ? zoom : 1);
+        frame?.style.setProperty('--image-fit', isDefaultImage ? 'cover' : fit);
+        frame?.style.setProperty('--image-focus-x', `${isDefaultImage || !Number.isFinite(focusX) ? 50 : focusX}%`);
+        frame?.style.setProperty('--image-focus-y', `${isDefaultImage || !Number.isFinite(focusY) ? 50 : focusY}%`);
+        frame?.style.setProperty('--image-zoom', isDefaultImage || !Number.isFinite(zoom) ? 1 : zoom);
         const refreshFrame = () => {
             window.OCMediaFrame?.refresh(frame || card);
         };

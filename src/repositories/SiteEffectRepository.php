@@ -4,7 +4,8 @@ require_once 'Repository.php';
 
 class SiteEffectRepository extends Repository
 {
-    public const EFFECTS = ['auto', 'off', 'snow', 'confetti', 'hearts', 'stars', 'sunrays', 'sakura', 'custom'];
+    public const EFFECTS = ['auto', 'off', 'snow', 'confetti', 'hearts', 'stars', 'sunrays', 'sakura', 'leaves', 'custom', 'wind', 'wind-left', 'wind-right', 'wind-passive'];
+    public const WIND_TARGETS = ['snow', 'confetti', 'hearts', 'sakura', 'leaves', 'custom'];
     public const INTENSITIES = ['low', 'medium', 'high'];
     public const SIZES = ['small', 'medium', 'large'];
     public const LAYERS = ['under', 'over'];
@@ -197,7 +198,56 @@ class SiteEffectRepository extends Repository
     public function normalizeEffect(string $effect, string $fallback = 'none'): string
     {
         $effect = strtolower(trim($effect));
-        return in_array($effect, self::EFFECTS, true) || $effect === 'none' ? $effect : $fallback;
+        if ($effect === '') {
+            return $fallback;
+        }
+        if (in_array($effect, self::EFFECTS, true) || $effect === 'none') {
+            return $effect;
+        }
+
+        $tokens = preg_split('/[+,\s]+/', $effect) ?: [];
+        $normalized = [];
+        foreach ($tokens as $token) {
+            $token = strtolower(trim((string)$token));
+            if ($token === '') {
+                continue;
+            }
+            $token = match ($token) {
+                'wind:left' => 'wind-left',
+                'wind:right' => 'wind-right',
+                'wind-static' => 'wind-passive',
+                default => $token,
+            };
+            if ($token === 'none' || $token === 'off') {
+                return 'none';
+            }
+            if (str_starts_with($token, 'wind-ignore-')) {
+                $target = substr($token, strlen('wind-ignore-'));
+                if (in_array($target, self::WIND_TARGETS, true) && !in_array($token, $normalized, true)) {
+                    $normalized[] = $token;
+                }
+                continue;
+            }
+            if ($token === 'auto') {
+                continue;
+            }
+            if ($token === 'forest') {
+                foreach (['leaves', 'sunrays', 'wind-right'] as $forestToken) {
+                    if (!in_array($forestToken, $normalized, true)) {
+                        $normalized[] = $forestToken;
+                    }
+                }
+                continue;
+            }
+            if (!in_array($token, self::EFFECTS, true)) {
+                continue;
+            }
+            if (!in_array($token, $normalized, true)) {
+                $normalized[] = $token;
+            }
+        }
+
+        return !empty($normalized) ? implode('+', $normalized) : $fallback;
     }
 
     private function normalizeDateValue(string $date): ?string

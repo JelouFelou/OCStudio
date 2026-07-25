@@ -11,12 +11,21 @@ const templateText = (key, fallback, replacements = {}) => {
     });
     return value;
 };
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+}[char]));
 
 const FIELD_TYPE_OPTIONS = [
     ['text', 'fa-font', templateText('text', 'Tekst')],
     ['textarea', 'fa-align-left', templateText('textarea', 'Dlugi tekst')],
     ['list', 'fa-list-ul', templateText('list', 'Lista')],
     ['select', 'fa-chevron-down', templateText('select', 'Wybor z listy')],
+    ['section', 'fa-heading', templateText('section', 'Przedzial')],
+    ['age', 'fa-hourglass-half', templateText('ageFromDateField', 'Czas od daty')],
     ['image', 'fa-image', templateText('image', 'Zdjecie')],
     ['image-gallery', 'fa-images', templateText('imageGallery', 'Galeria')],
     ['table', 'fa-table', templateText('table', 'Tabela')],
@@ -155,6 +164,7 @@ function openTemplateFieldTypePopover(anchor = null, location = currentTargetLoc
 function createTemplateInsertPoint(location, index) {
     const point = document.createElement('div');
     point.className = 'template-field-insert-point';
+    point.dataset.templateEmpty = '0';
     point.innerHTML = `
         <button type="button" class="template-field-insert-btn" data-template-location="${location}" data-template-insert-index="${index}" title="${escapeHtml(templateText('addFieldHere', 'Dodaj pole'))}">
             <i class="fa-solid fa-plus"></i>
@@ -168,7 +178,9 @@ function refreshTemplateInsertPoints(container) {
     const location = container.id === 'right-fields' ? 'right' : 'left';
     const items = templateFieldItems(container);
     if (!items.length) {
-        container.appendChild(createTemplateInsertPoint(location, 0));
+        const emptyPoint = createTemplateInsertPoint(location, 0);
+        emptyPoint.dataset.templateEmpty = '1';
+        container.appendChild(emptyPoint);
         return;
     }
     items.forEach((item, index) => {
@@ -350,8 +362,14 @@ function buildSelectOptionHtml(val = '') {
     return `<div class="select-option-def" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <input type="text" class="select-option-input" placeholder="Opcja..."
             value="${val.replace(/"/g,'&quot;')}" style="${INPUT_STYLE}">
-        <button type="button" onclick="removeSelectOption(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}">
-            <i class="fa-solid fa-minus"></i></button></div>`;
+        <div class="row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+            <button type="button" onclick="moveSelectOption(this, -1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveUp', 'Przesun w gore'))}">
+                <i class="fa-solid fa-arrow-up"></i></button>
+            <button type="button" onclick="moveSelectOption(this, 1)" style="${ICON_BTN}color:var(--text-muted,#888);" title="${escapeHtml(templateText('moveDown', 'Przesun w dol'))}">
+                <i class="fa-solid fa-arrow-down"></i></button>
+            <button type="button" onclick="removeSelectOption(this)" style="${ICON_BTN}color:var(--danger,#e74c3c);" title="${escapeHtml(window.OCI18n?.common?.delete || 'Usun')}">
+                <i class="fa-solid fa-minus"></i></button>
+        </div></div>`;
 }
 
 function addSelectOption(btn) {
@@ -366,6 +384,18 @@ function removeSelectOption(btn) {
     const fi = btn.closest('.field-item');
     btn.closest('.select-option-def').remove();
     updateSelectPlaceholder(fi);
+}
+
+function moveSelectOption(btn, direction) {
+    const option = btn.closest('.select-option-def');
+    const container = btn.closest('.select-options-container');
+    if (!option || !container) return;
+    if (direction < 0 && option.previousElementSibling?.classList.contains('select-option-def')) {
+        container.insertBefore(option, option.previousElementSibling);
+    } else if (direction > 0 && option.nextElementSibling?.classList.contains('select-option-def')) {
+        container.insertBefore(option.nextElementSibling, option);
+    }
+    updateSelectPlaceholder(btn.closest('.field-item'));
 }
 
 function updateSelectPlaceholder(fi) {
@@ -393,6 +423,47 @@ function initExistingSelectFields() {
         const wrap = rc.querySelector('.add-opt-btn-wrap');
         opts.forEach(o => { const d=document.createElement('div'); d.innerHTML=buildSelectOptionHtml(o); rc.insertBefore(d.firstElementChild,wrap); });
         bindSelectListeners(fi);
+    });
+}
+
+// -------------------------------------------------------
+// POLE OBLICZANE Z DATY
+// -------------------------------------------------------
+function updateAgePlaceholder(fi) {
+    const source = fi.querySelector('.age-source-input')?.value.trim() || '';
+    const ph = fi.querySelector('.field-placeholder');
+    if (ph) ph.value = JSON.stringify({ type: 'age', sourceField: source });
+}
+
+function bindAgeListeners(fi) {
+    fi.addEventListener('input', e => {
+        if (e.target.classList.contains('age-source-input')) updateAgePlaceholder(fi);
+    });
+}
+
+function ensureAgeEditor(fi) {
+    const fc = fi.querySelector('.field-content');
+    let editor = fi.querySelector('.age-editor');
+    if (!fc || editor) return editor;
+    fc.insertAdjacentHTML('beforeend', `<div class="age-editor" style="${EDITOR_WRAP}">
+        <span style="${LABEL_SM}"><i class="fa-solid fa-calendar-days"></i> ${escapeHtml(templateText('ageSourceField', 'Pole daty zrodlowej:'))}</span>
+        <input type="text" class="age-source-input" placeholder="${escapeHtml(templateText('dateFieldName', 'Nazwa pola daty'))}" style="${INPUT_STYLE}width:100%;">
+    </div>`);
+    return fi.querySelector('.age-editor');
+}
+
+function initExistingAgeFields() {
+    document.querySelectorAll('.field-item').forEach(fi => {
+        if (fi.querySelector('.field-type')?.value !== 'age') return;
+        const editor = ensureAgeEditor(fi);
+        if (!editor) return;
+        editor.style.display = 'block';
+        let cfg = {};
+        try { cfg = JSON.parse(fi.querySelector('.field-placeholder')?.value || '{}'); } catch(e){}
+        const input = editor.querySelector('.age-source-input');
+        if (input) input.value = cfg.sourceField || cfg.source || cfg.sourceLabel || '';
+        bindAgeListeners(fi);
+        updateAgePlaceholder(fi);
     });
 }
 
@@ -474,9 +545,10 @@ function updateGlobalDateSettings() {
         .map(input => input.value.trim())
         .filter(Boolean);
     const defaultYear = document.getElementById('global-default-year')?.value.trim() || String(new Date().getFullYear());
+    const worldBaseDate = document.getElementById('template-world-base-date')?.value.trim() || '';
     const currentDateMode = document.getElementById('template-current-date-mode')?.value || 'fixed';
     const currentDateAnchor = document.getElementById('template-current-date-anchor')?.value.trim() || '';
-    hidden.value = JSON.stringify({ type: 'date', months, eras, defaultYear, currentDateMode, currentDateAnchor });
+    hidden.value = JSON.stringify({ type: 'date', months, eras, defaultYear, worldBaseDate, currentDateMode, currentDateAnchor });
 }
 
 function addGlobalMonthRow(btn) {
@@ -520,6 +592,8 @@ function initGlobalDateSettings() {
     });
     const defaultYearInput = document.getElementById('global-default-year');
     if (defaultYearInput) defaultYearInput.value = cfg.defaultYear || String(new Date().getFullYear());
+    const worldBaseDateInput = document.getElementById('template-world-base-date');
+    if (worldBaseDateInput && !worldBaseDateInput.value) worldBaseDateInput.value = cfg.worldBaseDate || '';
     const currentDateModeInput = document.getElementById('template-current-date-mode');
     if (currentDateModeInput) currentDateModeInput.value = cfg.currentDateMode || 'fixed';
     const currentDateAnchorInput = document.getElementById('template-current-date-anchor');
@@ -527,6 +601,28 @@ function initGlobalDateSettings() {
     document.querySelector('.template-date-settings-panel')?.addEventListener('input', updateGlobalDateSettings);
     document.querySelector('.template-date-settings-panel')?.addEventListener('change', updateGlobalDateSettings);
     updateGlobalDateSettings();
+}
+
+function initTxtExportFormatSelector() {
+    const select = document.getElementById('txt-export-mode');
+    const textarea = document.getElementById('txt-export-template');
+    const presets = window.OCTxtExportPresets || {};
+    if (!select || !textarea) return;
+
+    const applyMode = () => {
+        const mode = select.value || 'default';
+        const isCustom = mode === 'custom';
+        const isDefault = mode === 'default';
+        if (!isCustom && Object.prototype.hasOwnProperty.call(presets, mode)) {
+            textarea.value = presets[mode] || '';
+        }
+        textarea.readOnly = !isCustom;
+        textarea.closest('.txt-export-template-wrap')?.classList.toggle('is-readonly', !isCustom);
+        textarea.closest('.txt-export-template-wrap')?.classList.toggle('is-disabled', isDefault);
+    };
+
+    select.addEventListener('change', applyMode);
+    applyMode();
 }
 
 function bindDateListeners(fi) {
@@ -695,6 +791,8 @@ const TYPE_META = {
     text:            { icon:'fa-font',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('text', 'Tekst') }),          color:'' },
     textarea:        { icon:'fa-align-left',     label: templateText('typePrefix', 'Typ: :type', { type: templateText('textarea', 'Dlugi tekst') }),    color:'var(--text-muted,#888)' },
     list:            { icon:'fa-list',           label: templateText('typePrefix', 'Typ: :type', { type: templateText('list', 'Lista') }),          color:'var(--primary,#3498db)' },
+    section:         { icon:'fa-heading',        label: templateText('typePrefix', 'Typ: :type', { type: templateText('section', 'Przedzial') }),     color:'var(--primary,#3498db)' },
+    age:             { icon:'fa-hourglass-half', label: templateText('typePrefix', 'Typ: :type', { type: templateText('ageFromDateField', 'Czas od daty') }), color:'var(--warning,#e67e22)' },
     image:           { icon:'fa-image',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('image', 'Zdjecie') }),        color:'var(--success,#27ae60)' },
     'image-gallery': { icon:'fa-images',         label: templateText('typePrefix', 'Typ: :type', { type: templateText('imageGallery', 'Galeria') }),        color:'var(--success,#27ae60)' },
     table:           { icon:'fa-table',          label: templateText('typePrefix', 'Typ: :type', { type: templateText('table', 'Tabela') }),         color:'var(--secondary,#8e44ad)' },
@@ -764,6 +862,8 @@ function createField(type) {
             <span style="${LABEL_SM}margin-top:10px;"><i class="fa-solid fa-star"></i> ${escapeHtml(templateText('defaultYear', 'Domyslny rok'))}:</span>
             <input type="text" class="default-year-input" placeholder="np. 1200" style="${INPUT_STYLE}display:block;">
         </div>`);
+    } else if (type === 'age') {
+        ensureAgeEditor(fi);
     } else if (type === 'image') {
         fc.insertAdjacentHTML('beforeend', `<div class="image-size-editor" style="${EDITOR_WRAP}">
             <span style="${LABEL_SM}"><i class="fa-solid fa-up-right-and-down-left-from-center"></i> ${escapeHtml(templateText('imageSizePreview', 'Rozmiar zdjecia w podgladzie:'))}</span>
@@ -795,6 +895,9 @@ function createField(type) {
         newItem.querySelector('.date-editor')?.remove();
         newItem.querySelector('.field-placeholder').value = '';
         updateDatePlaceholder(newItem);
+    } else if (type === 'age') {
+        bindAgeListeners(newItem);
+        updateAgePlaceholder(newItem);
     } else if (type === 'date-legacy-unused') {
         const mc = newItem.querySelector('.months-container');
         const mWrap = mc.querySelector('.add-month-btn-wrap');
@@ -832,6 +935,7 @@ function syncAllPlaceholders() {
         if (type === 'table')  updateTablePlaceholder(fi);
         if (type === 'select') updateSelectPlaceholder(fi);
         if (type === 'date')   updateDatePlaceholder(fi);
+        if (type === 'age')    updateAgePlaceholder(fi);
         if (type === 'image')  updateImagePlaceholder(fi);
         if (type === 'stats')  updateStatsPlaceholder(fi);
     });
@@ -847,6 +951,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'opt-text':          'text',
         'opt-textarea':      'textarea',
         'opt-list':          'list',
+        'opt-section':       'section',
+        'opt-age':           'age',
         'opt-image':         'image',
         'opt-image-gallery': 'image-gallery',
         'opt-table':         'table',
@@ -875,8 +981,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initExistingTableFields();
     initExistingSelectFields();
+    initExistingAgeFields();
     initExistingDateFields();
     initGlobalDateSettings();
+    initTxtExportFormatSelector();
     initExistingImageFields();
     initExistingStatsFields();
 

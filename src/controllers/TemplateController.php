@@ -49,10 +49,14 @@ class TemplateController extends AppController
             $templateRaw = $_POST['template_id'] ?? null;
             $templateId  = $this->templateIdFromPublicOrLegacyId($templateRaw, (int)$userId);
             $dateCalendarType = $this->cleanDateCalendarType($_POST['date_calendar_type'] ?? 'real');
-            $dateSettings = $this->cleanDateSettings($_POST['date_settings'] ?? '');
             $currentWorldDate = trim((string)($_POST['current_world_date'] ?? ''));
-            $txtExportEnabled = !empty($_POST['txt_export_enabled']);
-            $txtExportTemplate = $this->cleanTxtExportTemplate($_POST['txt_export_template'] ?? '');
+            $dateSettings = $this->cleanDateSettings($_POST['date_settings'] ?? '', $currentWorldDate);
+            $currentWorldDate = $this->currentWorldDateFromSettings($dateSettings, $currentWorldDate);
+            [$txtExportEnabled, $txtExportTemplate] = $this->cleanTxtExportSelection(
+                $_POST['txt_export_mode'] ?? null,
+                $_POST['txt_export_template'] ?? '',
+                $_POST['txt_export_enabled'] ?? null
+            );
 
             // Zbieramy pola – teraz także placeholder (JSON z wierszami tabeli lub pusty string)
             $fields      = [];
@@ -237,7 +241,7 @@ class TemplateController extends AppController
         return in_array($type, ['real', 'fictional', 'era'], true) ? $type : 'real';
     }
 
-    private function cleanDateSettings(mixed $raw): string
+    private function cleanDateSettings(mixed $raw, string $worldBaseDate = ''): string
     {
         $data = json_decode((string)$raw, true);
         if (!is_array($data)) {
@@ -288,11 +292,54 @@ class TemplateController extends AppController
             'months' => $months,
             'eras' => array_values(array_unique($eras)),
             'defaultYear' => trim((string)($data['defaultYear'] ?? date('Y'))),
+            'worldBaseDate' => trim($worldBaseDate !== '' ? $worldBaseDate : (string)($data['worldBaseDate'] ?? date('Y-m-d'))),
             'currentDateMode' => in_array(($data['currentDateMode'] ?? 'fixed'), ['fixed', 'real_today', 'auto'], true)
                 ? $data['currentDateMode']
                 : 'fixed',
             'currentDateAnchor' => trim((string)($data['currentDateAnchor'] ?? '')),
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function currentWorldDateFromSettings(string $dateSettings, string $fallback = ''): string
+    {
+        $decoded = json_decode($dateSettings, true);
+        if (is_array($decoded)) {
+            $fromSettings = trim((string)($decoded['worldBaseDate'] ?? ''));
+            if ($fromSettings !== '') {
+                return $fromSettings;
+            }
+        }
+
+        return trim($fallback) !== '' ? trim($fallback) : date('Y-m-d');
+    }
+
+    private function cleanTxtExportSelection(mixed $mode, mixed $rawTemplate, mixed $legacyEnabled = null): array
+    {
+        $mode = trim((string)($mode ?? ''));
+        if ($mode === '') {
+            $enabled = !empty($legacyEnabled);
+            return [$enabled, $enabled ? $this->cleanTxtExportTemplate($rawTemplate) : ''];
+        }
+
+        if ($mode === 'default') {
+            return [false, ''];
+        }
+
+        $presets = $this->txtExportPresetTemplates();
+        if (isset($presets[$mode])) {
+            return [true, $presets[$mode]];
+        }
+
+        return [true, $this->cleanTxtExportTemplate($rawTemplate)];
+    }
+
+    private function txtExportPresetTemplates(): array
+    {
+        return [
+            'compact' => "{{character.name}}\n{{variant.name}}\n\n{{all_fields}}",
+            'fields_only' => "{{all_fields}}",
+            'data_block' => "Name: {{character.name}}\nVariant: {{variant.name}}\nTemplate: {{template.name}}\n\n{{all_fields}}",
+        ];
     }
 
     private function cleanTxtExportTemplate(mixed $raw): string

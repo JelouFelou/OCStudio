@@ -134,8 +134,34 @@ class AdminController extends AppController
         $this->requireAdmin();
         $this->validateCsrf();
 
+        $effectModeType = (string)($_POST['effect_mode_type'] ?? 'manual');
+        $effectModeInput = $_POST['effect_mode'] ?? [];
+        $effectMode = match ($effectModeType) {
+            'auto' => 'auto',
+            'off' => 'off',
+            default => is_array($effectModeInput)
+                ? implode('+', array_filter(array_map('strval', $effectModeInput), fn(string $value): bool => trim($value) !== ''))
+                : (string)$effectModeInput,
+        };
+        $windDirection = (string)($_POST['effect_wind_direction'] ?? 'none');
+        if (!in_array($effectModeType, ['auto', 'off'], true) && in_array($windDirection, ['left', 'right'], true)) {
+            $effectMode .= ($effectMode !== '' ? '+' : '') . 'wind-' . $windDirection;
+            if (empty($_POST['effect_wind_affects'])) {
+                $effectMode .= '+wind-passive';
+            }
+            $windTargets = array_map('strval', is_array($_POST['effect_wind_targets'] ?? null) ? $_POST['effect_wind_targets'] : []);
+            foreach (SiteEffectRepository::WIND_TARGETS as $target) {
+                if (!in_array($target, $windTargets, true)) {
+                    $effectMode .= '+wind-ignore-' . $target;
+                }
+            }
+        }
+        if ($effectMode === '') {
+            $effectMode = 'none';
+        }
+
         $this->effectRepository->saveSettings(
-            (string)($_POST['effect_mode'] ?? 'auto'),
+            $effectMode,
             (string)($_POST['effect_symbols'] ?? ''),
             (string)($_POST['effect_intensity'] ?? 'medium'),
             (string)($_POST['effect_size'] ?? 'medium'),
@@ -147,7 +173,7 @@ class AdminController extends AppController
             is_array($_POST['effect_date_effect'] ?? null) ? $_POST['effect_date_effect'] : [],
             is_array($_POST['effect_date_symbols'] ?? null) ? $_POST['effect_date_symbols'] : []
         );
-        $this->logAdminAction('site_effects.update', 'site_effects', null, (string)($_POST['effect_mode'] ?? 'auto'));
+        $this->logAdminAction('site_effects.update', 'site_effects', null, $effectMode);
 
         header('Location: /admin?effects=1');
         exit();

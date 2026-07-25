@@ -323,12 +323,27 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 gap: 16px;
 }
 
+.template-date-settings-panel select,
+.template-date-settings-panel textarea,
+.template-date-settings-panel input[type="text"],
+.template-date-settings-panel input[type="date"] {
+width: 100%;
+box-sizing: border-box;
+}
+
 .template-date-settings-label {
 display: block;
 margin: 10px 0 6px;
 color: var(--text-muted);
 font-size: 0.8rem;
 font-weight: 700;
+}
+
+.template-date-settings-hint {
+margin: 6px 0 10px;
+color: var(--text-muted);
+font-size: 0.78rem;
+line-height: 1.4;
 }
 
 .template-header .header-actions {
@@ -491,15 +506,27 @@ transform: translate(-50%, -50%) scale(1);
 }
 
 .fields-container > .template-field-insert-point:only-child {
-height: 46px;
+height: 76px;
+margin: 8px 0 0;
+border: 1px dashed color-mix(in srgb, var(--primary) 42%, var(--border-color));
+border-radius: 8px;
+background: color-mix(in srgb, var(--primary) 6%, var(--surface));
 }
 
-.fields-container > .template-field-insert-point:only-child::before,
+.fields-container > .template-field-insert-point[data-template-empty="1"]::before,
 .fields-container > .template-field-insert-point:only-child .template-field-insert-btn {
 opacity: 1;
 }
 
-.fields-container > .template-field-insert-point:only-child .template-field-insert-btn {
+.fields-container > .template-field-insert-point[data-template-empty="1"]::before {
+left: 24px;
+right: 24px;
+}
+
+.fields-container > .template-field-insert-point:only-child .template-field-insert-btn,
+.fields-container > .template-field-insert-point[data-template-empty="1"] .template-field-insert-btn {
+width: 34px;
+height: 34px;
 transform: translate(-50%, -50%) scale(1);
 }
 
@@ -518,6 +545,19 @@ border: 1px solid var(--border-color);
 border-radius: 8px;
 background: var(--surface);
 box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
+}
+
+.txt-export-template-wrap {
+margin-top: 10px;
+}
+
+.txt-export-template-wrap.is-readonly textarea {
+background: var(--surface-soft);
+color: var(--text-muted);
+}
+
+.txt-export-template-wrap.is-disabled {
+display: none;
 }
 
 .template-field-type-popover[hidden] {
@@ -1410,6 +1450,46 @@ justify-content: center; border: none; cursor: pointer; margin: 20px auto;
     font-size: 1.1rem !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+.character-template-section-heading,
+.wiki-section.field-type-section > h2,
+.wiki-infobox-field.field-type-section > h3 {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 9px 12px;
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+    color: var(--text-main);
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1.25;
+    box-sizing: border-box;
+}
+
+.input-group.field-type-section {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.wiki-section.field-type-section,
+.wiki-infobox-field.field-type-section {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.character-calculated-age-output,
+.input-group.field-type-age input[readonly] {
+    background: var(--surface-soft);
+    border-color: var(--border-color);
+    color: var(--text-main);
+    font-weight: 800;
+    cursor: default;
 }
 
 /* --- WIDOK HISTORII (VIEW) --- */

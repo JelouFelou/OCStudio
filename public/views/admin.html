@@ -585,28 +585,58 @@ if ($adminShouldTranslate) {
         </div>
         <?php $effectSettings = $effectSettings ?? ['mode' => 'auto', 'symbols' => '', 'intensity' => 'medium', 'size' => 'medium', 'layer' => 'under']; ?>
         <?php $activePageEffect = $activePageEffect ?? ['name' => 'none']; ?>
+        <?php
+            $effectModeValue = (string)($effectSettings['mode'] ?? 'auto');
+            $effectModeParts = preg_split('/[+,\s]+/', strtolower($effectModeValue)) ?: [];
+            if (in_array('forest', $effectModeParts, true)) {
+                $effectModeParts = array_values(array_unique(array_merge($effectModeParts, ['leaves', 'sunrays', 'wind-right'])));
+            }
+            $effectModeType = in_array($effectModeValue, ['auto', 'off'], true) ? $effectModeValue : 'manual';
+            $effectModeSelected = fn(string $value): bool => in_array($value, $effectModeParts, true);
+            $effectWindDirection = in_array('wind-left', $effectModeParts, true) || in_array('wind:left', $effectModeParts, true)
+                ? 'left'
+                : ((in_array('wind-right', $effectModeParts, true) || in_array('wind:right', $effectModeParts, true) || in_array('wind', $effectModeParts, true)) ? 'right' : 'none');
+            $effectWindAffects = !in_array('wind-passive', $effectModeParts, true) && !in_array('wind-static', $effectModeParts, true);
+            $effectWindTargets = ['snow' => 'Snieg', 'confetti' => 'Konfetti', 'hearts' => 'Serduszka', 'sakura' => 'Sakura', 'leaves' => 'Liscie', 'custom' => 'Wlasne'];
+            $effectOptions = [
+                'snow' => ['label' => 'Snieg', 'icon' => 'fa-snowflake'],
+                'confetti' => ['label' => 'Konfetti', 'icon' => 'fa-wand-magic-sparkles'],
+                'hearts' => ['label' => 'Serduszka', 'icon' => 'fa-heart'],
+                'stars' => ['label' => 'Gwiazdy', 'icon' => 'fa-star'],
+                'sunrays' => ['label' => 'Promienie slonca', 'icon' => 'fa-sun'],
+                'sakura' => ['label' => 'Sakura', 'icon' => 'fa-fan'],
+                'leaves' => ['label' => 'Liscie', 'icon' => 'fa-leaf'],
+                'custom' => ['label' => 'Wlasne symbole', 'icon' => 'fa-icons'],
+            ];
+        ?>
         <form method="POST" action="/admin/effects" class="admin-effects-form">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
-            <label>
-                Efekt globalny
-                <select name="effect_mode">
-                    <?php foreach ([
-                        'auto' => 'Automatyczny kalendarz',
-                        'off' => 'Wylaczony',
-                        'snow' => 'Snieg',
-                        'confetti' => 'Konfetti',
-                        'hearts' => 'Serduszka',
-                        'stars' => 'Gwiazdy',
-                        'sunrays' => 'Promienie slonca',
-                        'sakura' => 'Sakura',
-                        'custom' => 'Wlasne symbole',
-                    ] as $value => $label): ?>
-                        <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($effectSettings['mode'] ?? 'auto') === $value ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
-                        </option>
+            <div class="admin-effect-mode-panel">
+                <strong>Efekt globalny</strong>
+                <div class="admin-effect-mode-options">
+                    <label class="settings-check-row">
+                        <input type="radio" name="effect_mode_type" value="auto" <?= $effectModeType === 'auto' ? 'checked' : '' ?>>
+                        <span>Automatyczny kalendarz</span>
+                    </label>
+                    <label class="settings-check-row">
+                        <input type="radio" name="effect_mode_type" value="manual" <?= $effectModeType === 'manual' ? 'checked' : '' ?>>
+                        <span>Reczne efekty</span>
+                    </label>
+                    <label class="settings-check-row">
+                        <input type="radio" name="effect_mode_type" value="off" <?= $effectModeType === 'off' ? 'checked' : '' ?>>
+                        <span>Wylaczony</span>
+                    </label>
+                </div>
+                <div class="admin-effect-choice-grid">
+                    <?php foreach ($effectOptions as $value => $option): ?>
+                        <label class="folder-effect-choice admin-effect-choice">
+                            <input type="checkbox" name="effect_mode[]" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= $effectModeSelected($value) ? 'checked' : '' ?>>
+                            <span><i class="fa-solid <?= htmlspecialchars($option['icon'], ENT_QUOTES, 'UTF-8') ?>"></i></span>
+                            <strong><?= htmlspecialchars($option['label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        </label>
                     <?php endforeach; ?>
-                </select>
-            </label>
+                </div>
+            </div>
             <label>
                 Intensywnosc
                 <select name="effect_intensity">
@@ -641,6 +671,27 @@ if ($adminShouldTranslate) {
                 Wlasne symbole
                 <input type="text" name="effect_symbols" maxlength="120" value="<?= htmlspecialchars($effectSettings['symbols'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="np. * + .">
             </label>
+            <label>
+                Kierunek wiatru
+                <select name="effect_wind_direction">
+                    <option value="none" <?= $effectWindDirection === 'none' ? 'selected' : '' ?>>Brak</option>
+                    <option value="left" <?= $effectWindDirection === 'left' ? 'selected' : '' ?>>Wieje z prawej do lewej</option>
+                    <option value="right" <?= $effectWindDirection === 'right' ? 'selected' : '' ?>>Wieje z lewej do prawej</option>
+                </select>
+            </label>
+            <label class="settings-check-row">
+                <input type="checkbox" name="effect_wind_affects" value="1" <?= $effectWindAffects ? 'checked' : '' ?>>
+                <span>Wiatr porusza czastkami</span>
+            </label>
+            <div class="admin-effect-wind-targets">
+                <strong>Wiatr dziala na</strong>
+                <?php foreach ($effectWindTargets as $value => $label): ?>
+                    <label class="settings-check-row">
+                        <input type="checkbox" name="effect_wind_targets[]" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= in_array('wind-ignore-' . $value, $effectModeParts, true) ? '' : 'checked' ?>>
+                        <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
             <button class="btn-primary" type="submit">Zapisz efekty</button>
             <button class="btn-secondary" type="button" id="preview-admin-effect">Podglad efektu</button>
             <span class="admin-effects-active">Aktywny: <?= htmlspecialchars($activePageEffect['name'] ?? 'none', ENT_QUOTES, 'UTF-8') ?></span>
@@ -656,21 +707,14 @@ if ($adminShouldTranslate) {
                         <?php $effectDateRules = [['date_start' => '', 'date_end' => '', 'effect' => 'snow', 'symbols' => '']]; ?>
                     <?php endif; ?>
                     <?php foreach ($effectDateRules as $rule): ?>
+                        <?php $ruleEffect = ($rule['effect'] ?? '') === 'forest' ? 'leaves' : ($rule['effect'] ?? ''); ?>
                         <div class="admin-effect-date-row">
                             <input type="text" name="effect_date_start[]" value="<?= htmlspecialchars($rule['date_start'] ?? $rule['date_value'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Od: MM-DD lub YYYY-MM-DD" pattern="(\d{2}-\d{2}|\d{4}-\d{2}-\d{2})">
                             <input type="text" name="effect_date_end[]" value="<?= htmlspecialchars($rule['date_end'] ?? $rule['date_value'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Do: puste = jeden dzien" pattern="(\d{2}-\d{2}|\d{4}-\d{2}-\d{2})">
                             <select name="effect_date_effect[]">
-                                <?php foreach ([
-                                    'snow' => 'Snieg',
-                                    'confetti' => 'Konfetti',
-                                    'hearts' => 'Serduszka',
-                                    'stars' => 'Gwiazdy',
-                                    'sunrays' => 'Promienie slonca',
-                                    'sakura' => 'Sakura',
-                                    'custom' => 'Wlasne symbole',
-                                ] as $value => $label): ?>
-                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= ($rule['effect'] ?? '') === $value ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                                <?php foreach ($effectOptions as $value => $option): ?>
+                                    <option value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" <?= $ruleEffect === $value ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($option['label'], ENT_QUOTES, 'UTF-8') ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -707,6 +751,7 @@ if ($adminShouldTranslate) {
                         <option value="stars">Gwiazdy</option>
                         <option value="sunrays">Promienie slonca</option>
                         <option value="sakura">Sakura</option>
+                        <option value="leaves">Liscie</option>
                         <option value="custom">Wlasne symbole</option>
                     </select>
                     <input type="text" name="effect_date_symbols[]" maxlength="120" value="" placeholder="Symbole custom">
@@ -718,10 +763,36 @@ if ($adminShouldTranslate) {
 
             list.querySelectorAll('.admin-effect-date-row').forEach(bindRemove);
             addBtn.addEventListener('click', () => list.appendChild(makeRow()));
+            document.querySelectorAll('[name="effect_mode[]"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    if (input.checked) {
+                        document.querySelector('[name="effect_mode_type"][value="manual"]').checked = true;
+                    }
+                });
+            });
+            function selectedAdminEffectValue(form) {
+                const mode = form?.querySelector('[name="effect_mode_type"]:checked')?.value || 'manual';
+                if (mode === 'auto' || mode === 'off') {
+                    return mode;
+                }
+                const base = [...(form?.querySelectorAll('[name="effect_mode[]"]:checked') || [])]
+                    .map(input => input.value)
+                    .filter(Boolean);
+                const wind = form?.querySelector('[name="effect_wind_direction"]')?.value || 'none';
+                if (wind === 'left' || wind === 'right') {
+                    base.push(`wind-${wind}`);
+                    if (!form?.querySelector('[name="effect_wind_affects"]')?.checked) base.push('wind-passive');
+                    const targets = form?.querySelectorAll('[name="effect_wind_targets[]"]') || [];
+                    targets.forEach(input => {
+                        if (!input.checked) base.push(`wind-ignore-${input.value}`);
+                    });
+                }
+                return base.length ? [...new Set(base)].join('+') : 'none';
+            }
             previewBtn?.addEventListener('click', () => {
                 const form = previewBtn.closest('form');
                 window.OCPageEffects?.preview({
-                    effect: form?.querySelector('[name="effect_mode"]')?.value || 'none',
+                    effect: selectedAdminEffectValue(form),
                     symbols: form?.querySelector('[name="effect_symbols"]')?.value || '',
                     intensity: form?.querySelector('[name="effect_intensity"]')?.value || 'medium',
                     size: form?.querySelector('[name="effect_size"]')?.value || 'medium',

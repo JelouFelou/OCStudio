@@ -1,6 +1,13 @@
 console.log("Character Creator Script Loaded!");
 
 const OC_IMAGE_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.avif';
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+}[char]));
 
 // -------------------------------------------------------
 const ccI18n = () => window.OCI18n?.characterEditor || {};
@@ -29,6 +36,7 @@ async function loadTemplateFields(templateId) {
             return;
         }
         window.currentTemplateDateSettings = template.dateSettings || {};
+        window.currentTemplateFields = Array.isArray(template.fields) ? template.fields : [];
 
         const leftContainer  = document.getElementById('left-fields-container');
         const rightContainer = document.getElementById('right-fields-container');
@@ -66,6 +74,7 @@ async function loadTemplateFields(templateId) {
         leftContainer.replaceChildren(leftFragment);
         rightContainer.replaceChildren(rightFragment);
         initCharacterFieldKeyboardNavigation();
+        initCalculatedAgeFields();
         if (document.body) delete document.body.dataset.characterFieldsLoading;
 
     } catch (err) {
@@ -220,16 +229,76 @@ function tableFindSourceCell(rows, rowDefs, sourceName) {
     return source ? tableSavedCell(rows, source) : rows[sourceName];
 }
 
-function calculateAgeFromDate(dateValue) {
+function currentTemplateReferenceDate() {
+    const dateSettings = window.currentTemplateDateSettings || {};
+    const settings = dateSettings.settings || {};
+    const mode = settings.currentDateMode || 'fixed';
+    if (mode === 'real_today') return new Date();
+    const raw = String(dateSettings.currentWorldDate || settings.worldBaseDate || '').trim();
+    const match = raw.match(/^(-?\d{1,6})(?:-(\d{2})-(\d{2}))?$/);
+    if (!match) return new Date();
+    const year = parseInt(match[1], 10);
+    const month = Math.max(0, (parseInt(match[2] || '1', 10) || 1) - 1);
+    const day = parseInt(match[3] || '1', 10) || 1;
+    const reference = new Date();
+    reference.setFullYear(year, month, day);
+    reference.setHours(12, 0, 0, 0);
+    return reference;
+}
+
+function calculateAgeFromDate(dateValue, referenceDate = currentTemplateReferenceDate()) {
     if (!dateValue || typeof dateValue !== 'object') return '';
     const year = parseInt(dateValue.year, 10);
     if (!Number.isFinite(year)) return '';
-    const today = new Date();
     const monthIndex = parseInt(dateValue.monthIndex, 10) || 0;
     const day = parseInt(dateValue.day, 10) || 1;
-    let age = today.getFullYear() - year;
-    if (today.getMonth() < monthIndex || (today.getMonth() === monthIndex && today.getDate() < day)) age -= 1;
+    let age = referenceDate.getFullYear() - year;
+    if (referenceDate.getMonth() < monthIndex || (referenceDate.getMonth() === monthIndex && referenceDate.getDate() < day)) age -= 1;
     return age >= 0 ? String(age) : '';
+}
+
+function parseAgeFieldConfig(field = {}) {
+    let cfg = {};
+    try { cfg = JSON.parse(field.placeholder || '{}'); } catch(e) {}
+    return {
+        sourceField: String(cfg.sourceField || cfg.source || cfg.sourceLabel || '').trim()
+    };
+}
+
+function templateDateFieldForAgeSource(sourceName) {
+    const fields = Array.isArray(window.currentTemplateFields) ? window.currentTemplateFields : [];
+    const source = String(sourceName || '').trim().toLowerCase();
+    const dateFields = fields.filter(field => field?.field_type === 'date');
+    if (!source) return dateFields[0] || null;
+    return dateFields.find(field => String(field.id) === source || String(field.label || '').trim().toLowerCase() === source) || null;
+}
+
+function dateValueFromFieldId(fieldId) {
+    const hidden = document.getElementById(`date-hidden-${fieldId}`);
+    if (!hidden) return null;
+    try { return JSON.parse(hidden.value || '{}'); } catch(e) { return null; }
+}
+
+function updateCalculatedAgeOutput(output) {
+    const dateField = templateDateFieldForAgeSource(output.dataset.ageSource || '');
+    const dateValue = dateField ? dateValueFromFieldId(dateField.id) : null;
+    output.value = calculateAgeFromDate(dateValue);
+}
+
+function refreshCalculatedAgeFields() {
+    document.querySelectorAll('[data-age-field-output]').forEach(updateCalculatedAgeOutput);
+}
+
+function initCalculatedAgeFields() {
+    refreshCalculatedAgeFields();
+    if (window.__ocCalculatedAgeFieldsBound) return;
+    window.__ocCalculatedAgeFieldsBound = true;
+    document.addEventListener('input', event => {
+        if (event.target?.id?.startsWith?.('date-hidden-')) refreshCalculatedAgeFields();
+    });
+    document.addEventListener('change', event => {
+        if (event.target?.id?.startsWith?.('date-hidden-')) refreshCalculatedAgeFields();
+    });
 }
 
 function parseVariantJsonObject(value) {
@@ -474,10 +543,17 @@ function normalizeListItems(value) {
         value = value.value;
     }
     if (typeof value === 'string') {
-        try {
-            value = JSON.parse(value);
-        } catch(e) {
-            value = value.split(/\r\n|\r|\n/);
+        let candidate = value.trim();
+        for (let i = 0; i < 2 && candidate !== ''; i++) {
+            try {
+                const parsed = JSON.parse(candidate);
+                value = parsed;
+                if (typeof parsed !== 'string') break;
+                candidate = parsed.trim();
+            } catch(e) {
+                value = candidate.split(/\r\n|\r|\n/);
+                break;
+            }
         }
     }
     if (!Array.isArray(value)) return [];
@@ -637,6 +713,16 @@ function buildFieldWidget(field) {
     wrapper.dataset.fieldType = ftype;
     wrapper.tabIndex = 0;
 
+    if (ftype === 'section') {
+        if ((field.label || '').trim() !== '') {
+            const heading = document.createElement('div');
+            heading.className = 'character-template-section-heading';
+            heading.textContent = field.label;
+            wrapper.appendChild(heading);
+        }
+        return wrapper;
+    }
+
     if ((field.label || '').trim() !== '') {
         const label = document.createElement('label');
         label.innerText = field.label;
@@ -644,6 +730,20 @@ function buildFieldWidget(field) {
     }
 
     switch(ftype) {
+
+        // ---- CZAS OD DATY ----
+        case 'age': {
+            const cfg = parseAgeFieldConfig(field);
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.readOnly = true;
+            inp.dataset.ageFieldOutput = '1';
+            inp.dataset.ageSource = cfg.sourceField || '';
+            inp.placeholder = ccText('noData', 'Brak danych');
+            inp.className = 'character-calculated-age-output';
+            wrapper.appendChild(inp);
+            break;
+        }
 
         // ---- TEKST ----
         case 'text': {
@@ -685,12 +785,13 @@ function buildFieldWidget(field) {
             lines = normalizeListItems(savedRaw);
             if (lines.length === 0) lines = [''];
 
-            const syncListHidden = () => {
+            const syncListHidden = (notify = true) => {
                 const vals = [...bulletContainer.querySelectorAll('.bullet-input')]
                     .map(i => i.value).filter(v => v.trim() !== '');
                 hiddenInput.value = vals.length ? JSON.stringify(vals) : '';
-                notifyFieldValueChanged(hiddenInput);
+                if (notify) notifyFieldValueChanged(hiddenInput);
             };
+            listWrap.syncCharacterListValue = () => syncListHidden(false);
 
             const addBulletRow = (val = '') => {
                 const row = document.createElement('div');
@@ -1168,6 +1269,7 @@ function buildFieldWidget(field) {
                 };
                 if (eraSel) obj.era = eraSel.value;
                 hiddenInput.value = JSON.stringify(obj);
+                hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
             };
 
             daySel.addEventListener('change', syncDate);
@@ -1568,6 +1670,7 @@ function buildVariantFieldWidget(fieldWrapper) {
                 };
                 if (eraSel) obj.era = eraSel.value;
                 hiddenInput.value = JSON.stringify(obj);
+                hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
             };
             
             daySel.addEventListener('change', syncDate);
@@ -1827,13 +1930,14 @@ function buildVariantFieldWidget(fieldWrapper) {
             const bulletContainer = document.createElement('div');
             bulletContainer.className = 'bullet-list-container-variant character-list-rows';
             
-            const syncList = () => {
+            const syncList = (notify = true) => {
                 const vals = [...bulletContainer.querySelectorAll('.bullet-input-variant')]
                     .map(i => i.value)
                     .filter(v => v.trim() !== '');
                 hiddenInput.value = vals.length ? JSON.stringify(vals) : '';
-                notifyFieldValueChanged(hiddenInput);
+                if (notify) notifyFieldValueChanged(hiddenInput);
             };
+            listWrap.syncCharacterListValue = () => syncList(false);
             
             const addBulletInput = (value = '') => {
                 const row = document.createElement('div');

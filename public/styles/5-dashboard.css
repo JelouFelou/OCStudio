@@ -403,6 +403,14 @@ background: rgba(245,158,11,.16);
 color: #D97706;
 }
 
+body[data-offline-mode="1"] .card-publication-badge,
+body[data-offline-mode="1"] .template-publication-badge,
+body[data-offline-mode="1"] .publication-toolbar,
+body[data-offline-mode="1"] .gallery-publish-image,
+body[data-offline-mode="1"] .publish-board-btn {
+display: none !important;
+}
+
 .card-variant-select {
 position:absolute;
 left: calc(10px * var(--character-card-ui-scale));
@@ -1553,6 +1561,53 @@ font-weight: 700;
 color: var(--text-muted);
 }
 
+.admin-effect-mode-panel {
+grid-column: 1 / -1;
+display: grid;
+gap: 12px;
+padding: 14px;
+border: 1px solid var(--border-color);
+border-radius: 12px;
+background: var(--surface-soft);
+}
+
+.admin-effect-mode-panel > strong {
+font-size: 0.92rem;
+color: var(--text-main);
+}
+
+.admin-effect-mode-options {
+display: flex;
+flex-wrap: wrap;
+gap: 8px 12px;
+}
+
+.admin-effects-form .admin-effect-mode-options .settings-check-row,
+.admin-effects-form .admin-effect-wind-targets .settings-check-row,
+.admin-effects-form label.settings-check-row {
+display: inline-flex;
+grid-template-columns: none;
+align-items: center;
+gap: 8px;
+width: auto;
+color: var(--text-main);
+}
+
+.admin-effects-form .settings-check-row input {
+width: auto;
+padding: 0;
+}
+
+.admin-effect-choice-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+gap: 8px;
+}
+
+.admin-effect-choice {
+min-height: 92px;
+}
+
 .admin-effects-form input,
 .admin-effects-form select {
 width: 100%;
@@ -1562,6 +1617,13 @@ border-radius: 8px;
 background: var(--input-bg);
 color: var(--text-main);
 box-sizing: border-box;
+}
+
+.admin-effects-form .admin-effect-choice input {
+position: absolute;
+width: 16px;
+height: 16px;
+padding: 0;
 }
 
 .admin-effects-active {
@@ -2203,6 +2265,33 @@ position: relative;
 z-index: 2;
 }
 
+.drag-drop-folder:not(.has-folder-image) {
+display: grid !important;
+grid-template-columns: 36px minmax(0, 1fr) 32px;
+column-gap: 10px;
+align-items: center;
+padding-right: 14px !important;
+}
+
+.drag-drop-folder:not(.has-folder-image) .folder-avatar {
+grid-column: 1;
+}
+
+.drag-drop-folder:not(.has-folder-image) .folder-name {
+grid-column: 2;
+}
+
+.drag-drop-folder:not(.has-folder-image) > .folder-actions {
+grid-column: 3;
+position: relative;
+right: auto;
+top: auto;
+justify-self: end;
+align-self: center;
+margin-left: 0;
+transform: none;
+}
+
 .drag-drop-folder .folder-card-bg {
 /*
  * Legacy background styles remain harmless for old markup, but img is now the source of truth.
@@ -2330,7 +2419,9 @@ padding-right: 4px;
 .folder-form-scroll > input,
 .folder-form-scroll > textarea,
 .folder-form-scroll > select,
+.folder-form-scroll > .folder-form-section,
 .folder-form-scroll > .folder-effect-controls,
+.folder-form-scroll > .folder-effect-wind-targets,
 .folder-form-scroll > #preview-folder-effect-btn,
 .folder-form-scroll > .folder-image-field,
 .folder-form-scroll > .profile-image-actions-row,
@@ -2338,9 +2429,109 @@ padding-right: 4px;
 grid-column: 1 / -1;
 }
 
+.folder-form-section {
+display: grid;
+gap: 12px;
+padding: 14px;
+border: 1px solid color-mix(in srgb, var(--border-color, #dfe4ea) 86%, transparent);
+border-radius: 12px;
+background: color-mix(in srgb, var(--surface-soft, #f5f5f5) 78%, transparent);
+}
+
+.folder-form-section-header {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 12px;
+}
+
+.folder-form-section-header strong {
+font-size: 0.92rem;
+}
+
+.folder-form-section-header span {
+color: var(--text-muted);
+font-size: 0.78rem;
+font-weight: 800;
+}
+
+.folder-effect-choice-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+gap: 8px;
+}
+
+.folder-effect-choice {
+position: relative;
+display: grid;
+place-items: center;
+gap: 7px;
+aspect-ratio: 1 / 1;
+min-height: 86px;
+padding: 10px 8px;
+border: 1px solid var(--border-color);
+border-radius: 10px;
+background: var(--surface);
+color: var(--text-main);
+font-size: 0.76rem;
+font-weight: 850;
+text-align: center;
+cursor: pointer;
+transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.folder-effect-choice:hover,
+.folder-effect-choice:focus-within {
+border-color: var(--primary);
+box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+transform: translateY(-1px);
+}
+
+.folder-effect-choice input {
+position: absolute;
+inset: 8px auto auto 8px;
+width: 16px;
+height: 16px;
+margin: 0;
+accent-color: var(--primary);
+}
+
+.folder-effect-choice span {
+display: inline-grid;
+place-items: center;
+width: 30px;
+height: 30px;
+border-radius: 9px;
+background: var(--surface-soft);
+color: var(--primary);
+font-size: 1rem;
+}
+
+.folder-effect-choice strong {
+line-height: 1.1;
+}
+
+.folder-effect-choice:has(input:checked) {
+border-color: color-mix(in srgb, var(--primary) 72%, var(--border-color));
+background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 32%, transparent);
+}
+
+.folder-effect-section input[type="text"],
+.folder-effect-controls select {
+width: 100%;
+margin-top: 6px;
+padding: 10px 12px;
+border: 1px solid var(--border-color);
+border-radius: 10px;
+background: var(--input-bg, #fff);
+color: var(--text-main, #333);
+box-sizing: border-box;
+}
+
 .folder-effect-controls {
 display: grid;
-grid-template-columns: repeat(3, minmax(130px, 160px));
+grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 gap: 10px;
 justify-content: center;
 align-items: end;
@@ -2348,6 +2539,43 @@ align-items: end;
 
 .folder-effect-controls label {
 min-width: 0;
+font-size: 0.82rem;
+font-weight: 800;
+}
+
+.folder-effect-controls--wind {
+grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.folder-effect-wind-targets,
+.admin-effect-wind-targets {
+grid-column: 1 / -1;
+}
+
+.folder-effect-wind-targets,
+.admin-effect-wind-targets {
+display: flex;
+flex-wrap: wrap;
+gap: 8px 12px;
+align-items: center;
+justify-content: center;
+padding: 10px;
+border: 1px solid var(--border-color);
+border-radius: 10px;
+background: var(--surface-soft);
+}
+
+.folder-effect-wind-targets > span,
+.admin-effect-wind-targets > strong {
+flex: 1 0 100%;
+color: var(--text-muted);
+font-size: 0.82rem;
+text-align: center;
+}
+
+.folder-effect-wind-targets .settings-check-row,
+.admin-effect-wind-targets .settings-check-row {
+margin: 0;
 }
 
 .folder-form-scroll textarea {
@@ -2480,6 +2708,12 @@ z-index: 7;
 .drag-drop-folder.is-drop-target .folder-actions {
 opacity: 1;
 transform: translateY(-50%);
+}
+
+.drag-drop-folder:not(.has-folder-image):hover .folder-actions,
+.drag-drop-folder:not(.has-folder-image):focus-within .folder-actions,
+.drag-drop-folder:not(.has-folder-image).is-drop-target .folder-actions {
+transform: none;
 }
 
 .folder-actions button {

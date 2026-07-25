@@ -29,21 +29,22 @@ class CharacterExportService
         $template = $character->getIdTemplate()
             ? $this->templateRepository->getTemplateByIdAndUserId((int)$character->getIdTemplate(), $userId)
             : null;
+        $currentDate = $this->templateCurrentDate($template);
 
         $entries = [];
         if ($scope === 'all') {
-            $entries[] = $this->entryFromCharacter($character, 'Forma podstawowa', $baseValues, $fields);
+            $entries[] = $this->entryFromCharacter($character, 'Forma podstawowa', $baseValues, $fields, $currentDate);
             foreach ($this->characterRepository->getCharacterVariants((int)$character->getId()) as $variant) {
-                $entries[] = $this->entryFromVariant($character, $variant, $baseValues, $fields);
+                $entries[] = $this->entryFromVariant($character, $variant, $baseValues, $fields, $currentDate);
             }
         } elseif ($variantId !== null && $variantId > 0) {
             $variant = $this->characterRepository->getCharacterVariant($variantId, (int)$character->getId());
             if (!$variant) {
                 throw new InvalidArgumentException('Wariant nie zostal znaleziony.', 404);
             }
-            $entries[] = $this->entryFromVariant($character, $variant, $baseValues, $fields);
+            $entries[] = $this->entryFromVariant($character, $variant, $baseValues, $fields, $currentDate);
         } else {
-            $entries[] = $this->entryFromCharacter($character, 'Forma podstawowa', $baseValues, $fields);
+            $entries[] = $this->entryFromCharacter($character, 'Forma podstawowa', $baseValues, $fields, $currentDate);
         }
 
         return [
@@ -181,7 +182,7 @@ class CharacterExportService
             : $this->characterRepository->getCharacterByPublicIdAndUserId($raw, $userId);
     }
 
-    private function entryFromCharacter(Character $character, string $variantLabel, array $values, array $fields): array
+    private function entryFromCharacter(Character $character, string $variantLabel, array $values, array $fields, string $currentDate): array
     {
         return [
             'title' => $character->getName(),
@@ -189,12 +190,12 @@ class CharacterExportService
             'intro' => $character->getIntro(),
             'description' => $character->getDescription(),
             'image' => $character->getImage(),
-            'fields' => $this->fieldLines($fields, $values),
-            'fieldMap' => $this->fieldMap($fields, $values),
+            'fields' => $this->fieldLines($fields, $values, $currentDate),
+            'fieldMap' => $this->fieldMap($fields, $values, $currentDate),
         ];
     }
 
-    private function entryFromVariant(Character $character, array $variant, array $baseValues, array $fields): array
+    private function entryFromVariant(Character $character, array $variant, array $baseValues, array $fields, string $currentDate): array
     {
         $values = array_replace($baseValues, is_array($variant['values'] ?? null) ? $variant['values'] : []);
         $name = trim((string)($variant['name'] ?? '')) ?: $character->getName();
@@ -206,8 +207,8 @@ class CharacterExportService
             'intro' => $character->getIntro(),
             'description' => $description !== '' ? $description : $character->getDescription(),
             'image' => trim((string)($variant['image'] ?? '')) ?: $character->getImage(),
-            'fields' => $this->fieldLines($fields, $values),
-            'fieldMap' => $this->fieldMap($fields, $values),
+            'fields' => $this->fieldLines($fields, $values, $currentDate),
+            'fieldMap' => $this->fieldMap($fields, $values, $currentDate),
         ];
     }
 
@@ -236,16 +237,20 @@ class CharacterExportService
         return $output;
     }
 
-    private function fieldMap(array $fields, array $values): array
+    private function fieldMap(array $fields, array $values, string $currentDate): array
     {
         $map = [];
+        $reference = $this->referenceDateFromText($currentDate);
         foreach ($fields as $field) {
             $fieldId = (int)($field['id'] ?? 0);
             $label = trim((string)($field['label'] ?? ''));
             if ($fieldId <= 0 || $label === '') {
                 continue;
             }
-            $value = $this->fieldValueToText($field, $values[$fieldId] ?? null);
+            $type = (string)($field['field_type'] ?? 'text');
+            $value = $type === 'age'
+                ? $this->ageFieldText($field, $fields, $values, $reference)
+                : $this->fieldValueToText($field, $values[$fieldId] ?? null, $reference);
             $map['id:' . $fieldId] = $value;
             $map['label:' . $this->fieldLabelKey($label)] = $value;
         }
@@ -271,9 +276,104 @@ class CharacterExportService
         return mb_strtolower(trim($label));
     }
 
-    private function fieldLines(array $fields, array $values): array
+    private function templateCurrentDate(?object $template): string
+    {
+        if (!$template) {
+            return date('Y-m-d');
+        }
+
+        $settings = [];
+        if (method_exists($template, 'getDateSettings')) {
+            $decoded = $this->decodeJsonDeep($template->getDateSettings());
+            $settings = is_array($decoded) ? $decoded : [];
+        }
+
+        $mode = (string)($settings['currentDateMode'] ?? 'fixed');
+        $base = method_exists($template, 'getCurrentWorldDate') ? trim((string)$template->getCurrentWorldDate()) : '';
+        if ($base === '') {
+            $base = trim((string)($settings['worldBaseDate'] ?? ''));
+        }
+        if ($mode === 'real_today') {
+            return date('Y-m-d');
+        }
+        if ($mode === 'auto') {
+            $anchor = trim((string)($settings['currentDateAnchor'] ?? ''));
+            if ($base !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $base) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $anchor)) {
+                try {
+                    $baseDate = new DateTimeImmutable($base);
+                    $anchorDate = new DateTimeImmutable($anchor);
+                    $today = new DateTimeImmutable('today');
+                    $days = $anchorDate->diff($today)->days;
+                    if ($anchorDate <= $today) {
+                        return $baseDate->modify('+' . $days . ' days')->format('Y-m-d');
+                    }
+                } catch (Throwable $e) {
+                    return $base;
+                }
+            }
+        }
+
+        return $base !== '' ? $base : date('Y-m-d');
+    }
+
+    private function referenceDateFromText(string $text): DateTimeImmutable
+    {
+        $raw = trim($text);
+        if (preg_match('/^(-?\d{1,6})(?:-(\d{2})-(\d{2}))?$/', $raw, $match)) {
+            try {
+                $month = isset($match[2]) && $match[2] !== '' ? (int)$match[2] : 1;
+                $day = isset($match[3]) && $match[3] !== '' ? (int)$match[3] : 1;
+                return (new DateTimeImmutable('today'))->setDate(
+                    (int)$match[1],
+                    $month,
+                    $day
+                );
+            } catch (Throwable $e) {
+                return new DateTimeImmutable('today');
+            }
+        }
+
+        return new DateTimeImmutable('today');
+    }
+
+    private function ageFieldText(array $field, array $fields, array $values, DateTimeImmutable $reference): string
+    {
+        $cfg = $this->decodeJsonDeep($field['placeholder'] ?? '');
+        $cfg = is_array($cfg) ? $cfg : [];
+        $source = trim((string)($cfg['sourceField'] ?? $cfg['source'] ?? $cfg['sourceLabel'] ?? ''));
+        $sourceField = $this->findAgeSourceField($fields, $source);
+        if (!$sourceField) {
+            return '';
+        }
+
+        $sourceId = (int)($sourceField['id'] ?? 0);
+        return $this->calculateAge($this->decodeJsonDeep($values[$sourceId] ?? null), $reference);
+    }
+
+    private function findAgeSourceField(array $fields, string $source): ?array
+    {
+        $dateFields = array_values(array_filter($fields, fn($field): bool => ($field['field_type'] ?? '') === 'date'));
+        if (empty($dateFields)) {
+            return null;
+        }
+        if ($source === '') {
+            return $dateFields[0];
+        }
+
+        $sourceKey = mb_strtolower($source);
+        foreach ($dateFields as $field) {
+            if ((string)($field['id'] ?? '') === $source || mb_strtolower(trim((string)($field['label'] ?? ''))) === $sourceKey) {
+                return $field;
+            }
+        }
+
+        return null;
+    }
+
+    private function fieldLines(array $fields, array $values, string $currentDate): array
     {
         $lines = [];
+        $reference = $this->referenceDateFromText($currentDate);
         foreach ($fields as $field) {
             $fieldId = (int)($field['id'] ?? 0);
             $label = trim((string)($field['label'] ?? ''));
@@ -282,8 +382,10 @@ class CharacterExportService
             }
 
             $rawValue = $values[$fieldId] ?? null;
-            $value = $this->fieldValueToText($field, $rawValue);
             $type = (string)($field['field_type'] ?? 'text');
+            $value = $type === 'age'
+                ? $this->ageFieldText($field, $fields, $values, $reference)
+                : $this->fieldValueToText($field, $rawValue, $reference);
             $images = $this->fieldImages($field, $rawValue);
             if ($value === '' && empty($images)) {
                 continue;
@@ -339,7 +441,7 @@ class CharacterExportService
         return $lines;
     }
 
-    private function fieldValueToText(array $field, mixed $rawValue): string
+    private function fieldValueToText(array $field, mixed $rawValue, ?DateTimeImmutable $reference = null): string
     {
         if ($rawValue === null || $rawValue === '') {
             return '';
@@ -353,7 +455,7 @@ class CharacterExportService
         }
 
         if ($type === 'table') {
-            return $this->tableToText($field, $value);
+            return $this->tableToText($field, $value, $reference ?? new DateTimeImmutable('today'));
         }
 
         if ($type === 'list') {
@@ -373,6 +475,8 @@ class CharacterExportService
         return match ($type) {
             'textarea' => 'Dlugi tekst',
             'list' => 'Lista',
+            'section' => 'Przedzial',
+            'age' => 'Czas od daty',
             'image' => 'Zdjecie',
             'image-gallery' => 'Galeria',
             'table' => 'Tabela',
@@ -383,7 +487,7 @@ class CharacterExportService
         };
     }
 
-    private function tableToText(array $field, mixed $value): string
+    private function tableToText(array $field, mixed $value, DateTimeImmutable $reference): string
     {
         if (!is_array($value)) {
             return $this->readableValue($value);
@@ -409,7 +513,12 @@ class CharacterExportService
             if ($this->tableCellType($row, $cell) === 'image') {
                 continue;
             }
-            $text = $this->readableValue($cell);
+            if ($this->tableCellType($row, $cell) === 'age') {
+                $source = trim((string)($row['ageFrom'] ?? '')) ?: (string)$row['label'];
+                $text = $this->calculateAge($this->cellValue($this->tableSourceCell($value, $rowDefs, $source)), $reference);
+            } else {
+                $text = $this->readableValue($cell);
+            }
             if ($text !== '') {
                 $lines[] = $row['label'] . ': ' . $text;
             }
@@ -438,7 +547,12 @@ class CharacterExportService
             $type = in_array(($row['type'] ?? 'text'), ['text', 'date', 'image', 'list', 'age', 'select'], true)
                 ? (string)$row['type']
                 : 'text';
-            $normalized[] = ['key' => (string)($row['key'] ?? $label), 'label' => $label, 'type' => $type];
+            $normalized[] = [
+                'key' => (string)($row['key'] ?? $label),
+                'label' => $label,
+                'type' => $type,
+                'ageFrom' => (string)($row['ageFrom'] ?? ''),
+            ];
         }
 
         return $normalized;
@@ -454,6 +568,35 @@ class CharacterExportService
         }
 
         return (string)($row['type'] ?? 'text');
+    }
+
+    private function tableSourceCell(array $rows, array $rowDefs, string $source): mixed
+    {
+        $sourceKey = mb_strtolower(trim($source));
+        foreach ($rowDefs as $row) {
+            if ((string)($row['key'] ?? '') === $source || mb_strtolower(trim((string)($row['label'] ?? ''))) === $sourceKey) {
+                return $rows[$row['key']] ?? $rows[$row['label']] ?? null;
+            }
+        }
+
+        return $rows[$source] ?? null;
+    }
+
+    private function calculateAge(mixed $date, DateTimeImmutable $reference): string
+    {
+        $date = $this->decodeJsonDeep($this->cellValue($date));
+        if (!is_array($date) || !is_numeric($date['year'] ?? null)) {
+            return '';
+        }
+
+        $age = (int)$reference->format('Y') - (int)$date['year'];
+        $month = max(1, ((int)($date['monthIndex'] ?? 0)) + 1);
+        $day = max(1, (int)($date['day'] ?? 1));
+        if ((int)$reference->format('n') < $month || ((int)$reference->format('n') === $month && (int)$reference->format('j') < $day)) {
+            $age--;
+        }
+
+        return $age >= 0 ? (string)$age : '';
     }
 
     private function fieldImages(array $field, mixed $rawValue): array

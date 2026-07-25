@@ -95,11 +95,3 @@ function addField(location) {
 
     container.appendChild(clone);
 }
-
-// Dodaj kilka pól na start
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('left-fields')) {
-        addField('left');
-        addField('right');
-    }
-});

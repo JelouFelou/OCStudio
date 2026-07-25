@@ -93,6 +93,19 @@
     transform-origin: center center;
 }
 
+.character-card .card-image-wrapper.is-default-character-image > img,
+.oc-media-frame--character-card.is-default-character-image > img,
+.character-card .card-image-wrapper.image-mode-natural.is-default-character-image > img,
+.oc-media-frame--character-card.image-mode-natural.is-default-character-image > img {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center center !important;
+    transform: none !important;
+    transform-origin: center center !important;
+}
+
 .oc-media-frame--portrait,
 .character-main-image-frame {
     aspect-ratio: 1 / 1;

@@ -414,51 +414,89 @@
                    placeholder="<?= htmlspecialchars($t('characters.folder_filters_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
                    style="width:100%;padding:10px 14px;border:1px solid var(--border,#ddd);
                           border-radius:10px;font-size:1rem;box-sizing:border-box;">
-            <label style="font-weight:700;font-size:0.9rem;"><?= htmlspecialchars($t('characters.folder_effect'), ENT_QUOTES, 'UTF-8') ?></label>
-            <select id="new-folder-effect"
-                    style="width:100%;padding:10px 14px;border:1px solid var(--border,#ddd);
-                           border-radius:10px;font-size:1rem;box-sizing:border-box;background:var(--input-bg,#fff);color:var(--text-main,#333);">
-                <option value="none"><?= htmlspecialchars($t('characters.effect.none'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="snow"><?= htmlspecialchars($t('characters.effect.snow'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="confetti"><?= htmlspecialchars($t('characters.effect.confetti'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="hearts"><?= htmlspecialchars($t('characters.effect.hearts'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="stars"><?= htmlspecialchars($t('characters.effect.stars'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="sunrays"><?= htmlspecialchars($t('characters.effect.sunrays'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="sakura"><?= htmlspecialchars($t('characters.effect.sakura'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="custom"><?= htmlspecialchars($t('characters.effect.custom'), ENT_QUOTES, 'UTF-8') ?></option>
-            </select>
-            <input id="new-folder-effect-symbols" type="text"
-                   placeholder="<?= htmlspecialchars($t('characters.effect_symbols_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
-                   style="width:100%;padding:10px 14px;border:1px solid var(--border,#ddd);
-                          border-radius:10px;font-size:1rem;box-sizing:border-box;">
-            <div class="folder-effect-controls">
-                <label style="font-weight:700;font-size:0.82rem;"><?= htmlspecialchars($t('characters.effect_intensity'), ENT_QUOTES, 'UTF-8') ?>
-                    <select id="new-folder-effect-intensity"
-                            style="width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--border,#ddd);border-radius:10px;background:var(--input-bg,#fff);color:var(--text-main,#333);">
-                        <option value="low"><?= htmlspecialchars($t('characters.effect.low'), ENT_QUOTES, 'UTF-8') ?></option>
-                        <option value="medium"><?= htmlspecialchars($t('characters.effect.medium'), ENT_QUOTES, 'UTF-8') ?></option>
-                        <option value="high"><?= htmlspecialchars($t('characters.effect.high'), ENT_QUOTES, 'UTF-8') ?></option>
-                    </select>
-                </label>
-                <label style="font-weight:700;font-size:0.82rem;"><?= htmlspecialchars($t('characters.effect_size'), ENT_QUOTES, 'UTF-8') ?>
-                    <select id="new-folder-effect-size"
-                            style="width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--border,#ddd);border-radius:10px;background:var(--input-bg,#fff);color:var(--text-main,#333);">
-                        <option value="small"><?= htmlspecialchars($t('characters.effect.small'), ENT_QUOTES, 'UTF-8') ?></option>
-                        <option value="medium"><?= htmlspecialchars($t('characters.effect.medium'), ENT_QUOTES, 'UTF-8') ?></option>
-                        <option value="large"><?= htmlspecialchars($t('characters.effect.large'), ENT_QUOTES, 'UTF-8') ?></option>
-                    </select>
-                </label>
-                <label style="font-weight:700;font-size:0.82rem;"><?= htmlspecialchars($t('characters.effect_layer'), ENT_QUOTES, 'UTF-8') ?>
-                    <select id="new-folder-effect-layer"
-                            style="width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--border,#ddd);border-radius:10px;background:var(--input-bg,#fff);color:var(--text-main,#333);">
-                        <option value="under"><?= htmlspecialchars($t('characters.effect.under'), ENT_QUOTES, 'UTF-8') ?></option>
-                        <option value="over"><?= htmlspecialchars($t('characters.effect.over'), ENT_QUOTES, 'UTF-8') ?></option>
-                    </select>
-                </label>
-            </div>
-            <button type="button" id="preview-folder-effect-btn" class="btn-secondary">
-                <?= htmlspecialchars($t('characters.preview_effect'), ENT_QUOTES, 'UTF-8') ?>
-            </button>
+            <section class="folder-form-section folder-effect-section">
+                <div class="folder-form-section-header">
+                    <strong><?= htmlspecialchars($t('characters.folder_effect'), ENT_QUOTES, 'UTF-8') ?></strong>
+                </div>
+                <div class="folder-effect-choice-grid" id="new-folder-effect">
+                    <?php foreach ([
+                        'snow' => ['icon' => 'fa-snowflake', 'label' => $t('characters.effect.snow')],
+                        'confetti' => ['icon' => 'fa-wand-magic-sparkles', 'label' => $t('characters.effect.confetti')],
+                        'hearts' => ['icon' => 'fa-heart', 'label' => $t('characters.effect.hearts')],
+                        'stars' => ['icon' => 'fa-star', 'label' => $t('characters.effect.stars')],
+                        'sunrays' => ['icon' => 'fa-sun', 'label' => $t('characters.effect.sunrays')],
+                        'sakura' => ['icon' => 'fa-fan', 'label' => $t('characters.effect.sakura')],
+                        'leaves' => ['icon' => 'fa-leaf', 'label' => $t('characters.effect.leaves')],
+                        'custom' => ['icon' => 'fa-icons', 'label' => $t('characters.effect.custom')],
+                    ] as $value => $effectOption): ?>
+                        <label class="folder-effect-choice">
+                            <input type="checkbox" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>">
+                            <span><i class="fa-solid <?= htmlspecialchars($effectOption['icon'], ENT_QUOTES, 'UTF-8') ?>"></i></span>
+                            <strong><?= htmlspecialchars($effectOption['label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <input id="new-folder-effect-symbols" type="text"
+                       placeholder="<?= htmlspecialchars($t('characters.effect_symbols_placeholder'), ENT_QUOTES, 'UTF-8') ?>">
+            </section>
+            <section class="folder-form-section">
+                <div class="folder-effect-controls">
+                    <label><?= htmlspecialchars($t('characters.effect_intensity'), ENT_QUOTES, 'UTF-8') ?>
+                        <select id="new-folder-effect-intensity">
+                            <option value="low"><?= htmlspecialchars($t('characters.effect.low'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="medium"><?= htmlspecialchars($t('characters.effect.medium'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="high"><?= htmlspecialchars($t('characters.effect.high'), ENT_QUOTES, 'UTF-8') ?></option>
+                        </select>
+                    </label>
+                    <label><?= htmlspecialchars($t('characters.effect_size'), ENT_QUOTES, 'UTF-8') ?>
+                        <select id="new-folder-effect-size">
+                            <option value="small"><?= htmlspecialchars($t('characters.effect.small'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="medium"><?= htmlspecialchars($t('characters.effect.medium'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="large"><?= htmlspecialchars($t('characters.effect.large'), ENT_QUOTES, 'UTF-8') ?></option>
+                        </select>
+                    </label>
+                    <label><?= htmlspecialchars($t('characters.effect_layer'), ENT_QUOTES, 'UTF-8') ?>
+                        <select id="new-folder-effect-layer">
+                            <option value="under"><?= htmlspecialchars($t('characters.effect.under'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="over"><?= htmlspecialchars($t('characters.effect.over'), ENT_QUOTES, 'UTF-8') ?></option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+            <section class="folder-form-section">
+                <div class="folder-effect-controls folder-effect-controls--wind">
+                    <label><?= htmlspecialchars($t('characters.effect_wind_direction'), ENT_QUOTES, 'UTF-8') ?>
+                        <select id="new-folder-effect-wind">
+                            <option value="none"><?= htmlspecialchars($t('characters.effect.wind_none'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="left"><?= htmlspecialchars($t('characters.effect.wind_left'), ENT_QUOTES, 'UTF-8') ?></option>
+                            <option value="right"><?= htmlspecialchars($t('characters.effect.wind_right'), ENT_QUOTES, 'UTF-8') ?></option>
+                        </select>
+                    </label>
+                    <label class="settings-check-row">
+                        <input type="checkbox" id="new-folder-effect-wind-affects" checked>
+                        <span><?= htmlspecialchars($t('characters.effect_wind_affects'), ENT_QUOTES, 'UTF-8') ?></span>
+                    </label>
+                </div>
+                <div class="folder-effect-wind-targets" id="new-folder-effect-wind-targets">
+                    <span><?= htmlspecialchars($t('characters.effect_wind_targets'), ENT_QUOTES, 'UTF-8') ?></span>
+                <?php foreach ([
+                    'snow' => $t('characters.effect.snow'),
+                    'confetti' => $t('characters.effect.confetti'),
+                    'hearts' => $t('characters.effect.hearts'),
+                    'sakura' => $t('characters.effect.sakura'),
+                    'leaves' => $t('characters.effect.leaves'),
+                    'custom' => $t('characters.effect.custom'),
+                ] as $value => $label): ?>
+                    <label class="settings-check-row">
+                        <input type="checkbox" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" checked>
+                        <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                    </label>
+                <?php endforeach; ?>
+                </div>
+                <button type="button" id="preview-folder-effect-btn" class="btn-secondary">
+                    <?= htmlspecialchars($t('characters.preview_effect'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+            </section>
             <div class="folder-image-field">
                 <input type="hidden" id="new-folder-image-id" value="">
                 <img id="new-folder-image-preview" alt="" style="display:none;width:100%;height:auto;max-height:220px;object-fit:contain;border-radius:10px;border:1px solid var(--border,#ddd);background:var(--surface-soft,#f5f5f5);">
@@ -514,6 +552,57 @@
     };
 
     // â”€â”€ Suwak kolumn â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    function splitPageEffectTokens(value) {
+        return String(value || 'none').toLowerCase().split(/[+,\s]+/).map(part => part.trim()).filter(Boolean);
+    }
+
+    function applyFolderEffectControls(value) {
+        const effectInput = document.getElementById('new-folder-effect');
+        const windInput = document.getElementById('new-folder-effect-wind');
+        const windAffectsInput = document.getElementById('new-folder-effect-wind-affects');
+        const windTargetInputs = document.querySelectorAll('#new-folder-effect-wind-targets input[type="checkbox"]');
+        const tokens = splitPageEffectTokens(value);
+        if (tokens.includes('forest')) {
+            tokens.push('leaves', 'sunrays', 'wind-right');
+        }
+        const windTokens = ['wind', 'wind-left', 'wind-right', 'wind:left', 'wind:right', 'wind-passive', 'wind-static'];
+        const effectTokens = tokens.filter(token => !windTokens.includes(token));
+        if (effectInput) {
+            effectInput.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                input.checked = effectTokens.includes(input.value);
+            });
+        }
+        if (windInput) {
+            windInput.value = tokens.includes('wind-left') || tokens.includes('wind:left') ? 'left'
+                : (tokens.includes('wind-right') || tokens.includes('wind:right') || tokens.includes('wind') ? 'right' : 'none');
+        }
+        if (windAffectsInput) {
+            windAffectsInput.checked = !tokens.includes('wind-passive') && !tokens.includes('wind-static');
+        }
+        windTargetInputs.forEach(input => {
+            input.checked = !tokens.includes(`wind-ignore-${input.value}`);
+        });
+    }
+
+    function selectedFolderEffectValue() {
+        const effectInput = document.getElementById('new-folder-effect');
+        const windInput = document.getElementById('new-folder-effect-wind');
+        const windAffectsInput = document.getElementById('new-folder-effect-wind-affects');
+        const windTargetInputs = document.querySelectorAll('#new-folder-effect-wind-targets input[type="checkbox"]');
+        const selected = effectInput
+            ? [...effectInput.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value).filter(Boolean)
+            : [];
+        const wind = windInput?.value || 'none';
+        if (wind === 'left' || wind === 'right') {
+            selected.push(`wind-${wind}`);
+            if (windAffectsInput && !windAffectsInput.checked) selected.push('wind-passive');
+            windTargetInputs.forEach(input => {
+                if (!input.checked) selected.push(`wind-ignore-${input.value}`);
+            });
+        }
+        return selected.length ? [...new Set(selected)].join('+') : 'none';
+    }
+
     const slider     = document.getElementById('column-slider');
     const columnText = document.getElementById('column-count');
     const sliderWrap = document.querySelector('.view-slider-control');
@@ -597,7 +686,7 @@
             folderFiltersInput.value = folderEl.dataset.worldFilters || '';
             folderFiltersInput.dataset.contextWorldId = String(worldId);
         }
-        document.getElementById('new-folder-effect').value = folderEl.dataset.worldEffect || 'none';
+        applyFolderEffectControls(folderEl.dataset.worldEffect || 'none');
         document.getElementById('new-folder-effect-symbols').value = folderEl.dataset.worldEffectSymbols || '';
         document.getElementById('new-folder-effect-intensity').value = folderEl.dataset.worldEffectIntensity || 'medium';
         document.getElementById('new-folder-effect-size').value = folderEl.dataset.worldEffectSize || 'medium';
@@ -783,7 +872,7 @@
             document.getElementById('folder-modal-title').textContent = characterI18n.createFolder;
             document.getElementById('new-folder-name').value = '';
             document.getElementById('new-folder-description').value = '';
-            document.getElementById('new-folder-effect').value = 'none';
+            applyFolderEffectControls('none');
             document.getElementById('new-folder-effect-symbols').value = '';
             document.getElementById('new-folder-effect-intensity').value = 'medium';
             document.getElementById('new-folder-effect-size').value = 'medium';
@@ -814,7 +903,7 @@
     document.getElementById('preview-folder-effect-btn')
         ?.addEventListener('click', () => {
             window.OCPageEffects?.preview({
-                effect: document.getElementById('new-folder-effect')?.value || 'none',
+                effect: selectedFolderEffectValue(),
                 symbols: document.getElementById('new-folder-effect-symbols')?.value || '',
                 intensity: document.getElementById('new-folder-effect-intensity')?.value || 'medium',
                 size: document.getElementById('new-folder-effect-size')?.value || 'medium',
@@ -836,7 +925,7 @@
             const errorEl   = document.getElementById('folder-error');
             const name = nameInput.value.trim();
             const description = descriptionInput.value.trim();
-            const backgroundEffect = effectInput?.value || 'none';
+            const backgroundEffect = selectedFolderEffectValue();
             const effectSymbols = effectSymbolsInput?.value || '';
             const effectIntensity = effectIntensityInput?.value || 'medium';
             const effectSize = effectSizeInput?.value || 'medium';

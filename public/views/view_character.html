@@ -153,7 +153,7 @@ function vc_list_items_from_value($value): array {
     ));
 }
 
-function vc_list_from_raw(?string $rawValue): array {
+function vc_list_from_raw($rawValue): array {
     return vc_list_items_from_value($rawValue);
 }
 
@@ -321,6 +321,9 @@ function vc_template_current_date($template): string {
 
     $mode = $settings['currentDateMode'] ?? 'fixed';
     $base = method_exists($template, 'getCurrentWorldDate') ? trim($template->getCurrentWorldDate()) : '';
+    if ($base === '') {
+        $base = trim((string)($settings['worldBaseDate'] ?? ''));
+    }
     if ($mode === 'real_today') {
         return date('Y-m-d');
     }
@@ -350,16 +353,75 @@ function vc_template_date_settings($template): array {
     return is_array($decoded) ? $decoded : [];
 }
 
-function vc_calculate_age($date): string {
+function vc_reference_date_from_text(string $text): DateTimeImmutable {
+    $raw = trim($text);
+    if (preg_match('/^(-?\d{1,6})(?:-(\d{2})-(\d{2}))?$/', $raw, $match)) {
+        try {
+            $month = isset($match[2]) && $match[2] !== '' ? (int)$match[2] : 1;
+            $day = isset($match[3]) && $match[3] !== '' ? (int)$match[3] : 1;
+            return (new DateTimeImmutable('today'))->setDate(
+                (int)$match[1],
+                $month,
+                $day
+            );
+        } catch (Throwable $e) {
+            return new DateTimeImmutable('today');
+        }
+    }
+    return new DateTimeImmutable('today');
+}
+
+function vc_current_reference_date(): DateTimeImmutable {
+    return vc_reference_date_from_text((string)($GLOBALS['vc_current_template_date'] ?? ''));
+}
+
+function vc_calculate_age($date, ?DateTimeImmutable $reference = null): string {
     if (!is_array($date) || !is_numeric($date['year'] ?? null)) return '';
-    $today = new DateTimeImmutable('today');
-    $age = (int)$today->format('Y') - (int)$date['year'];
+    $reference ??= new DateTimeImmutable('today');
+    $age = (int)$reference->format('Y') - (int)$date['year'];
     $month = max(1, ((int)($date['monthIndex'] ?? 0)) + 1);
     $day = max(1, (int)($date['day'] ?? 1));
-    if ((int)$today->format('n') < $month || ((int)$today->format('n') === $month && (int)$today->format('j') < $day)) {
+    if ((int)$reference->format('n') < $month || ((int)$reference->format('n') === $month && (int)$reference->format('j') < $day)) {
         $age--;
     }
     return $age >= 0 ? (string)$age : '';
+}
+
+function vc_age_field_config(array $field): array {
+    $cfg = vc_decode_json($field['placeholder'] ?? '');
+    $cfg = is_array($cfg) ? $cfg : [];
+    return ['sourceField' => trim((string)($cfg['sourceField'] ?? $cfg['source'] ?? $cfg['sourceLabel'] ?? ''))];
+}
+
+function vc_find_age_source_field(array $fields, string $source): ?array {
+    $dateFields = array_values(array_filter($fields, fn($field) => ($field['field_type'] ?? '') === 'date'));
+    if (empty($dateFields)) {
+        return null;
+    }
+    $source = trim($source);
+    if ($source === '') {
+        return $dateFields[0];
+    }
+    $sourceKey = mb_strtolower($source);
+    foreach ($dateFields as $field) {
+        if ((string)($field['id'] ?? '') === $source || mb_strtolower(trim((string)($field['label'] ?? ''))) === $sourceKey) {
+            return $field;
+        }
+    }
+    return null;
+}
+
+function vc_age_field_text(array $field): string {
+    $allFields = is_array($GLOBALS['vc_all_template_fields'] ?? null) ? $GLOBALS['vc_all_template_fields'] : [];
+    $values = is_array($GLOBALS['vc_character_field_values'] ?? null) ? $GLOBALS['vc_character_field_values'] : [];
+    $cfg = vc_age_field_config($field);
+    $sourceField = vc_find_age_source_field($allFields, $cfg['sourceField']);
+    if (!$sourceField) {
+        return '';
+    }
+    $sourceId = (int)($sourceField['id'] ?? 0);
+    $date = vc_decode_json($values[$sourceId] ?? null);
+    return vc_calculate_age($date, vc_current_reference_date());
 }
 
 function vc_value_is_empty_for_type(string $type, $value): bool {
@@ -371,8 +433,8 @@ function vc_value_is_empty_for_type(string $type, $value): bool {
     return $value === null || $value === '';
 }
 
-function vc_field_value_is_empty(array $field, ?string $rawValue): bool {
-    if ($rawValue === null || trim($rawValue) === '') {
+function vc_field_value_is_empty(array $field, $rawValue): bool {
+    if ($rawValue === null || (is_scalar($rawValue) && trim((string)$rawValue) === '')) {
         return true;
     }
 
@@ -424,7 +486,7 @@ function vc_render_table_cell(array $row, array $rows, array $field, array $rowD
 
     if ($type === 'age') {
         $source = $row['ageFrom'] ?: $label;
-        $age = vc_calculate_age(vc_table_cell_value(vc_table_source_cell($rows, $rowDefs, $source)));
+        $age = vc_calculate_age(vc_table_cell_value(vc_table_source_cell($rows, $rowDefs, $source)), vc_current_reference_date());
         return $age !== '' ? vc_escape($age) : '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
     }
 
@@ -454,10 +516,18 @@ function vc_render_table_cell(array $row, array $rows, array $field, array $rowD
     return $text !== '' ? nl2br(vc_escape($text)) : '<span class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</span>';
 }
 
-function vc_render_value(array $field, ?string $rawValue): void {
+function vc_render_value(array $field, $rawValue): void {
     $imageAssetMap = $GLOBALS['vc_image_asset_map'] ?? [];
     $blockedFilterIds = $GLOBALS['vc_blocked_filter_ids'] ?? [];
     $type = $field['field_type'] ?? 'text';
+
+    if ($type === 'age') {
+        $age = vc_age_field_text($field);
+        echo $age !== ''
+            ? '<p>' . vc_escape($age) . '</p>'
+            : '<p class="wiki-empty">' . vc_escape(vc_t('common.no_data')) . '</p>';
+        return;
+    }
 
     if ($type !== 'table' && $type !== 'stats' && vc_field_value_is_empty($field, $rawValue)) {
         if ($type === 'image') {
@@ -506,7 +576,7 @@ function vc_render_value(array $field, ?string $rawValue): void {
             $value = vc_normalize_cell_for_type($type, $cell);
             if ($type === 'age') {
                 $source = $row['ageFrom'] ?: $row['label'];
-                if (vc_calculate_age(vc_table_cell_value(vc_table_source_cell($rows, $rowDefs, $source))) === '') continue;
+                if (vc_calculate_age(vc_table_cell_value(vc_table_source_cell($rows, $rowDefs, $source)), vc_current_reference_date()) === '') continue;
             } elseif (vc_value_is_empty_for_type($type, $value)) {
                 continue;
             }
@@ -797,6 +867,9 @@ foreach ($timelineBranchPointItems as $branchPointItem) {
     $timelineItems[] = $branchPointItem;
 }
 $timelineCurrentDate = vc_template_current_date($template ?? null);
+$GLOBALS['vc_all_template_fields'] = $fields ?? [];
+$GLOBALS['vc_character_field_values'] = $characterFieldValues ?? [];
+$GLOBALS['vc_current_template_date'] = $timelineCurrentDate;
 $timelineItems[] = [
     'type' => 'current',
     'date' => $timelineCurrentDate,
@@ -874,6 +947,12 @@ foreach ($timelineItems as $item) {
 }
 $renderedLeftFields = [];
 foreach ($leftFields as $field) {
+    if (($field['field_type'] ?? '') === 'section') {
+        if (trim((string)($field['label'] ?? '')) !== '') {
+            $renderedLeftFields[] = ['field' => $field, 'html' => ''];
+        }
+        continue;
+    }
     ob_start();
     vc_render_value($field, $characterFieldValues[$field['id']] ?? null);
     $fieldHtml = trim(ob_get_clean());
@@ -883,6 +962,12 @@ foreach ($leftFields as $field) {
 }
 $renderedRightFields = [];
 foreach ($rightFields as $field) {
+    if (($field['field_type'] ?? '') === 'section') {
+        if (trim((string)($field['label'] ?? '')) !== '') {
+            $renderedRightFields[] = ['field' => $field, 'html' => ''];
+        }
+        continue;
+    }
     ob_start();
     vc_render_value($field, $characterFieldValues[$field['id']] ?? null);
     $fieldHtml = trim(ob_get_clean());
@@ -961,7 +1046,7 @@ foreach ($rightFields as $field) {
         <article class="wiki-article">
             <?php foreach($renderedLeftFields as $renderedField): ?>
                 <?php $field = $renderedField['field']; ?>
-                <section class="wiki-section">
+                <section class="wiki-section field-type-<?= vc_escape((string)($field['field_type'] ?? 'text')); ?>">
                     <?php if(trim((string)($field['label'] ?? '')) !== ''): ?>
                         <h2><?= vc_escape($field['label']); ?></h2>
                     <?php endif; ?>
@@ -1017,7 +1102,7 @@ foreach ($rightFields as $field) {
 
             <?php foreach($renderedRightFields as $renderedField): ?>
                 <?php $field = $renderedField['field']; ?>
-                <div class="wiki-infobox-field">
+                <div class="wiki-infobox-field field-type-<?= vc_escape((string)($field['field_type'] ?? 'text')); ?>">
                     <?php if(trim((string)($field['label'] ?? '')) !== ''): ?>
                         <h3><?= vc_escape($field['label']); ?></h3>
                     <?php endif; ?>
